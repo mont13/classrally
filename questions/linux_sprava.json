@@ -1,0 +1,58 @@
+[
+  {
+    "id": "lin1",
+    "prompt": "Který příkaz nainstaluje balíček v Ubuntu/Debianu?",
+    "options": ["yum install", "apt install", "pacman -S", "dnf install"],
+    "correct_index": 1,
+    "explanation": "Ubuntu/Debian používá správce balíčků APT."
+  },
+  {
+    "id": "lin2",
+    "prompt": "Co dělá příkaz chmod 755 soubor.sh?",
+    "options": ["Smaže soubor", "Nastaví práva rwxr-xr-x", "Změní vlastníka", "Přesune soubor"],
+    "correct_index": 1,
+    "explanation": "755 = vlastník rwx (7), skupina r-x (5), ostatní r-x (5)."
+  },
+  {
+    "id": "lin3",
+    "prompt": "Jaký je domovský adresář uživatele root?",
+    "options": ["/home/root", "/root", "/usr/root", "/var/root"],
+    "correct_index": 1,
+    "explanation": "Root má domovský adresář /root, ne v /home jako běžní uživatelé."
+  },
+  {
+    "id": "lin4",
+    "prompt": "Který příkaz zobrazí běžící procesy?",
+    "options": ["ls -l", "ps aux", "df -h", "cat /proc"],
+    "correct_index": 1,
+    "explanation": "ps aux zobrazí všechny běžící procesy se všemi uživateli."
+  },
+  {
+    "id": "lin5",
+    "prompt": "Co znamená symbol | (pipe) v shellu?",
+    "options": ["Logické OR", "Přesměrování do souboru", "Předání výstupu jednoho příkazu jako vstup dalšímu", "Spuštění na pozadí"],
+    "correct_index": 2,
+    "explanation": "Pipe (|) propojí stdout jednoho příkazu se stdin dalšího."
+  },
+  {
+    "id": "lin6",
+    "prompt": "Který adresář obsahuje konfigurační soubory systému?",
+    "options": ["/bin", "/etc", "/var", "/opt"],
+    "correct_index": 1,
+    "explanation": "/etc obsahuje systémové konfigurační soubory."
+  },
+  {
+    "id": "lin7",
+    "prompt": "Jak se v Linuxu přepnete na superuživatele?",
+    "options": ["admin", "sudo su", "root --login", "switch user"],
+    "correct_index": 1,
+    "explanation": "Příkaz sudo su přepne na root uživatele s jeho prostředím."
+  },
+  {
+    "id": "lin8",
+    "prompt": "Co dělá příkaz grep?",
+    "options": ["Kopíruje soubory", "Hledá vzory v textu", "Komprimuje soubory", "Zobrazí diskové oddíly"],
+    "correct_index": 1,
+    "explanation": "grep vyhledává řádky odpovídající zadanému regulárnímu výrazu."
+  }
+]

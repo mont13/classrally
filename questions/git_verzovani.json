@@ -1,0 +1,58 @@
+[
+  {
+    "id": "git1",
+    "prompt": "Který příkaz vytvoří nový Git repozitář?",
+    "options": ["git new", "git create", "git init", "git start"],
+    "correct_index": 2,
+    "explanation": "git init inicializuje nový Git repozitář v aktuálním adresáři."
+  },
+  {
+    "id": "git2",
+    "prompt": "Co dělá příkaz git clone?",
+    "options": ["Vytvoří větev", "Stáhne kopii vzdáleného repozitáře", "Sloučí větve", "Smaže repozitář"],
+    "correct_index": 1,
+    "explanation": "git clone vytvoří lokální kopii vzdáleného repozitáře."
+  },
+  {
+    "id": "git3",
+    "prompt": "Jaký je rozdíl mezi git pull a git fetch?",
+    "options": ["Žádný", "pull stáhne a sloučí, fetch jen stáhne", "fetch je rychlejší", "pull je zastaralý"],
+    "correct_index": 1,
+    "explanation": "git fetch stáhne změny bez sloučení, git pull = fetch + merge."
+  },
+  {
+    "id": "git4",
+    "prompt": "Co obsahuje soubor .gitignore?",
+    "options": ["Seznam commitů", "Vzory souborů, které Git nemá sledovat", "Konfiguraci větví", "Historii změn"],
+    "correct_index": 1,
+    "explanation": ".gitignore definuje vzory souborů a adresářů, které Git ignoruje."
+  },
+  {
+    "id": "git5",
+    "prompt": "Který příkaz zobrazí historii commitů?",
+    "options": ["git history", "git log", "git show", "git commits"],
+    "correct_index": 1,
+    "explanation": "git log zobrazí historii commitů s hashy, autory a zprávami."
+  },
+  {
+    "id": "git6",
+    "prompt": "Co je merge conflict?",
+    "options": ["Chyba při instalaci", "Situace, kdy Git nemůže automaticky sloučit změny", "Typ větve", "Smazaný commit"],
+    "correct_index": 1,
+    "explanation": "Merge conflict nastane, když dvě větve mění stejnou část souboru."
+  },
+  {
+    "id": "git7",
+    "prompt": "Jak se přepnete na existující větev feature?",
+    "options": ["git branch feature", "git checkout feature", "git switch feature", "B i C jsou správně"],
+    "correct_index": 3,
+    "explanation": "Obě varianty fungují: git checkout feature i git switch feature."
+  },
+  {
+    "id": "git8",
+    "prompt": "Co dělá git stash?",
+    "options": ["Smaže neuložené změny", "Dočasně uloží neuložené změny stranou", "Vytvoří commit", "Sloučí větve"],
+    "correct_index": 1,
+    "explanation": "git stash dočasně uloží rozpracované změny, aniž by vytvořil commit."
+  }
+]

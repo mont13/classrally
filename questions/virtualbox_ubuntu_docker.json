@@ -1,0 +1,122 @@
+[
+  {
+    "id": "q1",
+    "prompt": "Co je VirtualBox v kontextu této hodiny?",
+    "options": [
+      "Správce Docker image",
+      "Hypervizor typu 2",
+      "Linuxový správce balíčků",
+      "Nástroj pro monitoring sítě"
+    ],
+    "correct_index": 1,
+    "explanation": "VirtualBox je hypervizor typu 2, který běží nad host OS a spouští guest OS ve virtuálních strojích."
+  },
+  {
+    "id": "q2",
+    "prompt": "Která technologie musí být obvykle zapnutá v BIOS/UEFI?",
+    "options": [
+      "Secure Boot",
+      "VT-x/AMD-V",
+      "TPM 2.0",
+      "PXE boot"
+    ],
+    "correct_index": 1,
+    "explanation": "Pro 64bit virtualizaci je nutné zapnout hardwarové rozšíření VT-x nebo AMD-V."
+  },
+  {
+    "id": "q3",
+    "prompt": "Který příkaz v Ubuntu vypíše verzi distribuce?",
+    "options": [
+      "ubuntu --version",
+      "lsb_release -a",
+      "docker --version",
+      "uname -r"
+    ],
+    "correct_index": 1,
+    "explanation": "lsb_release -a je standardní příkaz pro zjištění distribuce a verze Ubuntu."
+  },
+  {
+    "id": "q4",
+    "prompt": "Kde je po oficiálním nastavení uložen Docker apt repozitář?",
+    "options": [
+      "/etc/docker/repo.list",
+      "/etc/apt/sources.list.d/docker.list",
+      "/var/lib/docker/repositories",
+      "/usr/local/docker/repo.conf"
+    ],
+    "correct_index": 1,
+    "explanation": "Oficiální návod Dockeru pro Ubuntu používá soubor /etc/apt/sources.list.d/docker.list."
+  },
+  {
+    "id": "q5",
+    "prompt": "Co ověřuje příkaz 'sudo docker run hello-world'?",
+    "options": [
+      "Jen syntaxi Docker CLI",
+      "Jen internet v Ubuntu",
+      "Funkční klient-daemon-image-konfiguraci",
+      "Funkci Docker Compose"
+    ],
+    "correct_index": 2,
+    "explanation": "hello-world ověří spojení s daemonem, případné stažení image a schopnost spustit kontejner."
+  },
+  {
+    "id": "q6",
+    "prompt": "Co je nejčastější příčina chyby 'permission denied ... docker.sock'?",
+    "options": [
+      "Nedostatek RAM ve VM",
+      "Uživatel není ve skupině docker",
+      "Špatný DNS server",
+      "Nekompatibilní kernel"
+    ],
+    "correct_index": 1,
+    "explanation": "Uživatel musí být ve skupině docker (nebo používat sudo), jinak nemá přístup k /var/run/docker.sock."
+  },
+  {
+    "id": "q7",
+    "prompt": "Který příkaz ověří stav Docker služby v systemd?",
+    "options": [
+      "docker daemon --status",
+      "service docker info",
+      "sudo systemctl status docker",
+      "sudo docker status"
+    ],
+    "correct_index": 2,
+    "explanation": "Na Ubuntu 22.04 se stav služby standardně ověřuje přes systemctl status docker."
+  },
+  {
+    "id": "q8",
+    "prompt": "K čemu slouží Docker Compose v této výuce?",
+    "options": [
+      "Upravuje BIOS hosta",
+      "Deklarativně spouští více služeb z jednoho souboru",
+      "Nahrazuje kernel Linuxu",
+      "Šifruje disk VM"
+    ],
+    "correct_index": 1,
+    "explanation": "Compose definuje a spouští multi-container aplikaci z compose.yaml."
+  },
+  {
+    "id": "q9",
+    "prompt": "Který network mode je nejjednodušší pro první instalaci VM s internetem?",
+    "options": [
+      "Internal Network",
+      "Host-only",
+      "NAT",
+      "NAT Network + trunk"
+    ],
+    "correct_index": 2,
+    "explanation": "NAT je nejjednodušší startovní volba, protože VM má internet bez další konfigurace LAN."
+  },
+  {
+    "id": "q10",
+    "prompt": "Jaký je správný přístup k troubleshootingu?",
+    "options": [
+      "Okamžitě přeinstalovat vše",
+      "Restartovat bez analýzy",
+      "Symptom -> vrstva -> diagnostika -> oprava -> ověření",
+      "Vyhledat náhodný příkaz na internetu"
+    ],
+    "correct_index": 2,
+    "explanation": "Systematický postup je klíčový: nejdřív symptom a vrstva, pak cílený test a teprve potom oprava."
+  }
+]

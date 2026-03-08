@@ -1,0 +1,58 @@
+[
+  {
+    "id": "cld1",
+    "prompt": "Co znamená IaaS?",
+    "options": ["Internet as a Service", "Infrastructure as a Service", "Integration as a Service", "Information as a Service"],
+    "correct_index": 1,
+    "explanation": "IaaS (Infrastructure as a Service) poskytuje virtuální servery, storage a sítě."
+  },
+  {
+    "id": "cld2",
+    "prompt": "Co je Kubernetes?",
+    "options": ["Programovací jazyk", "Platforma pro orchestraci kontejnerů", "Cloudový provider", "Databázový systém"],
+    "correct_index": 1,
+    "explanation": "Kubernetes (K8s) automatizuje nasazení, škálování a správu kontejnerů."
+  },
+  {
+    "id": "cld3",
+    "prompt": "Co je CI/CD?",
+    "options": ["Cloud Infrastructure / Cloud Delivery", "Continuous Integration / Continuous Deployment", "Central Interface / Central Database", "Code Inspection / Code Debug"],
+    "correct_index": 1,
+    "explanation": "CI/CD automatizuje sestavení, testování a nasazení kódu."
+  },
+  {
+    "id": "cld4",
+    "prompt": "Jaký je rozdíl mezi kontejnerem a virtuálním strojem?",
+    "options": ["Žádný", "Kontejner sdílí kernel hosta, VM má vlastní OS", "VM je rychlejší", "Kontejner potřebuje více RAM"],
+    "correct_index": 1,
+    "explanation": "Kontejnery sdílejí kernel hostitelského OS, jsou lehčí a rychleji startují."
+  },
+  {
+    "id": "cld5",
+    "prompt": "Co je Docker Compose?",
+    "options": ["Editor kódu", "Nástroj pro definici a spuštění multi-kontejnerových aplikací", "Monitorovací systém", "Zálohovací služba"],
+    "correct_index": 1,
+    "explanation": "Docker Compose definuje vícekontejnerové aplikace v YAML souboru."
+  },
+  {
+    "id": "cld6",
+    "prompt": "Co je terraform?",
+    "options": ["Cloudový provider", "Nástroj pro Infrastructure as Code", "Kontejnerový runtime", "CI/CD pipeline"],
+    "correct_index": 1,
+    "explanation": "Terraform je IaC nástroj pro deklarativní správu infrastruktury."
+  },
+  {
+    "id": "cld7",
+    "prompt": "Co je load balancer?",
+    "options": ["Zálohovací server", "Rozdělovač zátěže mezi více serverů", "Firewall", "DNS server"],
+    "correct_index": 1,
+    "explanation": "Load balancer distribuuje příchozí požadavky mezi více serverů."
+  },
+  {
+    "id": "cld8",
+    "prompt": "Jaký Dockerfile příkaz nastaví základní image?",
+    "options": ["IMAGE", "BASE", "FROM", "USE"],
+    "correct_index": 2,
+    "explanation": "FROM je první instrukce v Dockerfile a definuje základní image."
+  }
+]

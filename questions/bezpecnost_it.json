@@ -1,0 +1,58 @@
+[
+  {
+    "id": "sec1",
+    "prompt": "Co je phishing?",
+    "options": ["Typ malwaru", "Podvodné získávání citlivých údajů", "Síťový útok DDoS", "Šifrovací algoritmus"],
+    "correct_index": 1,
+    "explanation": "Phishing je sociální inženýrství, kdy útočník podvodně získává hesla, čísla karet apod."
+  },
+  {
+    "id": "sec2",
+    "prompt": "Co znamená zkratka MFA?",
+    "options": ["Multiple File Access", "Multi-Factor Authentication", "Main Firewall Agent", "Managed File Archive"],
+    "correct_index": 1,
+    "explanation": "MFA (vícefaktorová autentizace) vyžaduje více způsobů ověření identity."
+  },
+  {
+    "id": "sec3",
+    "prompt": "Jaký typ útoku zahltí server velkým množstvím požadavků?",
+    "options": ["Man-in-the-Middle", "SQL Injection", "DDoS", "Cross-Site Scripting"],
+    "correct_index": 2,
+    "explanation": "DDoS (Distributed Denial of Service) zahltí cíl požadavky z mnoha zdrojů."
+  },
+  {
+    "id": "sec4",
+    "prompt": "Co je ransomware?",
+    "options": ["Spyware sledující klávesnici", "Malware šifrující data a požadující výkupné", "Adware zobrazující reklamy", "Rootkit skrývající procesy"],
+    "correct_index": 1,
+    "explanation": "Ransomware zašifruje soubory oběti a požaduje platbu za dešifrování."
+  },
+  {
+    "id": "sec5",
+    "prompt": "Které HTTP záhlaví pomáhá proti XSS útokům?",
+    "options": ["X-Frame-Options", "Content-Security-Policy", "Cache-Control", "Accept-Encoding"],
+    "correct_index": 1,
+    "explanation": "Content-Security-Policy omezuje, odkud se mohou načítat skripty a zdroje."
+  },
+  {
+    "id": "sec6",
+    "prompt": "Co je to firewall?",
+    "options": ["Antivirový program", "Systém filtrující síťový provoz", "Šifrovací protokol", "Zálohovací služba"],
+    "correct_index": 1,
+    "explanation": "Firewall filtruje síťový provoz na základě pravidel a chrání síť před neoprávněným přístupem."
+  },
+  {
+    "id": "sec7",
+    "prompt": "Jaká je doporučená minimální délka hesla?",
+    "options": ["4 znaky", "6 znaků", "8 znaků", "12 a více znaků"],
+    "correct_index": 3,
+    "explanation": "Moderní doporučení je minimálně 12 znaků, ideálně s kombinací typů znaků."
+  },
+  {
+    "id": "sec8",
+    "prompt": "Co je SQL injection?",
+    "options": ["Vložení škodlivého SQL kódu do vstupu aplikace", "Instalace SQL serveru", "Typ šifrování databáze", "Záloha SQL dat"],
+    "correct_index": 0,
+    "explanation": "SQL injection vkládá škodlivý SQL kód přes uživatelský vstup do databázových dotazů."
+  }
+]

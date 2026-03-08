@@ -1,0 +1,58 @@
+[
+  {
+    "id": "py1",
+    "prompt": "Jaký datový typ vrátí výraz type([1, 2, 3])?",
+    "options": ["<class 'tuple'>", "<class 'list'>", "<class 'dict'>", "<class 'set'>"],
+    "correct_index": 1,
+    "explanation": "Hranaté závorky [] vytvářejí seznam (list)."
+  },
+  {
+    "id": "py2",
+    "prompt": "Co dělá příkaz pip install requests?",
+    "options": ["Spustí webový server", "Nainstaluje knihovnu requests", "Vytvoří HTTP požadavek", "Aktualizuje Python"],
+    "correct_index": 1,
+    "explanation": "pip je správce balíčků pro Python, install nainstaluje zadanou knihovnu."
+  },
+  {
+    "id": "py3",
+    "prompt": "Jak se v Pythonu definuje funkce?",
+    "options": ["function nazev():", "func nazev():", "def nazev():", "fn nazev():"],
+    "correct_index": 2,
+    "explanation": "V Pythonu se funkce definuje klíčovým slovem def."
+  },
+  {
+    "id": "py4",
+    "prompt": "Co vrátí len('hello')?",
+    "options": ["4", "5", "6", "Error"],
+    "correct_index": 1,
+    "explanation": "Funkce len() vrátí počet znaků v řetězci, 'hello' má 5 znaků."
+  },
+  {
+    "id": "py5",
+    "prompt": "Jaký je výstup: print(3 * 'ab')?",
+    "options": ["6", "ababab", "ab3", "Error"],
+    "correct_index": 1,
+    "explanation": "Násobení řetězce číslem ho zopakuje: 'ab' * 3 = 'ababab'."
+  },
+  {
+    "id": "py6",
+    "prompt": "Co je list comprehension?",
+    "options": ["Typ cyklu", "Zkrácený zápis pro vytvoření seznamu", "Metoda pro řazení", "Import knihovny"],
+    "correct_index": 1,
+    "explanation": "List comprehension je zkrácený zápis, např. [x**2 for x in range(5)]."
+  },
+  {
+    "id": "py7",
+    "prompt": "Který příkaz zachytí výjimku v Pythonu?",
+    "options": ["catch:", "except:", "handle:", "error:"],
+    "correct_index": 1,
+    "explanation": "Python používá try/except pro zachycení výjimek."
+  },
+  {
+    "id": "py8",
+    "prompt": "Co je virtualenv?",
+    "options": ["Virtuální stroj", "Izolované prostředí pro Python závislosti", "IDE pro Python", "Testovací framework"],
+    "correct_index": 1,
+    "explanation": "virtualenv/venv vytváří izolované Python prostředí s vlastními balíčky."
+  }
+]

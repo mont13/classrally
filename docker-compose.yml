@@ -1,0 +1,24 @@
+services:
+  quiz-web:
+    build: .
+    container_name: quiz-web
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      # Persist data between restarts
+      - ./history:/app/history
+      - ./questions:/app/questions
+      # Mount custom audio files (MP3/OGG/WAV)
+      - ./static/audio:/app/static/audio
+    environment:
+      - QUIZ_ADMIN_PASSWORD=${QUIZ_ADMIN_PASSWORD:-}
+      - QUIZ_EXTERNAL_IP=${QUIZ_EXTERNAL_IP:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-host.docker.internal}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gpt-oss:20b}
+      - QUESTION_TIME=${QUESTION_TIME:-20}
+      - REVEAL_TIME=${REVEAL_TIME:-5}
+    extra_hosts:
+      # Allow connecting to Ollama running on host machine
+      - "host.docker.internal:host-gateway"

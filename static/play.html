@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz - Hraj!</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .countdown-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 8px 0; }
+    .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
+      background: linear-gradient(90deg, #22d3ee, #0284c7); }
+    .countdown-fill.warning { background: linear-gradient(90deg, #f97316, #dc2626); }
+    .kahoot-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .kahoot-options { grid-template-columns: 1fr; } }
+    .kahoot-btn { border: none; border-radius: 14px; padding: 22px 18px; text-align: center;
+      font-size: clamp(1.3rem, 2.2vw, 2rem); font-weight: 900; cursor: pointer; color: #fff;
+      transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18); min-height: 80px;
+      display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .kahoot-btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.25); }
+    .kahoot-btn:active:not(:disabled) { transform: translateY(0); }
+    .kahoot-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+    .kahoot-btn.c0 { background: linear-gradient(135deg, #e21b3c, #ff3355); }
+    .kahoot-btn.c1 { background: linear-gradient(135deg, #1368ce, #2584ff); }
+    .kahoot-btn.c2 { background: linear-gradient(135deg, #d89e00, #ffa602); }
+    .kahoot-btn.c3 { background: linear-gradient(135deg, #26890c, #45b332); }
+    .kahoot-btn.selected { outline: 4px solid #fff; outline-offset: -4px;
+      box-shadow: 0 0 0 6px rgba(255,255,255,0.5), 0 8px 20px rgba(0,0,0,0.3); }
+    .kahoot-btn.correct-answer { outline: 4px solid #16a34a; outline-offset: -4px;
+      box-shadow: 0 0 20px rgba(22,163,74,0.5); opacity: 1 !important; }
+    .kahoot-btn.wrong-answer { opacity: 0.35 !important; }
+    .kahoot-btn .shape { font-size: 1.4em; }
+    .shapes { display: inline; }
+    .result-banner { text-align: center; padding: 20px; border-radius: 14px; margin: 14px 0;
+      font-size: 1.8rem; font-weight: 900; }
+    .result-banner.correct-banner { background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+      color: #166534; border: 3px solid #16a34a; }
+    .result-banner.wrong-banner { background: linear-gradient(135deg, #fee2e2, #fecaca);
+      color: #991b1b; border: 3px solid #dc2626; }
+    .waiting-pulse { animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    .score-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 4rem; font-weight: 900; color: #16a34a; text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      animation: scoreUp 1.5s ease-out forwards; pointer-events: none; z-index: 100; }
+    @keyframes scoreUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(0.5); }
+      30% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+      100% { opacity: 0; transform: translate(-50%, -80%) scale(0.8); } }
+    .podium { display: flex; justify-content: center; gap: 20px; margin: 20px 0; align-items: flex-end; }
+    .podium-place { text-align: center; border-radius: 12px; padding: 16px; min-width: 100px; }
+    .podium-1 { background: linear-gradient(135deg, #fef3c7, #fde68a); order: 2; min-height: 160px; }
+    .podium-2 { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); order: 1; min-height: 120px; }
+    .podium-3 { background: linear-gradient(135deg, #fed7aa, #fdba74); order: 3; min-height: 90px; }
+    .podium-rank { font-size: 2.5rem; font-weight: 900; }
+    .podium-name { font-size: 1.3rem; font-weight: 800; margin-top: 6px; }
+    .podium-score { font-size: 1.1rem; color: #475569; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="joinCard" class="card">
+      <h1>Pripoj se do kvizu!</h1>
+      <p class="muted">Zadej prezdivku (max. 24 znaku) a klikni na Vstoupit.</p>
+      <input id="nameInput" class="input" placeholder="napr. Tereza" maxlength="24" autofocus />
+      <div class="btn-row" style="margin-top:10px;">
+        <button id="joinBtn" class="btn good">Vstoupit</button>
+      </div>
+      <p id="joinErr" style="color:#b91c1c;font-weight:700;"></p>
+      <div id="qrJoin" style="text-align:center;margin:30px 0 10px 0;">
+        <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;">Nebo vyfot QR kod z projektoru:</p>
+        <img id="qrImg" src="/api/qr" alt="QR kod" style="width:min(80vw,400px);height:auto;border:3px solid #e2e8f0;border-radius:12px;" />
+      </div>
+    </section>
+
+    <section id="gameCard" class="card hide">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2 style="margin:0;">Hrac: <span id="playerName">-</span></h2>
+        <span id="phasePill" class="status-pill lobby">lobby</span>
+      </div>
+
+      <div class="kpi" style="margin:12px 0;">
+        <div class="item"><div class="label">Skore</div><div class="value" id="myScore">0</div></div>
+        <div class="item"><div class="label">Otazka</div><div class="value" id="qNo">-</div></div>
+        <div class="item"><div class="label">Hlasovalo</div><div class="value" id="answered">0</div></div>
+        <div class="item"><div class="label">Hraci</div><div class="value" id="players">0</div></div>
+        <div class="item timer"><div class="label">Odpocet</div><div class="value" id="timer">-</div></div>
+      </div>
+
+      <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
+
+      <div id="mainMessage" class="question">Cekej na start od ucitele.</div>
+      <div id="resultBanner" class="hide"></div>
+      <p id="explanation" class="muted"></p>
+      <div id="options" class="kahoot-options"></div>
+      <div id="podium" class="hide"></div>
+      <p class="help">Po odeslani odpovedi uz volbu nelze zmenit.</p>
+    </section>
+  </main>
+
+  <script>
+    const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const shapes = ['\u25B2', '\u25C6', '\u25CF', '\u25A0'];
+    const KEY = 'quiz_player_id';
+    const SECRET_KEY = 'quiz_player_secret';
+    let lastScore = 0;
+    let lastPhase = '';
+    let lastQuestionIndex = -1;
+
+    function phaseLabel(phase) {
+      if (phase === 'question') return 'Otazka';
+      if (phase === 'reveal') return 'Vyhodnoceni';
+      if (phase === 'finished') return 'Konec';
+      return 'Lobby';
+    }
+
+    function formatSecondsLeft(value) {
+      if (!Number.isFinite(value)) return '-';
+      return `${Math.max(0, Math.floor(value))} s`;
+    }
+
+    async function api(path, method='GET', body=null) {
+      const cfg = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body) cfg.body = JSON.stringify(body);
+      const res = await fetch(path, cfg);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    function showScorePopup(points) {
+      if (points <= 0) return;
+      const el = document.createElement('div');
+      el.className = 'score-popup';
+      el.textContent = `+${points}`;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1600);
+    }
+
+    function renderOptions(state, playerId) {
+      const box = document.getElementById('options');
+      box.innerHTML = '';
+      if (!state.question || !state.question.options) return;
+
+      const myChoice = state.my_choice;
+
+      state.question.options.forEach((opt, i) => {
+        const btn = document.createElement('button');
+        btn.className = `kahoot-btn c${i}`;
+        const shapeSpan = document.createElement('span');
+        shapeSpan.className = 'shape';
+        shapeSpan.textContent = shapes[i] || '';
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `${abc[i]}) ${opt}`;
+        btn.appendChild(shapeSpan);
+        btn.appendChild(textSpan);
+
+        if (myChoice === i) btn.classList.add('selected');
+
+        if (state.phase === 'reveal' || state.phase === 'finished') {
+          btn.disabled = true;
+          if (i === state.question.correct_index) {
+            btn.classList.add('correct-answer');
+          } else {
+            btn.classList.add('wrong-answer');
+          }
+        } else {
+          btn.disabled = myChoice !== undefined;
+          btn.addEventListener('click', async () => {
+            btn.classList.add('selected');
+            document.querySelectorAll('.kahoot-btn').forEach(b => { b.disabled = true; });
+            try {
+              const secret = localStorage.getItem(SECRET_KEY) || '';
+              await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice: i });
+              await refresh();
+            } catch (e) {
+              alert(e.message);
+            }
+          });
+        }
+        box.appendChild(btn);
+      });
+    }
+
+    function renderPodium(players) {
+      const container = document.getElementById('podium');
+      if (!players || players.length === 0) {
+        container.classList.add('hide');
+        return;
+      }
+      container.classList.remove('hide');
+      container.innerHTML = '';
+      const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+      const podiumDiv = document.createElement('div');
+      podiumDiv.className = 'podium';
+      players.slice(0, 3).forEach((p, i) => {
+        const place = document.createElement('div');
+        place.className = `podium-place podium-${i+1}`;
+        const rank = document.createElement('div');
+        rank.className = 'podium-rank';
+        rank.textContent = medals[i];
+        const name = document.createElement('div');
+        name.className = 'podium-name';
+        name.textContent = p.name;
+        const score = document.createElement('div');
+        score.className = 'podium-score';
+        score.textContent = `${p.score} bodu`;
+        place.appendChild(rank);
+        place.appendChild(name);
+        place.appendChild(score);
+        podiumDiv.appendChild(place);
+      });
+      container.appendChild(podiumDiv);
+    }
+
+    function updateCountdown(state) {
+      const fill = document.getElementById('countdownFill');
+      if (state.phase === 'question' && state.question_duration_sec > 0) {
+        const pct = Math.max(0, (state.phase_time_left || 0) / state.question_duration_sec * 100);
+        fill.style.width = pct + '%';
+        fill.classList.toggle('warning', pct < 30);
+      } else if (state.phase === 'reveal' && state.reveal_duration_sec > 0) {
+        const pct = Math.max(0, (state.phase_time_left || 0) / state.reveal_duration_sec * 100);
+        fill.style.width = pct + '%';
+        fill.classList.remove('warning');
+      } else {
+        fill.style.width = '100%';
+        fill.classList.remove('warning');
+      }
+    }
+
+    function render(state, playerId) {
+      const me = state.me || {};
+      document.getElementById('playerName').textContent = me.name || '-';
+      document.getElementById('myScore').textContent = `${me.score ?? 0}`;
+      document.getElementById('answered').textContent = `${state.answer_count ?? 0}`;
+      document.getElementById('players').textContent = `${state.total_players ?? 0}`;
+      document.getElementById('qNo').textContent = state.current_index >= 0 ? `${state.current_index + 1}/${state.total_questions}` : '-';
+      document.getElementById('timer').textContent = formatSecondsLeft(state.phase_time_left);
+
+      const pill = document.getElementById('phasePill');
+      pill.textContent = phaseLabel(state.phase);
+      pill.className = `status-pill ${state.phase}`;
+
+      updateCountdown(state);
+
+      const main = document.getElementById('mainMessage');
+      const banner = document.getElementById('resultBanner');
+      const exp = document.getElementById('explanation');
+      const podium = document.getElementById('podium');
+
+      // Score popup
+      if (me.score > lastScore && lastScore > 0) {
+        showScorePopup(me.score - lastScore);
+      }
+      lastScore = me.score || 0;
+
+      if (!state.question) {
+        if (state.phase === 'finished') {
+          main.textContent = 'Kviz skoncil!';
+          renderPodium(state.players);
+        } else {
+          main.textContent = '';
+          const pulse = document.createElement('span');
+          pulse.className = 'waiting-pulse';
+          pulse.textContent = 'Cekej na start od ucitele...';
+          main.appendChild(pulse);
+          podium.classList.add('hide');
+        }
+        banner.classList.add('hide');
+        exp.textContent = '';
+      } else {
+        main.textContent = state.question.prompt;
+        podium.classList.add('hide');
+
+        if (state.phase === 'reveal' || state.phase === 'finished') {
+          const c = state.question.correct_index;
+          const myChoice = state.my_choice;
+          const isCorrect = myChoice === c;
+
+          banner.classList.remove('hide');
+          if (myChoice === undefined) {
+            banner.className = 'result-banner wrong-banner';
+            banner.textContent = `Cas vyprsel! Spravne: ${abc[c]}) ${state.question.options[c]}`;
+          } else if (isCorrect) {
+            banner.className = 'result-banner correct-banner';
+            banner.textContent = `Spravne! ${abc[c]}) ${state.question.options[c]}`;
+          } else {
+            banner.className = 'result-banner wrong-banner';
+            banner.textContent = `Spatne! Spravne: ${abc[c]}) ${state.question.options[c]}`;
+          }
+          exp.textContent = state.question.explanation || '';
+        } else {
+          banner.classList.add('hide');
+          if (state.my_choice === undefined) {
+            exp.textContent = `Vyber jednu moznost! Zbyva ${formatSecondsLeft(state.phase_time_left)}.`;
+          } else {
+            exp.textContent = 'Odpoved odeslana. Pockej na vyhodnoceni.';
+          }
+        }
+      }
+
+      renderOptions(state, playerId);
+      lastPhase = state.phase;
+      lastQuestionIndex = state.current_index;
+    }
+
+    async function refresh() {
+      const playerId = localStorage.getItem(KEY);
+      if (!playerId) return;
+      try {
+        const state = await api(`/api/state?player_id=${encodeURIComponent(playerId)}`);
+        if (!state.me) {
+          localStorage.removeItem(KEY);
+          location.reload();
+          return;
+        }
+        render(state, playerId);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function join() {
+      const name = document.getElementById('nameInput').value.trim();
+      const err = document.getElementById('joinErr');
+      err.textContent = '';
+      try {
+        const data = await api('/api/register', 'POST', { name });
+        localStorage.setItem(KEY, data.player_id);
+        localStorage.setItem(SECRET_KEY, data.player_secret);
+        document.getElementById('joinCard').classList.add('hide');
+        document.getElementById('gameCard').classList.remove('hide');
+        lastScore = 0;
+        await refresh();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    }
+
+    document.getElementById('joinBtn').addEventListener('click', join);
+    document.getElementById('nameInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') join();
+    });
+
+    if (localStorage.getItem(KEY)) {
+      document.getElementById('joinCard').classList.add('hide');
+      document.getElementById('gameCard').classList.remove('hide');
+      refresh();
+    }
+
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

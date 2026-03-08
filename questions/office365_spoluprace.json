@@ -1,0 +1,58 @@
+[
+  {
+    "id": "o365_1",
+    "prompt": "Jaký je rozdíl mezi OneDrive a SharePoint?",
+    "options": ["Žádný", "OneDrive je osobní, SharePoint je týmový", "SharePoint je zastaralý", "OneDrive neumí sdílet"],
+    "correct_index": 1,
+    "explanation": "OneDrive slouží pro osobní soubory, SharePoint pro týmovou spolupráci."
+  },
+  {
+    "id": "o365_2",
+    "prompt": "Co je Microsoft Teams?",
+    "options": ["Tabulkový procesor", "Platforma pro komunikaci a spolupráci", "E-mailový klient", "Správce hesel"],
+    "correct_index": 1,
+    "explanation": "Teams integruje chat, videohovory, sdílení souborů a aplikace třetích stran."
+  },
+  {
+    "id": "o365_3",
+    "prompt": "Který formát souboru je nativní pro Excel?",
+    "options": [".docx", ".pptx", ".xlsx", ".csv"],
+    "correct_index": 2,
+    "explanation": ".xlsx je nativní formát Excelu od verze 2007 (Open XML)."
+  },
+  {
+    "id": "o365_4",
+    "prompt": "Co je Power Automate?",
+    "options": ["Prezentační nástroj", "Služba pro automatizaci pracovních postupů", "Databáze", "Antivirový program"],
+    "correct_index": 1,
+    "explanation": "Power Automate (dříve Flow) automatizuje opakující se úlohy mezi aplikacemi."
+  },
+  {
+    "id": "o365_5",
+    "prompt": "Jaká Excel funkce vyhledá hodnotu v tabulce?",
+    "options": ["FIND()", "SEARCH()", "VLOOKUP()", "LOCATE()"],
+    "correct_index": 2,
+    "explanation": "VLOOKUP hledá hodnotu v prvním sloupci rozsahu a vrací hodnotu ze zadaného sloupce."
+  },
+  {
+    "id": "o365_6",
+    "prompt": "Co je podmíněné formátování v Excelu?",
+    "options": ["Ochrana buněk", "Automatická změna formátu buněk na základě hodnot", "Tisk nastavení", "Filtrování dat"],
+    "correct_index": 1,
+    "explanation": "Podmíněné formátování mění barvu, ikony nebo datové pruhy podle pravidel."
+  },
+  {
+    "id": "o365_7",
+    "prompt": "Jak se v PowerPointu vloží nový snímek?",
+    "options": ["Ctrl+N", "Ctrl+M", "Ctrl+S", "Ctrl+P"],
+    "correct_index": 1,
+    "explanation": "Ctrl+M vloží nový snímek v PowerPointu."
+  },
+  {
+    "id": "o365_8",
+    "prompt": "Co je Microsoft Intune?",
+    "options": ["E-mailový server", "Služba pro správu mobilních zařízení (MDM)", "Textový editor", "VPN klient"],
+    "correct_index": 1,
+    "explanation": "Intune je cloudová služba pro správu zařízení a aplikací (MDM/MAM)."
+  }
+]

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Game history (generated at runtime)
+history/*.json
+
+# Audio files (license restrictions - users add their own)
+static/audio/*.mp3
+static/audio/*.ogg
+static/audio/*.wav
+static/audio/*.m4a
+static/audio/*.aac
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Claude Code sessions
+.claude/
+
+# Old/deprecated scripts
+docker-run.sh
+download_free_quiz_music.sh
+kritikaopenai.md

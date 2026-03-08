@@ -1,0 +1,58 @@
+[
+  {
+    "id": "html1",
+    "prompt": "Který tag vytvoří odkaz v HTML?",
+    "options": ["<link>", "<a>", "<href>", "<url>"],
+    "correct_index": 1,
+    "explanation": "Tag <a href=\"...\"> vytváří hypertextový odkaz."
+  },
+  {
+    "id": "html2",
+    "prompt": "Co znamená CSS?",
+    "options": ["Computer Style Sheets", "Cascading Style Sheets", "Creative Style System", "Coded Style Syntax"],
+    "correct_index": 1,
+    "explanation": "CSS = Cascading Style Sheets, jazyk pro stylování HTML dokumentů."
+  },
+  {
+    "id": "html3",
+    "prompt": "Který CSS selektor vybere element podle ID?",
+    "options": [".nazev", "#nazev", "nazev", "*nazev"],
+    "correct_index": 1,
+    "explanation": "Selektor # (hash) vybírá element podle atributu id."
+  },
+  {
+    "id": "html4",
+    "prompt": "Co dělá tag <div>?",
+    "options": ["Vytvoří tabulku", "Blokový kontejner pro seskupení obsahu", "Vloží obrázek", "Vytvoří formulář"],
+    "correct_index": 1,
+    "explanation": "<div> je generický blokový kontejner pro seskupení a stylování obsahu."
+  },
+  {
+    "id": "html5",
+    "prompt": "Jaký atribut HTML5 zajistí responzivní zobrazení na mobilech?",
+    "options": ["<meta charset>", "<meta viewport>", "<meta description>", "<meta author>"],
+    "correct_index": 1,
+    "explanation": "Meta viewport nastavuje šířku zobrazení podle zařízení."
+  },
+  {
+    "id": "html6",
+    "prompt": "Který CSS vlastnost mění barvu textu?",
+    "options": ["background-color", "font-color", "color", "text-color"],
+    "correct_index": 2,
+    "explanation": "Vlastnost color nastavuje barvu textu."
+  },
+  {
+    "id": "html7",
+    "prompt": "Co je Flexbox v CSS?",
+    "options": ["JavaScript knihovna", "Systém pro rozložení prvků v kontejneru", "HTML tag", "CSS preprocesor"],
+    "correct_index": 1,
+    "explanation": "Flexbox je CSS layout model pro flexibilní rozložení prvků v řádku nebo sloupci."
+  },
+  {
+    "id": "html8",
+    "prompt": "Který HTML tag je sémanticky správný pro navigaci?",
+    "options": ["<div class=\"nav\">", "<nav>", "<menu>", "<navigation>"],
+    "correct_index": 1,
+    "explanation": "HTML5 tag <nav> sémanticky označuje navigační sekci stránky."
+  }
+]

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "net1",
+    "prompt": "Jaká je výchozí maska podsítě pro síť třídy C?",
+    "options": ["255.0.0.0", "255.255.0.0", "255.255.255.0", "255.255.255.128"],
+    "correct_index": 2,
+    "explanation": "Třída C má masku 255.255.255.0 (/24), což umožňuje 254 hostů."
+  },
+  {
+    "id": "net2",
+    "prompt": "Na jaké vrstvě ISO/OSI pracuje switch (přepínač)?",
+    "options": ["Fyzická (L1)", "Linková (L2)", "Síťová (L3)", "Transportní (L4)"],
+    "correct_index": 1,
+    "explanation": "Switch pracuje na linkové vrstvě (L2) a přepíná rámce podle MAC adres."
+  },
+  {
+    "id": "net3",
+    "prompt": "Který protokol překládá doménová jména na IP adresy?",
+    "options": ["DHCP", "DNS", "ARP", "NAT"],
+    "correct_index": 1,
+    "explanation": "DNS (Domain Name System) překládá doménová jména na IP adresy."
+  },
+  {
+    "id": "net4",
+    "prompt": "Jaký port standardně používá HTTPS?",
+    "options": ["80", "443", "8080", "22"],
+    "correct_index": 1,
+    "explanation": "HTTPS používá port 443, zatímco HTTP používá port 80."
+  },
+  {
+    "id": "net5",
+    "prompt": "Co znamená zkratka DHCP?",
+    "options": ["Dynamic Host Control Protocol", "Dynamic Host Configuration Protocol", "Domain Host Configuration Protocol", "Direct Host Control Protocol"],
+    "correct_index": 1,
+    "explanation": "DHCP = Dynamic Host Configuration Protocol, automaticky přiděluje IP adresy."
+  },
+  {
+    "id": "net6",
+    "prompt": "Který příkaz v Linuxu zobrazí aktivní síťová rozhraní?",
+    "options": ["ifconfig / ip addr", "netstat -r", "traceroute", "nslookup"],
+    "correct_index": 0,
+    "explanation": "Příkazy ifconfig nebo ip addr zobrazí konfiguraci síťových rozhraní."
+  },
+  {
+    "id": "net7",
+    "prompt": "Co je NAT?",
+    "options": ["Protokol pro šifrování", "Překlad síťových adres", "Typ síťového kabelu", "Nástroj pro monitoring"],
+    "correct_index": 1,
+    "explanation": "NAT (Network Address Translation) překládá privátní IP adresy na veřejné."
+  },
+  {
+    "id": "net8",
+    "prompt": "Jaký je rozdíl mezi TCP a UDP?",
+    "options": ["TCP je rychlejší", "UDP garantuje doručení", "TCP garantuje doručení, UDP ne", "Žádný rozdíl"],
+    "correct_index": 2,
+    "explanation": "TCP je spojově orientovaný a garantuje doručení, UDP je bez spojení a rychlejší."
+  }
+]

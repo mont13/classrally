@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kvíz host - VirtualBox Ubuntu Docker</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="card">
+      <h1>Kvíz host (učitel)</h1>
+      <p class="muted">Lokální hlasování z mobilů bez služeb třetích stran.</p>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;">Ucitelsky portal</a>
+      </div>
+      <p><strong>URL pro žáky:</strong> <span id="joinUrl" class="join-url">Načítám...</span></p>
+      <p class="muted" id="joinHint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
+      <ul id="joinExtra" class="join-extra hide"></ul>
+      <div id="qrBox" style="text-align:center;margin:12px 0;">
+        <img id="qrImg" src="/api/qr" alt="QR kod pro pripojeni" style="max-width:200px;height:auto;cursor:pointer;border:2px solid #e2e8f0;border-radius:8px;" title="Klikni pro zvetseni" />
+      </div>
+
+      <div class="btn-row">
+        <button class="btn good" id="btnStart">Start</button>
+        <button class="btn secondary" id="btnReveal">Ukázat správnou odpověď</button>
+        <button class="btn" id="btnNext">Další otázka</button>
+        <button class="btn warn" id="btnReset">Reset hry</button>
+      </div>
+
+      <div class="music-controls">
+        <div class="btn-row">
+          <button class="btn ghost" id="btnMusicStart">Hudba ON</button>
+          <button class="btn secondary" id="btnMusicStop">Hudba OFF</button>
+          <button class="btn" id="btnStinger">Zvukovy efekt</button>
+          <button class="btn" id="btnRandomLoop">Zmenit hudbu</button>
+        </div>
+        <label class="slider-row" for="musicVol">Hlasitost
+          <input id="musicVol" type="range" min="0" max="100" value="40" />
+        </label>
+        <label class="check-row">
+          <input id="musicAuto" type="checkbox" checked />
+          Automaticky řídit hudbu podle fáze kvízu
+        </label>
+        <p class="help">MP3 se vybírají automaticky z <code>/static/audio/</code> (náhodně).</p>
+        <p id="musicTrackInfo" class="help">Track: -</p>
+        <p id="musicState" class="help">Hudba: vypnuta</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card col-7">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h2 style="margin:0;">Aktuální otázka</h2>
+          <span id="phasePill" class="status-pill lobby">lobby</span>
+        </div>
+
+        <div class="kpi" style="margin:12px 0;">
+          <div class="item"><div class="label">Otázka</div><div class="value" id="kQuestion">-</div></div>
+          <div class="item"><div class="label">Hlasovalo</div><div class="value" id="kAnswered">0</div></div>
+          <div class="item"><div class="label">Hráči</div><div class="value" id="kPlayers">0</div></div>
+          <div class="item"><div class="label">Fáze</div><div class="value" id="kPhase">Lobby</div></div>
+          <div class="item timer"><div class="label">Odpočet</div><div class="value" id="kTimer">-</div></div>
+        </div>
+
+        <p id="voteStatus" class="vote-status">Čekám na start kvízu.</p>
+        <div id="questionBox" class="question">Čekám na start kvízu.</div>
+        <div id="answerBig" class="big-answer hide"></div>
+        <p id="explanation" class="muted"></p>
+        <div id="options" class="options"></div>
+      </div>
+
+      <div class="card col-5">
+        <h2>Žebříček</h2>
+        <table>
+          <thead><tr><th>#</th><th>Jméno</th><th>Body</th></tr></thead>
+          <tbody id="scoreBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const FALLBACK_TRACKS = {
+      loops: [{ url: '/static/audio/tension-loop.mp3', name: 'tension-loop.mp3' }],
+      stingers: [{ url: '/static/audio/reveal-stinger.mp3', name: 'reveal-stinger.mp3' }],
+    };
+
+    let hostToken = localStorage.getItem('quiz_host_token') || '';
+
+    const appState = {
+      lastPhase: 'lobby',
+      lastQuestionIndex: -1,
+      allAnsweredCueForIndex: -1,
+      audioCtx: null,
+      masterGain: null,
+      musicNodes: [],
+      musicOn: false,
+      userStopped: false,
+      usingMp3: false,
+      mp3Ready: true,
+      trackCatalogLoaded: false,
+      trackCatalog: { loops: [], stingers: [], all: [] },
+      tensionAudio: null,
+      stingerAudio: null,
+      activeLoopTrack: null,
+      activeStingerTrack: null,
+    };
+
+    function phaseLabel(phase) {
+      if (phase === 'question') return 'Otázka';
+      if (phase === 'reveal') return 'Vyhodnocení';
+      if (phase === 'finished') return 'Konec';
+      return 'Lobby';
+    }
+
+    function formatSecondsLeft(value) {
+      if (!Number.isFinite(value)) return '-';
+      return `${Math.max(0, Math.floor(value))} s`;
+    }
+
+    async function api(path, method='GET', body=null) {
+      const cfg = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body) cfg.body = JSON.stringify(body);
+      const res = await fetch(path, cfg);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    function randomItem(items) {
+      if (!Array.isArray(items) || items.length === 0) return null;
+      const idx = Math.floor(Math.random() * items.length);
+      return items[idx];
+    }
+
+    function nextTrack(items, previousTrack) {
+      if (!Array.isArray(items) || items.length === 0) return null;
+      if (!previousTrack || !previousTrack.url || items.length === 1) {
+        return randomItem(items);
+      }
+      const filtered = items.filter((t) => t && t.url && t.url !== previousTrack.url);
+      if (filtered.length === 0) {
+        return randomItem(items);
+      }
+      return randomItem(filtered);
+    }
+
+    function setMusicState(text, warn=false) {
+      const el = document.getElementById('musicState');
+      el.textContent = text;
+      el.classList.toggle('warn-inline', warn);
+    }
+
+    function setTrackInfo(text) {
+      document.getElementById('musicTrackInfo').textContent = `Track: ${text}`;
+    }
+
+    async function loadTrackCatalog() {
+      if (appState.trackCatalogLoaded) return;
+      appState.trackCatalogLoaded = true;
+      try {
+        const data = await api('/api/audio-tracks');
+        const loops = Array.isArray(data.loops) ? data.loops : [];
+        const stingers = Array.isArray(data.stingers) ? data.stingers : [];
+        const all = Array.isArray(data.all) ? data.all : [];
+        appState.trackCatalog = { loops, stingers, all };
+      } catch (_) {
+        appState.trackCatalog = { loops: [], stingers: [], all: [] };
+      }
+    }
+
+    function getLoopTracks() {
+      const catalog = appState.trackCatalog.loops;
+      return catalog.length > 0 ? catalog : FALLBACK_TRACKS.loops;
+    }
+
+    function getStingerTracks() {
+      const catalog = appState.trackCatalog.stingers;
+      return catalog.length > 0 ? catalog : FALLBACK_TRACKS.stingers;
+    }
+
+    function markMp3Unavailable(reason) {
+      if (!appState.mp3Ready) return;
+      appState.mp3Ready = false;
+      setMusicState(`${reason} Používám synth fallback.`, true);
+    }
+
+    function getAudioCtor() {
+      return window.AudioContext || window.webkitAudioContext || null;
+    }
+
+    function initMp3Players() {
+      if (appState.tensionAudio && appState.stingerAudio) return;
+
+      const tension = new Audio();
+      tension.loop = true;
+      tension.preload = 'auto';
+
+      const stinger = new Audio();
+      stinger.preload = 'auto';
+
+      const onError = () => markMp3Unavailable('MP3 soubory nebyly nalezeny nebo nejdou přehrát.');
+      tension.addEventListener('error', onError);
+      stinger.addEventListener('error', onError);
+
+      appState.tensionAudio = tension;
+      appState.stingerAudio = stinger;
+      setMusicVolume();
+    }
+
+    function setMusicVolume() {
+      const raw = Number(document.getElementById('musicVol').value || 40);
+      const vol = Math.max(0, Math.min(1, raw / 100));
+
+      if (appState.audioCtx && appState.masterGain) {
+        appState.masterGain.gain.setTargetAtTime(vol, appState.audioCtx.currentTime, 0.03);
+      }
+      if (appState.tensionAudio) {
+        appState.tensionAudio.volume = Math.max(0, Math.min(1, vol * 0.78));
+      }
+      if (appState.stingerAudio) {
+        appState.stingerAudio.volume = vol;
+      }
+    }
+
+    function ensureAudioContext() {
+      const AudioCtor = getAudioCtor();
+      if (!AudioCtor) {
+        setMusicState('Tento prohlížeč nepodporuje WebAudio.', true);
+        return false;
+      }
+      if (!appState.audioCtx) {
+        appState.audioCtx = new AudioCtor();
+        appState.masterGain = appState.audioCtx.createGain();
+        appState.masterGain.gain.value = 0.2;
+        appState.masterGain.connect(appState.audioCtx.destination);
+      }
+      if (appState.audioCtx.state === 'suspended') {
+        appState.audioCtx.resume().catch(() => {});
+      }
+      setMusicVolume();
+      return true;
+    }
+
+    function stopSynthOnly() {
+      if (appState.musicNodes.length === 0) return;
+      const nodes = appState.musicNodes.slice();
+      const ctx = appState.audioCtx;
+      const now = ctx ? ctx.currentTime : 0;
+
+      nodes.forEach((node) => {
+        if (node && node.gain && typeof node.gain.setTargetAtTime === 'function') {
+          try {
+            node.gain.setTargetAtTime(0.0001, now, 0.05);
+          } catch (_) {}
+        }
+      });
+
+      setTimeout(() => {
+        nodes.forEach((node) => {
+          try { if (typeof node.stop === 'function') node.stop(); } catch (_) {}
+          try { node.disconnect(); } catch (_) {}
+        });
+      }, 180);
+
+      appState.musicNodes = [];
+    }
+
+    function stopMp3Only() {
+      if (appState.tensionAudio) {
+        try {
+          appState.tensionAudio.pause();
+          appState.tensionAudio.currentTime = 0;
+        } catch (_) {}
+      }
+      appState.usingMp3 = false;
+      appState.activeLoopTrack = null;
+    }
+
+    function stopStinger() {
+      if (appState.stingerAudio) {
+        try {
+          appState.stingerAudio.pause();
+          appState.stingerAudio.currentTime = 0;
+        } catch (_) {}
+      }
+    }
+
+    // Stop only the loop (music) — used by automation during reveal
+    function stopLoop() {
+      console.log('[music] stopLoop called, musicOn was:', appState.musicOn, 'nodes:', appState.musicNodes.length, 'usingMp3:', appState.usingMp3);
+      stopMp3Only();
+      stopSynthOnly();
+      appState.musicOn = false;
+      setMusicState('Hudba: vypnuta.');
+      setTrackInfo('-');
+    }
+
+    // Stop everything including stinger — used by "Hudba OFF" button and reset
+    function stopMusic() {
+      console.log('[music] stopMusic (full stop), userStopped=true');
+      stopLoop();
+      stopStinger();
+      appState.userStopped = true;
+    }
+
+    function startSynthLoop() {
+      if (!ensureAudioContext()) {
+        console.log('[music] startSynthLoop: ensureAudioContext failed');
+        return false;
+      }
+      if (!appState.audioCtx || !appState.masterGain) {
+        console.log('[music] startSynthLoop: no audioCtx or masterGain');
+        return false;
+      }
+
+      if (appState.audioCtx.state !== 'running') {
+        console.log('[music] startSynthLoop: audioCtx.state =', appState.audioCtx.state);
+        setMusicState('Klikni na Hudba ON. Prohlížeč vyžaduje uživatelský klik pro zvuk.', true);
+        return false;
+      }
+      if (appState.musicNodes.length > 0) {
+        console.log('[music] startSynthLoop: already running (nodes:', appState.musicNodes.length, ')');
+        return true;
+      }
+
+      const ctx = appState.audioCtx;
+      const now = ctx.currentTime;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(950, now);
+      filter.Q.setValueAtTime(0.8, now);
+      filter.connect(appState.masterGain);
+
+      const drone = ctx.createOscillator();
+      drone.type = 'triangle';
+      drone.frequency.setValueAtTime(82.41, now);
+      const droneGain = ctx.createGain();
+      droneGain.gain.setValueAtTime(0.07, now);
+      drone.connect(droneGain);
+      droneGain.connect(filter);
+
+      const pulse = ctx.createOscillator();
+      pulse.type = 'sawtooth';
+      pulse.frequency.setValueAtTime(164.81, now);
+      const pulseGain = ctx.createGain();
+      pulseGain.gain.setValueAtTime(0.018, now);
+      pulse.connect(pulseGain);
+      pulseGain.connect(filter);
+
+      const wobble = ctx.createOscillator();
+      wobble.type = 'sine';
+      wobble.frequency.setValueAtTime(0.18, now);
+      const wobbleGain = ctx.createGain();
+      wobbleGain.gain.setValueAtTime(0.014, now);
+      wobble.connect(wobbleGain);
+      wobbleGain.connect(pulseGain.gain);
+
+      drone.start(now);
+      pulse.start(now);
+      wobble.start(now);
+
+      appState.musicNodes = [drone, droneGain, pulse, pulseGain, wobble, wobbleGain, filter];
+      appState.usingMp3 = false;
+      console.log('[music] startSynthLoop: created new synth nodes OK');
+      return true;
+    }
+
+    function startMusic(forceNewTrack=false) {
+      if (appState.musicOn && !forceNewTrack) return;
+      console.log('[music] startMusic called, forceNewTrack:', forceNewTrack, 'musicOn:', appState.musicOn, 'userStopped:', appState.userStopped, 'ctxState:', appState.audioCtx?.state, 'mp3Ready:', appState.mp3Ready, 'nodes:', appState.musicNodes.length);
+
+      if (forceNewTrack) {
+        stopMp3Only();
+        stopSynthOnly();
+        appState.musicOn = false;
+      }
+
+      // Try MP3 first if we have real audio files (not fallback placeholders)
+      if (appState.mp3Ready && appState.trackCatalog.loops.length > 0) {
+        initMp3Players();
+        const picked = forceNewTrack
+          ? nextTrack(getLoopTracks(), appState.activeLoopTrack)
+          : (appState.activeLoopTrack || randomItem(getLoopTracks()));
+
+        if (picked && picked.url && appState.tensionAudio) {
+          appState.activeLoopTrack = picked;
+          appState.tensionAudio.src = picked.url;
+          setTrackInfo(`Loop: ${picked.name || picked.url}`);
+          setMusicVolume();
+
+          const playPromise = appState.tensionAudio.play();
+          if (playPromise) {
+            playPromise.then(() => {
+              appState.usingMp3 = true;
+              appState.musicOn = true;
+              console.log('[music] MP3 loop started:', picked.name);
+              setMusicState('Hudba: MP3 loop (napětí).');
+            }).catch(() => {
+              markMp3Unavailable('MP3 loop nejde spustit.');
+              console.log('[music] MP3 loop failed, trying synth fallback');
+              const synthOk = startSynthLoop();
+              if (synthOk) {
+                appState.musicOn = true;
+                setMusicState('Hudba: synth fallback (napětí).');
+                setTrackInfo('Synth fallback');
+              }
+            });
+            // Set musicOn optimistically for MP3 to prevent double-calls
+            appState.musicOn = true;
+            setMusicState('Hudba: MP3 loop (napětí).');
+            return;
+          }
+        }
+      }
+
+      // Synth fallback (synchronous, immediate, always works)
+      const synthStarted = startSynthLoop();
+      console.log('[music] startMusic synth result:', synthStarted);
+      if (synthStarted) {
+        appState.musicOn = true;
+        setMusicState('Hudba: synth fallback (napětí).');
+        setTrackInfo('Synth fallback');
+      }
+    }
+
+    function playSynthStinger(multiplier=1.0) {
+      if (!ensureAudioContext()) return false;
+      if (!appState.audioCtx || !appState.masterGain) return false;
+      if (appState.audioCtx.state !== 'running') return false;
+
+      const ctx = appState.audioCtx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(392.0, now);
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.23);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.2 * multiplier, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+
+      osc.connect(gain);
+      gain.connect(appState.masterGain);
+      osc.start(now);
+      osc.stop(now + 0.4);
+
+      setTimeout(() => {
+        try { osc.disconnect(); } catch (_) {}
+        try { gain.disconnect(); } catch (_) {}
+      }, 450);
+      return true;
+    }
+
+    async function playStinger(opts={}) {
+      const label = opts.label || 'Stinger';
+      const volumeScale = Number.isFinite(opts.volumeScale) ? opts.volumeScale : 1;
+
+      initMp3Players();
+      await loadTrackCatalog();
+
+      const picked = randomItem(getStingerTracks());
+      if (appState.mp3Ready && appState.stingerAudio && picked && picked.url) {
+        try {
+          appState.activeStingerTrack = picked;
+          appState.stingerAudio.src = picked.url;
+          setMusicVolume();
+          const baseVol = appState.stingerAudio.volume;
+          appState.stingerAudio.volume = Math.max(0.05, Math.min(1, baseVol * volumeScale));
+          appState.stingerAudio.currentTime = 0;
+          await appState.stingerAudio.play();
+          setTrackInfo(`${label}: ${picked.name || picked.url}`);
+          setMusicState(`${label}: MP3.`);
+          setTimeout(() => setMusicVolume(), 150);
+          return;
+        } catch (_) {
+          markMp3Unavailable('MP3 stinger nejde přehrát.');
+        }
+      }
+
+      const ok = playSynthStinger(volumeScale);
+      if (ok) {
+        setTrackInfo(`${label}: synth`);
+        setMusicState(`${label}: synth fallback.`);
+      }
+    }
+
+    function maybeAllAnsweredCue(state) {
+      if (state.phase !== 'question') return;
+      if (!state.question) return;
+      const total = Number(state.total_players || 0);
+      const answered = Number(state.answer_count || 0);
+      if (total <= 0) return;
+      if (answered < total) return;
+      if (appState.allAnsweredCueForIndex === state.current_index) return;
+
+      appState.allAnsweredCueForIndex = state.current_index;
+      playStinger({ label: 'Dohlasováno', volumeScale: 0.7 });
+    }
+
+    function phaseMusicAutomation(phase) {
+      const auto = document.getElementById('musicAuto').checked;
+      if (phase === appState.lastPhase) return;
+
+      // Phase changed — clear userStopped flag so automation can resume
+      console.log('[music] phase changed:', appState.lastPhase, '->', phase, 'auto:', auto, 'userStopped:', appState.userStopped);
+      appState.userStopped = false;
+
+      if (auto) {
+        if (phase === 'question') {
+          startMusic();
+        }
+        if (phase === 'reveal') {
+          stopLoop();
+          playStinger({ label: 'Vyhodnocení', volumeScale: 1.0 });
+        }
+        if (phase === 'finished' || phase === 'lobby') {
+          stopLoop();
+        }
+      }
+      appState.lastPhase = phase;
+    }
+
+    function renderJoinInfo(info) {
+      const joinUrl = document.getElementById('joinUrl');
+      const joinHint = document.getElementById('joinHint');
+      const joinExtra = document.getElementById('joinExtra');
+      const fallback = `${location.origin}/play`;
+      const urls = Array.isArray(info?.play_urls) ? info.play_urls : [];
+
+      const playUrl = urls.length > 0 ? urls[0] : fallback;
+      joinUrl.textContent = playUrl;
+
+      // Update QR code with correct play URL
+      const qrImg = document.getElementById('qrImg');
+      if (qrImg) qrImg.src = `/api/qr?url=${encodeURIComponent(playUrl)}`;
+
+      joinExtra.innerHTML = '';
+      if (urls.length > 1) {
+        urls.slice(1).forEach(url => {
+          const li = document.createElement('li');
+          li.textContent = url;
+          joinExtra.appendChild(li);
+        });
+        joinExtra.classList.remove('hide');
+      } else {
+        joinExtra.classList.add('hide');
+      }
+
+      if (info?.loopback_only) {
+        joinHint.textContent = 'Server běží jen na localhostu. Spusť: python3 server.py --host 0.0.0.0 --port 8765';
+        joinHint.classList.add('warn-inline');
+      } else {
+        joinHint.textContent = 'Mobily musí být ve stejné Wi-Fi/LAN. Použij URL výše.';
+        joinHint.classList.remove('warn-inline');
+      }
+    }
+
+    function renderOptions(state) {
+      const box = document.getElementById('options');
+      box.innerHTML = '';
+      if (!state.question || !state.question.options) return;
+
+      const votes = state.vote_counts || [];
+      const maxVotes = Math.max(1, ...votes, 1);
+
+      state.question.options.forEach((opt, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'option-btn';
+        const pct = Math.round((votes[i] || 0) / maxVotes * 100);
+
+        if (state.phase === 'reveal' && i === state.question.correct_index) {
+          wrap.classList.add('correct');
+        }
+
+        const textDiv = document.createElement('div');
+        const prefix = document.createElement('span');
+        prefix.className = 'prefix';
+        prefix.textContent = `${abc[i]})`;
+        textDiv.appendChild(prefix);
+        textDiv.appendChild(document.createTextNode(' ' + opt));
+        wrap.appendChild(textDiv);
+
+        const helpDiv = document.createElement('div');
+        helpDiv.className = 'help';
+        helpDiv.textContent = `Hlasy: ${votes[i] || 0}`;
+        wrap.appendChild(helpDiv);
+
+        const barDiv = document.createElement('div');
+        barDiv.className = 'vote-bar';
+        const barSpan = document.createElement('span');
+        barSpan.style.width = pct + '%';
+        barDiv.appendChild(barSpan);
+        wrap.appendChild(barDiv);
+
+        box.appendChild(wrap);
+      });
+    }
+
+    function renderScores(players) {
+      const body = document.getElementById('scoreBody');
+      body.innerHTML = '';
+      players.forEach(p => {
+        const tr = document.createElement('tr');
+        if (p.rank <= 3) tr.classList.add(`rank-${p.rank}`);
+        const tdRank = document.createElement('td');
+        tdRank.textContent = p.rank;
+        const tdName = document.createElement('td');
+        tdName.textContent = p.name;
+        const tdScore = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = p.score;
+        tdScore.appendChild(strong);
+        tr.appendChild(tdRank);
+        tr.appendChild(tdName);
+        tr.appendChild(tdScore);
+        body.appendChild(tr);
+      });
+    }
+
+    function renderVoteStatus(state) {
+      const el = document.getElementById('voteStatus');
+      if (state.phase !== 'question') {
+        if (state.phase === 'lobby') {
+          el.textContent = 'Čekám na start kvízu.';
+        } else if (state.phase === 'reveal') {
+          el.textContent = `Vyhodnocení... další otázka za ${formatSecondsLeft(state.phase_time_left)}.`;
+        } else {
+          el.textContent = 'Otázka je uzavřena.';
+        }
+        el.className = 'vote-status';
+        return;
+      }
+      const total = Number(state.total_players || 0);
+      const answered = Number(state.answer_count || 0);
+      const left = formatSecondsLeft(state.phase_time_left);
+      if (total === 0) {
+        el.textContent = `Čekám na připojení hráčů... odpočet ${left}.`;
+        el.className = 'vote-status';
+        return;
+      }
+      el.textContent = `Odpočet ${left} • Hlasovalo ${answered}/${total}`;
+      if (answered >= total) {
+        el.textContent += ' • všichni odevzdali.';
+        el.className = 'vote-status done';
+      } else {
+        el.className = 'vote-status';
+      }
+    }
+
+    function render(state) {
+      const questionChanged = state.current_index !== appState.lastQuestionIndex;
+      if (state.current_index !== appState.lastQuestionIndex) {
+        appState.lastQuestionIndex = state.current_index;
+        appState.allAnsweredCueForIndex = -1;
+      }
+
+      phaseMusicAutomation(state.phase);
+      if (
+        questionChanged &&
+        state.phase === 'question' &&
+        state.current_index >= 0 &&
+        (document.getElementById('musicAuto').checked || appState.musicOn)
+      ) {
+        startMusic(true);
+      }
+      maybeAllAnsweredCue(state);
+
+      document.getElementById('phasePill').textContent = phaseLabel(state.phase);
+      document.getElementById('phasePill').className = `status-pill ${state.phase}`;
+      document.getElementById('kPhase').textContent = phaseLabel(state.phase);
+      document.getElementById('kPlayers').textContent = state.total_players ?? 0;
+      document.getElementById('kAnswered').textContent = `${state.answer_count ?? 0}`;
+      document.getElementById('kQuestion').textContent = state.current_index >= 0 ? `${state.current_index + 1}/${state.total_questions}` : '-';
+      document.getElementById('kTimer').textContent = formatSecondsLeft(state.phase_time_left);
+
+      renderVoteStatus(state);
+
+      const qBox = document.getElementById('questionBox');
+      const ansBig = document.getElementById('answerBig');
+      const exp = document.getElementById('explanation');
+
+      if (!state.question) {
+        qBox.textContent = state.phase === 'finished' ? 'Kvíz dokončen.' : 'Čekám na start kvízu.';
+        ansBig.classList.add('hide');
+        exp.textContent = '';
+      } else {
+        qBox.textContent = state.question.prompt;
+        if (state.phase === 'reveal' || state.phase === 'finished') {
+          const c = state.question.correct_index;
+          ansBig.textContent = `Správně: ${abc[c]}) ${state.question.options[c]}`;
+          ansBig.classList.remove('hide');
+          exp.textContent = state.question.explanation || '';
+        } else {
+          ansBig.classList.add('hide');
+          exp.textContent = '';
+        }
+      }
+
+      renderOptions(state);
+      renderScores(state.players || []);
+    }
+
+    async function refresh() {
+      try {
+        const state = await api('/api/state?host=1');
+        render(state);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function hostApi(path, method='GET', body=null) {
+      const cfg = { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hostToken}` } };
+      if (body) cfg.body = JSON.stringify(body);
+      const res = await fetch(path, cfg);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function hostAction(action) {
+      try {
+        await hostApi('/api/host/action', 'POST', { action });
+        if (action === 'reset') {
+          stopMusic();
+          appState.lastPhase = 'lobby';
+          appState.lastQuestionIndex = -1;
+          appState.allAnsweredCueForIndex = -1;
+        }
+        await refresh();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    document.getElementById('btnStart').addEventListener('click', () => hostAction('start'));
+    document.getElementById('btnReveal').addEventListener('click', () => hostAction('reveal'));
+    document.getElementById('btnNext').addEventListener('click', () => hostAction('next'));
+    document.getElementById('btnReset').addEventListener('click', () => hostAction('reset'));
+
+    document.getElementById('btnMusicStart').addEventListener('click', () => { appState.userStopped = false; startMusic(); });
+    document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
+    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: 'Stinger', volumeScale: 1.0 }));
+    document.getElementById('btnRandomLoop').addEventListener('click', () => startMusic(true));
+    document.getElementById('musicVol').addEventListener('input', () => setMusicVolume());
+
+    // QR click to enlarge overlay
+    document.getElementById('qrImg').addEventListener('click', function() {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+      const bigImg = document.createElement('img');
+      bigImg.src = this.src;
+      bigImg.alt = 'QR kod';
+      bigImg.style.cssText = 'max-width:80vmin;max-height:80vmin;background:#fff;padding:16px;border-radius:12px;';
+      overlay.appendChild(bigImg);
+      overlay.addEventListener('click', () => overlay.remove());
+      document.body.appendChild(overlay);
+    });
+
+    initMp3Players();
+    loadTrackCatalog().then(() => {
+      const loops = getLoopTracks().length;
+      const stingers = getStingerTracks().length;
+          setTrackInfo(`Dostupné: ${loops} loop, ${stingers} stinger`);
+    });
+
+    api('/api/network')
+      .then(renderJoinInfo)
+      .catch(() => renderJoinInfo(null));
+
+    // Host token: prompt user if not set
+    if (!hostToken) {
+      const token = prompt('Zadejte host token (zobrazen pri startu serveru nebo v admin portalu):');
+      if (token) {
+        hostToken = token.trim();
+        localStorage.setItem('quiz_host_token', hostToken);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

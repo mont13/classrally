@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz Admin - Ucitelsky portal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab { padding: 12px 20px; border-radius: 12px 12px 0 0; border: 2px solid #7dd3fc; border-bottom: 0;
+           background: #f0f9ff; font-weight: 800; font-size: 1.1rem; cursor: pointer; }
+    .tab.active { background: var(--panel); border-bottom: 2px solid var(--panel); margin-bottom: -2px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-weight: 700; margin-bottom: 4px; font-size: 1.05rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 10px; border: 2px solid #7dd3fc; border-radius: 10px;
+      font-size: 1.1rem; background: var(--panel-strong); }
+    .form-group textarea { min-height: 120px; font-family: monospace; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: 0; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.2); }
+    .bank-list { display: grid; gap: 10px; }
+    .bank-item { display: flex; justify-content: space-between; align-items: center; padding: 14px;
+      border: 2px solid #7dd3fc; border-radius: 12px; background: #f0f9ff; }
+    .bank-item.active-bank { border-color: #16a34a; background: #dcfce7; }
+    .bank-actions { display: flex; gap: 6px; }
+    .q-editor { border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px;
+      background: #f8fafc; }
+    .q-editor .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .q-editor .q-header h4 { margin: 0; color: #0c4a6e; }
+    .option-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+    .option-row input[type="text"] { flex: 1; }
+    .option-row input[type="radio"] { width: 20px; height: 20px; }
+    .history-item { padding: 14px; border: 2px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px;
+      background: #f8fafc; }
+    .history-item h4 { margin: 0 0 8px; color: #0c4a6e; }
+    .history-players { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+    .history-player { padding: 6px 10px; background: #e0f2fe; border-radius: 8px; font-weight: 700; }
+    .history-player.gold { background: #fef3c7; }
+    .history-player.silver { background: #e2e8f0; }
+    .history-player.bronze { background: #fed7aa; }
+    .ai-status { padding: 12px; border-radius: 10px; margin-top: 10px; font-weight: 700; }
+    .ai-status.loading { background: #e0f2fe; color: #0c4a6e; }
+    .ai-status.success { background: #dcfce7; color: #166534; }
+    .ai-status.error { background: #fee2e2; color: #991b1b; }
+    .inline-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .inline-row .form-group { flex: 1; min-width: 150px; }
+    .timing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 600px) { .timing-grid { grid-template-columns: 1fr; } }
+    .login-box { max-width: 400px; margin: 80px auto; }
+    .host-token-box { margin-top: 16px; padding: 12px; background: #fef3c7; border: 2px solid #fbbf24;
+      border-radius: 10px; font-family: monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="loginCard" class="card login-box hide">
+      <h1>Admin prihlaseni</h1>
+      <p class="muted">Zadejte heslo pro pristup do ucitelskeho portalu.</p>
+      <div class="form-group">
+        <label for="loginPass">Heslo</label>
+        <input id="loginPass" type="password" placeholder="Heslo..." />
+      </div>
+      <button class="btn good" id="btnLogin">Prihlasit se</button>
+      <p id="loginErr" style="color:#b91c1c;font-weight:700;margin-top:10px;"></p>
+    </section>
+
+    <section id="adminPanel" class="hide">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <h1>Ucitelsky portal</h1>
+          <div class="btn-row">
+            <a href="/host" class="btn secondary" style="text-decoration:none;">Host obrazovka</a>
+            <a id="linkPlay" href="/play" class="btn" style="text-decoration:none;">Hracska obrazovka</a>
+          </div>
+        </div>
+        <div id="playerUrlBar" class="hide" style="margin:10px 0;padding:10px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:10px;font-size:1.05rem;">
+          <strong>URL pro zaky:</strong> <span id="playerUrl" style="font-family:monospace;font-weight:800;"></span>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="questions">Banky otazek</button>
+          <button class="tab" data-tab="editor">Editor otazek</button>
+          <button class="tab" data-tab="ai">AI Generator</button>
+          <button class="tab" data-tab="timing">Nastaveni</button>
+          <button class="tab" data-tab="history">Historie</button>
+        </div>
+
+        <div id="tab-questions" class="tab-content active">
+          <h2>Dostupne banky otazek</h2>
+          <div style="margin-bottom:12px;">
+            <input id="bankSearch" class="input" placeholder="Hledat banku..." style="font-size:1rem;padding:10px;max-width:400px;" />
+          </div>
+          <p id="bankCount" class="muted" style="margin:0 0 8px;font-size:0.95rem;"></p>
+          <div id="bankList" class="bank-list"></div>
+          <div style="margin-top: 14px;">
+            <h3>Vytvorit novou banku</h3>
+            <div class="inline-row">
+              <div class="form-group">
+                <label for="newBankName">Nazev souboru</label>
+                <input id="newBankName" placeholder="moje_otazky" />
+              </div>
+              <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvorit</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-editor" class="tab-content">
+          <h2>Editor otazek</h2>
+          <div class="form-group">
+            <label for="editorBank">Banka k editaci</label>
+            <select id="editorBank"></select>
+          </div>
+          <div class="btn-row" style="margin-bottom: 14px;">
+            <button class="btn" id="btnLoadBank">Nacist</button>
+            <button class="btn good" id="btnSaveBank">Ulozit zmeny</button>
+            <button class="btn secondary" id="btnAddQuestion">Pridat otazku</button>
+          </div>
+          <div id="questionEditor"></div>
+        </div>
+
+        <div id="tab-ai" class="tab-content">
+          <h2>AI Generator otazek (Ollama)</h2>
+          <div class="form-group">
+            <label for="aiTopic">Tema otazek</label>
+            <input id="aiTopic" placeholder="napr. Linuxove prikazy, Docker kontejnery, sitove protokoly..." />
+          </div>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="aiCount">Pocet otazek</label>
+              <input id="aiCount" type="number" value="5" min="1" max="20" />
+            </div>
+            <div class="form-group">
+              <label for="aiModel">Model</label>
+              <input id="aiModel" />
+            </div>
+            <div class="form-group">
+              <label for="aiHost">Ollama Host</label>
+              <input id="aiHost" />
+            </div>
+            <div class="form-group">
+              <label for="aiPort">Port</label>
+              <input id="aiPort" type="number" />
+            </div>
+          </div>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="aiLang">Jazyk</label>
+              <select id="aiLang">
+                <option value="cs">Cestina</option>
+                <option value="en">English</option>
+                <option value="sk">Slovenstina</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="aiSaveAs">Ulozit do banky</label>
+              <input id="aiSaveAs" placeholder="ai_otazky" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn good" id="btnAiGenerate">Generovat otazky</button>
+            <button class="btn secondary" id="btnAiListModels">Zobrazit modely</button>
+          </div>
+          <div id="aiStatus" class="hide"></div>
+          <div id="aiPreview"></div>
+        </div>
+
+        <div id="tab-timing" class="tab-content">
+          <h2>Nastaveni kvizu</h2>
+          <div class="timing-grid">
+            <div class="form-group">
+              <label for="timingQuestion">Cas na otazku (sekundy)</label>
+              <input id="timingQuestion" type="number" min="5" max="120" />
+            </div>
+            <div class="form-group">
+              <label for="timingReveal">Cas na vyhodnoceni (sekundy)</label>
+              <input id="timingReveal" type="number" min="2" max="30" />
+            </div>
+          </div>
+          <button class="btn good" id="btnSaveTiming">Ulozit nastaveni</button>
+          <p class="muted" style="margin-top:10px;">Zmeny se projevi od dalsi otazky.</p>
+
+          <h3 style="margin-top: 24px;">Ollama konfigurace</h3>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="cfgOllamaHost">Host</label>
+              <input id="cfgOllamaHost" />
+            </div>
+            <div class="form-group">
+              <label for="cfgOllamaPort">Port</label>
+              <input id="cfgOllamaPort" type="number" />
+            </div>
+            <div class="form-group">
+              <label for="cfgOllamaModel">Model</label>
+              <input id="cfgOllamaModel" />
+            </div>
+          </div>
+          <button class="btn" id="btnSaveOllama">Ulozit Ollama config</button>
+
+          <h3 style="margin-top: 24px;">Host token</h3>
+          <p class="muted">Token pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
+          <div id="hostTokenBox" class="host-token-box" style="cursor:pointer;">Nacitam...</div>
+        </div>
+
+        <div id="tab-history" class="tab-content">
+          <h2>Historie her</h2>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <button class="btn" id="btnRefreshHistory">Obnovit</button>
+            <span id="historyCount" class="muted" style="font-size:0.95rem;"></span>
+          </div>
+          <div id="historyList" style="margin-top: 14px;"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let adminToken = localStorage.getItem('quiz_admin_token') || '';
+    const abc = ['A','B','C','D','E','F'];
+    let editorQuestions = [];
+    let editorFilename = '';
+
+    async function api(path, method='GET', body=null) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+      const cfg = { method, headers };
+      if (body) cfg.body = JSON.stringify(body);
+      const res = await fetch(path, cfg);
+      const data = await res.json();
+      if (res.status === 401 && data.needs_auth) {
+        showLogin();
+        throw new Error('Nutne prihlaseni');
+      }
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function showLogin() {
+      document.getElementById('loginCard').classList.remove('hide');
+      document.getElementById('adminPanel').classList.add('hide');
+    }
+
+    function showAdmin() {
+      document.getElementById('loginCard').classList.add('hide');
+      document.getElementById('adminPanel').classList.remove('hide');
+      loadBanks();
+      loadOllamaConfig();
+      loadTimingConfig();
+      loadHostToken();
+      loadNetworkInfo();
+    }
+
+    // --- Auth ---
+    async function checkAuth() {
+      try {
+        const s = await api('/api/admin/auth-status');
+        if (!s.auth_required) { showAdmin(); return; }
+        if (s.authenticated) { showAdmin(); return; }
+        showLogin();
+      } catch { showLogin(); }
+    }
+
+    document.getElementById('btnLogin').addEventListener('click', async () => {
+      const pass = document.getElementById('loginPass').value;
+      const err = document.getElementById('loginErr');
+      err.textContent = '';
+      try {
+        const r = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pass }),
+        });
+        const d = await r.json();
+        if (!r.ok) { err.textContent = d.error || 'Chyba'; return; }
+        adminToken = d.token;
+        localStorage.setItem('quiz_admin_token', adminToken);
+        showAdmin();
+      } catch (e) { err.textContent = e.message; }
+    });
+
+    document.getElementById('loginPass').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnLogin').click();
+    });
+
+    // --- Tabs ---
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+        // Auto-load data when switching tabs
+        if (tab.dataset.tab === 'history') loadHistory();
+        if (tab.dataset.tab === 'questions') loadBanks();
+      });
+    });
+
+    // --- Host Token ---
+    async function loadHostToken() {
+      try {
+        const data = await api('/api/host/token');
+        const box = document.getElementById('hostTokenBox');
+        box.textContent = data.host_token;
+        // Also save to localStorage for host page
+        localStorage.setItem('quiz_host_token', data.host_token);
+      } catch {
+        document.getElementById('hostTokenBox').textContent = 'Nelze nacist (chybi opravneni)';
+      }
+    }
+
+    document.getElementById('hostTokenBox').addEventListener('click', () => {
+      const text = document.getElementById('hostTokenBox').textContent;
+      if (text && navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => alert('Token zkopirovan!'));
+      }
+    });
+
+    // --- Network info (play URL) ---
+    async function loadNetworkInfo() {
+      try {
+        const info = await api('/api/network');
+        const urls = Array.isArray(info.play_urls) ? info.play_urls : [];
+        const playUrl = urls.length > 0 ? urls[0] : `${location.origin}/play`;
+        const linkPlay = document.getElementById('linkPlay');
+        linkPlay.href = playUrl;
+        const bar = document.getElementById('playerUrlBar');
+        const span = document.getElementById('playerUrl');
+        span.textContent = playUrl;
+        bar.classList.remove('hide');
+      } catch {}
+    }
+
+    // --- Question Banks ---
+    let allBanks = [];
+    let activeBankName = '';
+
+    async function loadBanks() {
+      try {
+        allBanks = await api('/api/admin/banks');
+        const state = await api('/api/state?host=1');
+        activeBankName = state.active_bank || '';
+        renderBanks();
+        updateEditorSelect();
+      } catch (e) { console.error(e); }
+    }
+
+    function renderBanks() {
+      const list = document.getElementById('bankList');
+      const search = document.getElementById('bankSearch').value.trim().toLowerCase();
+      list.innerHTML = '';
+
+      const filtered = search
+        ? allBanks.filter(b => b.name.toLowerCase().includes(search) || b.filename.toLowerCase().includes(search))
+        : allBanks;
+
+      document.getElementById('bankCount').textContent = search
+        ? `${filtered.length} z ${allBanks.length} bank`
+        : `${allBanks.length} bank celkem`;
+
+      filtered.forEach(b => {
+        const div = document.createElement('div');
+        div.className = 'bank-item' + (b.filename === activeBankName ? ' active-bank' : '');
+
+        const infoDiv = document.createElement('div');
+        const nameStrong = document.createElement('strong');
+        nameStrong.textContent = b.name;
+        infoDiv.appendChild(nameStrong);
+        const detailSpan = document.createElement('span');
+        detailSpan.className = 'muted';
+        detailSpan.textContent = ` (${b.filename}) — ${b.question_count} otazek`;
+        infoDiv.appendChild(detailSpan);
+        if (b.filename === activeBankName) {
+          const activeSpan = document.createElement('span');
+          activeSpan.style.cssText = 'color:#16a34a;font-weight:900;margin-left:6px;';
+          activeSpan.textContent = 'AKTIVNI';
+          infoDiv.appendChild(activeSpan);
+        }
+        div.appendChild(infoDiv);
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'bank-actions';
+        const activateBtn = document.createElement('button');
+        activateBtn.className = 'btn';
+        activateBtn.textContent = 'Aktivovat';
+        activateBtn.addEventListener('click', () => activateBank(b.filename));
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn warn';
+        deleteBtn.textContent = 'Smazat';
+        deleteBtn.addEventListener('click', () => deleteBank(b.filename));
+        actionsDiv.appendChild(activateBtn);
+        actionsDiv.appendChild(deleteBtn);
+        div.appendChild(actionsDiv);
+
+        list.appendChild(div);
+      });
+    }
+
+    function updateEditorSelect() {
+      const sel = document.getElementById('editorBank');
+      sel.innerHTML = '';
+      allBanks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.filename;
+        opt.textContent = `${b.name} (${b.question_count})`;
+        sel.appendChild(opt);
+      });
+    }
+
+    document.getElementById('bankSearch').addEventListener('input', renderBanks);
+
+    async function activateBank(filename) {
+      try {
+        await api('/api/admin/bank/activate', 'POST', { filename });
+        alert('Banka aktivovana! Hra resetovana.');
+        loadBanks();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function deleteBank(filename) {
+      if (!confirm(`Opravdu smazat ${filename}?`)) return;
+      try {
+        await api('/api/admin/bank/delete', 'POST', { filename });
+        loadBanks();
+      } catch (e) { alert(e.message); }
+    }
+
+    document.getElementById('btnCreateBank').addEventListener('click', async () => {
+      const name = document.getElementById('newBankName').value.trim();
+      if (!name) { alert('Zadejte nazev'); return; }
+      const filename = name.replace(/\s+/g, '_').toLowerCase() + '.json';
+      try {
+        await api('/api/admin/bank/save', 'POST', { filename, questions: [] });
+        document.getElementById('newBankName').value = '';
+        loadBanks();
+      } catch (e) { alert(e.message); }
+    });
+
+    // --- Question Editor ---
+    document.getElementById('btnLoadBank').addEventListener('click', async () => {
+      const sel = document.getElementById('editorBank');
+      editorFilename = sel.value;
+      if (!editorFilename) { alert('Vyberte banku'); return; }
+      try {
+        const data = await api(`/api/admin/bank?filename=${encodeURIComponent(editorFilename)}`);
+        editorQuestions = data.questions || [];
+        renderEditor();
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnSaveBank').addEventListener('click', async () => {
+      if (!editorFilename) { alert('Nejdrive nactete banku'); return; }
+      collectEditorData();
+      try {
+        await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
+        alert('Ulozeno!');
+        loadBanks();
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnAddQuestion').addEventListener('click', () => {
+      const id = `q${Date.now()}`;
+      editorQuestions.push({ id, prompt: '', options: ['', '', '', ''], correct_index: 0, explanation: '' });
+      renderEditor();
+    });
+
+    function collectEditorData() {
+      const editors = document.querySelectorAll('.q-editor');
+      editors.forEach((ed, idx) => {
+        if (idx >= editorQuestions.length) return;
+        const q = editorQuestions[idx];
+        q.prompt = ed.querySelector('.q-prompt').value;
+        q.explanation = ed.querySelector('.q-explanation').value;
+        q.options = Array.from(ed.querySelectorAll('.q-option')).map(o => o.value);
+        ed.querySelectorAll('.q-correct').forEach((r, ri) => { if (r.checked) q.correct_index = ri; });
+      });
+    }
+
+    function renderEditor() {
+      const container = document.getElementById('questionEditor');
+      container.innerHTML = '';
+      editorQuestions.forEach((q, idx) => {
+        const div = document.createElement('div');
+        div.className = 'q-editor';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'q-header';
+        const h4 = document.createElement('h4');
+        h4.textContent = `Otazka ${idx + 1} (${q.id})`;
+        header.appendChild(h4);
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn warn';
+        removeBtn.style.cssText = 'padding:6px 12px;font-size:0.9rem;';
+        removeBtn.textContent = 'Odstranit';
+        removeBtn.addEventListener('click', () => {
+          collectEditorData();
+          editorQuestions.splice(idx, 1);
+          renderEditor();
+        });
+        header.appendChild(removeBtn);
+        div.appendChild(header);
+
+        // Prompt
+        const promptGroup = document.createElement('div');
+        promptGroup.className = 'form-group';
+        const promptLabel = document.createElement('label');
+        promptLabel.textContent = 'Zneni otazky';
+        const promptInput = document.createElement('input');
+        promptInput.type = 'text';
+        promptInput.className = 'q-prompt';
+        promptInput.value = q.prompt;
+        promptInput.placeholder = 'Text otazky...';
+        promptGroup.appendChild(promptLabel);
+        promptGroup.appendChild(promptInput);
+        div.appendChild(promptGroup);
+
+        // Options
+        const optGroup = document.createElement('div');
+        optGroup.className = 'form-group';
+        const optLabel = document.createElement('label');
+        optLabel.textContent = 'Moznosti (vyberte spravnou)';
+        optGroup.appendChild(optLabel);
+        (q.options || []).forEach((opt, oi) => {
+          const row = document.createElement('div');
+          row.className = 'option-row';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = `correct_${idx}`;
+          radio.className = 'q-correct';
+          radio.value = oi;
+          if (oi === q.correct_index) radio.checked = true;
+          const label = document.createElement('span');
+          label.textContent = `${abc[oi]})`;
+          const textInput = document.createElement('input');
+          textInput.type = 'text';
+          textInput.className = 'q-option';
+          textInput.value = opt;
+          textInput.placeholder = `Moznost ${abc[oi]}`;
+          row.appendChild(radio);
+          row.appendChild(label);
+          row.appendChild(textInput);
+          optGroup.appendChild(row);
+        });
+        div.appendChild(optGroup);
+
+        // Explanation
+        const expGroup = document.createElement('div');
+        expGroup.className = 'form-group';
+        const expLabel = document.createElement('label');
+        expLabel.textContent = 'Vysvetleni';
+        const expInput = document.createElement('input');
+        expInput.type = 'text';
+        expInput.className = 'q-explanation';
+        expInput.value = q.explanation || '';
+        expInput.placeholder = 'Proc je tato odpoved spravna...';
+        expGroup.appendChild(expLabel);
+        expGroup.appendChild(expInput);
+        div.appendChild(expGroup);
+
+        container.appendChild(div);
+      });
+    }
+
+    // --- AI Generator ---
+    async function loadOllamaConfig() {
+      try {
+        const cfg = await api('/api/admin/ollama/config');
+        document.getElementById('aiModel').value = cfg.model || 'gpt-oss:20b';
+        document.getElementById('aiHost').value = cfg.host || 'localhost';
+        document.getElementById('aiPort').value = cfg.port || 11434;
+        document.getElementById('cfgOllamaHost').value = cfg.host || 'localhost';
+        document.getElementById('cfgOllamaPort').value = cfg.port || 11434;
+        document.getElementById('cfgOllamaModel').value = cfg.model || 'gpt-oss:20b';
+      } catch {}
+    }
+
+    async function loadTimingConfig() {
+      try {
+        const state = await api('/api/state?host=1');
+        document.getElementById('timingQuestion').value = state.question_duration_sec || 20;
+        document.getElementById('timingReveal').value = state.reveal_duration_sec || 5;
+      } catch {}
+    }
+
+    document.getElementById('btnAiGenerate').addEventListener('click', async () => {
+      const topic = document.getElementById('aiTopic').value.trim();
+      if (!topic) { alert('Zadejte tema'); return; }
+      const status = document.getElementById('aiStatus');
+      status.className = 'ai-status loading';
+      status.classList.remove('hide');
+      status.textContent = 'Generuji otazky pomoci AI... (muze trvat 30-120 sekund)';
+
+      try {
+        const result = await api('/api/admin/ai/generate', 'POST', {
+          topic,
+          count: parseInt(document.getElementById('aiCount').value) || 5,
+          model: document.getElementById('aiModel').value,
+          host: document.getElementById('aiHost').value,
+          port: parseInt(document.getElementById('aiPort').value),
+          language: document.getElementById('aiLang').value,
+        });
+        status.className = 'ai-status success';
+        status.textContent = `Vygenerovano ${result.questions.length} otazek!`;
+
+        const preview = document.getElementById('aiPreview');
+        preview.innerHTML = '';
+        const heading = document.createElement('h3');
+        heading.style.marginTop = '14px';
+        heading.textContent = 'Nahled vygenerovanych otazek:';
+        preview.appendChild(heading);
+
+        result.questions.forEach((q, i) => {
+          const div = document.createElement('div');
+          div.className = 'q-editor';
+          const h4 = document.createElement('h4');
+          h4.textContent = `${i+1}. ${q.prompt}`;
+          div.appendChild(h4);
+          q.options.forEach((o, oi) => {
+            const optDiv = document.createElement('div');
+            optDiv.style.padding = '4px 0';
+            if (oi === q.correct_index) {
+              optDiv.style.color = '#16a34a';
+              optDiv.style.fontWeight = '900';
+            }
+            optDiv.textContent = `${abc[oi]}) ${o}${oi === q.correct_index ? ' (spravne)' : ''}`;
+            div.appendChild(optDiv);
+          });
+          const expP = document.createElement('p');
+          expP.className = 'muted';
+          expP.textContent = q.explanation || '';
+          div.appendChild(expP);
+          preview.appendChild(div);
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn good';
+        saveBtn.style.marginTop = '10px';
+        saveBtn.textContent = 'Ulozit do banky';
+        saveBtn.addEventListener('click', async () => {
+          let saveName = document.getElementById('aiSaveAs').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
+          if (!saveName.endsWith('.json')) saveName += '.json';
+          try {
+            await api('/api/admin/bank/save', 'POST', { filename: saveName, questions: result.questions });
+            alert(`Ulozeno jako ${saveName}!`);
+            loadBanks();
+          } catch (e) { alert(e.message); }
+        });
+        preview.appendChild(saveBtn);
+
+        const appendBtn = document.createElement('button');
+        appendBtn.className = 'btn secondary';
+        appendBtn.style.cssText = 'margin-top:10px;margin-left:10px;';
+        appendBtn.textContent = 'Pridat ke stavajici bance';
+        appendBtn.addEventListener('click', async () => {
+          const sel = document.getElementById('editorBank');
+          if (!sel.value) { alert('Vyberte banku v Editoru'); return; }
+          try {
+            const existing = await api(`/api/admin/bank?filename=${encodeURIComponent(sel.value)}`);
+            const merged = [...(existing.questions || []), ...result.questions];
+            await api('/api/admin/bank/save', 'POST', { filename: sel.value, questions: merged });
+            alert(`Pridano ${result.questions.length} otazek do ${sel.value}!`);
+            loadBanks();
+          } catch (e) { alert(e.message); }
+        });
+        preview.appendChild(appendBtn);
+
+      } catch (e) {
+        status.className = 'ai-status error';
+        status.textContent = `Chyba: ${e.message}`;
+      }
+    });
+
+    document.getElementById('btnAiListModels').addEventListener('click', async () => {
+      const preview = document.getElementById('aiPreview');
+      try {
+        const data = await api('/api/admin/ollama/models');
+        preview.innerHTML = '';
+        if (!data.models || data.models.length === 0) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = 'Zadne modely nenalezeny. Zkontrolujte ze Ollama bezi.';
+          preview.appendChild(p);
+          return;
+        }
+        const h3 = document.createElement('h3');
+        h3.textContent = 'Dostupne modely:';
+        preview.appendChild(h3);
+        data.models.forEach(m => {
+          const item = document.createElement('div');
+          item.className = 'bank-item';
+          const nameEl = document.createElement('strong');
+          nameEl.textContent = m.name;
+          const sizeEl = document.createElement('span');
+          sizeEl.className = 'muted';
+          sizeEl.textContent = ` ${Math.round((m.size||0)/1e9*10)/10} GB`;
+          item.appendChild(nameEl);
+          item.appendChild(sizeEl);
+          preview.appendChild(item);
+        });
+      } catch (e) {
+        preview.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'ai-status error';
+        p.textContent = e.message;
+        preview.appendChild(p);
+      }
+    });
+
+    // --- Timing ---
+    document.getElementById('btnSaveTiming').addEventListener('click', async () => {
+      try {
+        await api('/api/admin/timing', 'POST', {
+          question_duration_sec: parseInt(document.getElementById('timingQuestion').value),
+          reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
+        });
+        alert('Nastaveni ulozeno!');
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnSaveOllama').addEventListener('click', async () => {
+      try {
+        await api('/api/admin/ollama/config', 'POST', {
+          host: document.getElementById('cfgOllamaHost').value,
+          port: parseInt(document.getElementById('cfgOllamaPort').value),
+          model: document.getElementById('cfgOllamaModel').value,
+        });
+        alert('Ollama konfigurace ulozena!');
+        loadOllamaConfig();
+      } catch (e) { alert(e.message); }
+    });
+
+    // --- History ---
+    document.getElementById('btnRefreshHistory').addEventListener('click', loadHistory);
+
+    async function loadHistory() {
+      try {
+        const history = await api('/api/admin/history');
+        const list = document.getElementById('historyList');
+        list.innerHTML = '';
+        document.getElementById('historyCount').textContent = history.length
+          ? `${history.length} zaznamu`
+          : '';
+        if (!history.length) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = 'Zadna historie.';
+          list.appendChild(p);
+          return;
+        }
+        history.forEach(h => {
+          const div = document.createElement('div');
+          div.className = 'history-item';
+
+          const headerDiv = document.createElement('div');
+          headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+          const h4 = document.createElement('h4');
+          const date = new Date(h.timestamp);
+          h4.textContent = `${date.toLocaleString('cs-CZ')} - ${h.player_count} hracu, ${h.total_questions} otazek`;
+          headerDiv.appendChild(h4);
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn warn';
+          delBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
+          delBtn.textContent = 'Smazat';
+          delBtn.addEventListener('click', async () => {
+            if (!confirm('Smazat zaznam?')) return;
+            try {
+              await api('/api/admin/history/delete', 'POST', { game_id: h.id });
+              loadHistory();
+            } catch (e) { alert(e.message); }
+          });
+          headerDiv.appendChild(delBtn);
+          div.appendChild(headerDiv);
+
+          const playersDiv = document.createElement('div');
+          playersDiv.className = 'history-players';
+          (h.players || []).forEach((p, i) => {
+            const pDiv = document.createElement('div');
+            pDiv.className = 'history-player' + (i === 0 ? ' gold' : i === 1 ? ' silver' : i === 2 ? ' bronze' : '');
+            pDiv.textContent = `${p.rank}. ${p.name} - ${p.score} bodu`;
+            playersDiv.appendChild(pDiv);
+          });
+          div.appendChild(playersDiv);
+
+          list.appendChild(div);
+        });
+      } catch (e) { console.error(e); }
+    }
+
+    // Init
+    checkAuth();
+  </script>
+</body>
+</html>

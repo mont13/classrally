@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ws1",
+    "prompt": "Co je Active Directory?",
+    "options": ["Souborový systém", "Adresářová služba pro správu uživatelů a zdrojů", "Antivirový program", "Webový server"],
+    "correct_index": 1,
+    "explanation": "Active Directory je adresářová služba Microsoftu pro centrální správu sítě."
+  },
+  {
+    "id": "ws2",
+    "prompt": "Co znamená zkratka GPO?",
+    "options": ["General Protection Order", "Group Policy Object", "Global Permission Option", "Gateway Protocol Object"],
+    "correct_index": 1,
+    "explanation": "GPO (Group Policy Object) umožňuje centrálně konfigurovat nastavení uživatelů a počítačů."
+  },
+  {
+    "id": "ws3",
+    "prompt": "Který nástroj slouží ke správě disků ve Windows Serveru?",
+    "options": ["Device Manager", "Disk Management", "Task Manager", "Event Viewer"],
+    "correct_index": 1,
+    "explanation": "Disk Management (diskmgmt.msc) slouží ke správě diskových oddílů."
+  },
+  {
+    "id": "ws4",
+    "prompt": "Jakou roli má DHCP server ve Windows?",
+    "options": ["Překládá doménová jména", "Automaticky přiděluje IP adresy", "Ověřuje uživatele", "Zálohuje data"],
+    "correct_index": 1,
+    "explanation": "DHCP server automaticky přiděluje IP adresy klientům v síti."
+  },
+  {
+    "id": "ws5",
+    "prompt": "Který PowerShell příkaz zobrazí seznam služeb?",
+    "options": ["Get-Process", "Get-Service", "Get-EventLog", "Get-NetAdapter"],
+    "correct_index": 1,
+    "explanation": "Get-Service zobrazí všechny služby a jejich stav."
+  },
+  {
+    "id": "ws6",
+    "prompt": "Co je Hyper-V?",
+    "options": ["Firewall", "Hypervizor typu 1 od Microsoftu", "Antivirus", "Síťový analyzátor"],
+    "correct_index": 1,
+    "explanation": "Hyper-V je nativní hypervizor (typ 1) integrovaný ve Windows Serveru."
+  },
+  {
+    "id": "ws7",
+    "prompt": "Jaký port používá RDP (Remote Desktop)?",
+    "options": ["22", "80", "3389", "445"],
+    "correct_index": 2,
+    "explanation": "RDP standardně používá TCP port 3389."
+  },
+  {
+    "id": "ws8",
+    "prompt": "Co je WSUS?",
+    "options": ["Webový server", "Služba pro centrální správu aktualizací", "Souborový systém", "Zálohovací nástroj"],
+    "correct_index": 1,
+    "explanation": "WSUS (Windows Server Update Services) centrálně řídí distribuci aktualizací."
+  }
+]

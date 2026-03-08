@@ -1,0 +1,58 @@
+[
+  {
+    "id": "sql1",
+    "prompt": "Který SQL příkaz vybere všechny záznamy z tabulky?",
+    "options": ["GET * FROM tabulka", "SELECT * FROM tabulka", "FETCH ALL FROM tabulka", "READ * FROM tabulka"],
+    "correct_index": 1,
+    "explanation": "SELECT * FROM vybere všechny sloupce a řádky z tabulky."
+  },
+  {
+    "id": "sql2",
+    "prompt": "Co je primární klíč (PRIMARY KEY)?",
+    "options": ["Šifrovací klíč", "Unikátní identifikátor záznamu", "Cizí klíč", "Heslo databáze"],
+    "correct_index": 1,
+    "explanation": "Primární klíč jednoznačně identifikuje každý záznam v tabulce."
+  },
+  {
+    "id": "sql3",
+    "prompt": "Který příkaz smaže tabulku včetně struktury?",
+    "options": ["DELETE TABLE", "REMOVE TABLE", "DROP TABLE", "CLEAR TABLE"],
+    "correct_index": 2,
+    "explanation": "DROP TABLE smaže celou tabulku včetně její struktury."
+  },
+  {
+    "id": "sql4",
+    "prompt": "Co dělá klauzule WHERE?",
+    "options": ["Řadí výsledky", "Filtruje záznamy podle podmínky", "Seskupuje záznamy", "Spojuje tabulky"],
+    "correct_index": 1,
+    "explanation": "WHERE filtruje záznamy, které splňují zadanou podmínku."
+  },
+  {
+    "id": "sql5",
+    "prompt": "Jaký je rozdíl mezi INNER JOIN a LEFT JOIN?",
+    "options": ["Žádný", "LEFT JOIN vrátí i záznamy bez shody z levé tabulky", "INNER JOIN je rychlejší", "LEFT JOIN je zastaralý"],
+    "correct_index": 1,
+    "explanation": "LEFT JOIN vrátí všechny záznamy z levé tabulky, i ty bez shody v pravé."
+  },
+  {
+    "id": "sql6",
+    "prompt": "Který příkaz přidá nový záznam do tabulky?",
+    "options": ["ADD INTO", "INSERT INTO", "PUT INTO", "CREATE INTO"],
+    "correct_index": 1,
+    "explanation": "INSERT INTO tabulka (sloupce) VALUES (hodnoty) přidá nový řádek."
+  },
+  {
+    "id": "sql7",
+    "prompt": "Co je normalizace databáze?",
+    "options": ["Zálohování dat", "Proces odstranění redundance dat", "Šifrování tabulek", "Optimalizace dotazů"],
+    "correct_index": 1,
+    "explanation": "Normalizace organizuje tabulky tak, aby se minimalizovala redundance dat."
+  },
+  {
+    "id": "sql8",
+    "prompt": "Který agregační funkce spočítá průměr?",
+    "options": ["SUM()", "COUNT()", "AVG()", "MEAN()"],
+    "correct_index": 2,
+    "explanation": "AVG() vypočítá průměrnou hodnotu ze zadaného sloupce."
+  }
+]

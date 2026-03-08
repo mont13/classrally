@@ -1,0 +1,58 @@
+[
+  {
+    "id": "hw1",
+    "prompt": "Co je RAM?",
+    "options": ["Trvalé úložiště", "Operační paměť pro dočasná data", "Grafický procesor", "Síťová karta"],
+    "correct_index": 1,
+    "explanation": "RAM (Random Access Memory) je rychlá volatilní paměť pro běžící programy."
+  },
+  {
+    "id": "hw2",
+    "prompt": "Jaký je rozdíl mezi SSD a HDD?",
+    "options": ["SSD má mechanické díly", "SSD je pomalejší", "SSD nemá pohyblivé části a je rychlejší", "Žádný rozdíl"],
+    "correct_index": 2,
+    "explanation": "SSD používá flash paměť bez pohyblivých částí, je rychlejší a odolnější."
+  },
+  {
+    "id": "hw3",
+    "prompt": "Co je BIOS/UEFI?",
+    "options": ["Operační systém", "Firmware pro inicializaci hardware při startu", "Typ procesoru", "Grafický ovladač"],
+    "correct_index": 1,
+    "explanation": "BIOS/UEFI je firmware na základní desce, který inicializuje hardware a spustí OS."
+  },
+  {
+    "id": "hw4",
+    "prompt": "Kolik bitů má IPv4 adresa?",
+    "options": ["16", "32", "64", "128"],
+    "correct_index": 1,
+    "explanation": "IPv4 adresa má 32 bitů (4 oktety), např. 192.168.1.1."
+  },
+  {
+    "id": "hw5",
+    "prompt": "Co je to RAID 1?",
+    "options": ["Prokládání dat na více disků", "Zrcadlení dat na dva disky", "Paritní ochrana", "Komprese dat"],
+    "correct_index": 1,
+    "explanation": "RAID 1 (mirroring) kopíruje data na dva disky pro redundanci."
+  },
+  {
+    "id": "hw6",
+    "prompt": "Jaká je funkce napájecího zdroje (PSU)?",
+    "options": ["Chlazení procesoru", "Převod střídavého proudu na stejnosměrný pro komponenty", "Řízení ventilátorů", "Správa USB portů"],
+    "correct_index": 1,
+    "explanation": "PSU převádí AC ze sítě na DC napětí potřebná pro komponenty počítače."
+  },
+  {
+    "id": "hw7",
+    "prompt": "Co je NVMe?",
+    "options": ["Typ RAM", "Rozhraní pro rychlé SSD přes PCIe", "Bezdrátový standard", "Typ procesoru"],
+    "correct_index": 1,
+    "explanation": "NVMe (Non-Volatile Memory Express) je protokol pro SSD přes PCIe sběrnici."
+  },
+  {
+    "id": "hw8",
+    "prompt": "Kolik pinů má standardní DDR4 DIMM modul?",
+    "options": ["200", "240", "288", "360"],
+    "correct_index": 2,
+    "explanation": "DDR4 DIMM moduly mají 288 pinů."
+  }
+]
