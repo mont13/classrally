@@ -21,6 +21,7 @@ import mimetypes
 import os
 import re
 import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -678,12 +679,23 @@ OLLAMA_CONFIG: dict[str, Any] = {
 }
 
 
+_DOCKER_BRIDGE_NET = ipaddress.ip_network("172.16.0.0/12")
+
+
 def _is_loopback_or_linklocal(ip_str: str) -> bool:
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return True
     return ip.is_loopback or ip.is_link_local
+
+
+def _is_docker_bridge(ip_str: str) -> bool:
+    """Filter out Docker bridge network IPs (172.16.0.0/12)."""
+    try:
+        return ipaddress.ip_address(ip_str) in _DOCKER_BRIDGE_NET
+    except ValueError:
+        return False
 
 
 def detect_lan_ipv4_candidates() -> list[str]:
@@ -697,6 +709,7 @@ def detect_lan_ipv4_candidates() -> list[str]:
         if ip_str not in ips:
             ips.append(ip_str)
 
+    # Method 1: UDP socket trick (gets default-route IP)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("1.1.1.1", 80))
@@ -704,6 +717,24 @@ def detect_lan_ipv4_candidates() -> list[str]:
     except OSError:
         pass
 
+    # Method 2: Parse 'ip addr' output (Linux — works on remote servers without internet)
+    try:
+        result = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                # Format: "2: eth0    inet 192.168.1.10/24 ..."
+                parts = line.split()
+                for i, part in enumerate(parts):
+                    if part == "inet" and i + 1 < len(parts):
+                        addr = parts[i + 1].split("/")[0]
+                        add(addr)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    # Method 3: hostname resolution fallback
     try:
         hostname = socket.gethostname()
         for result in socket.getaddrinfo(hostname, None, family=socket.AF_INET, type=socket.SOCK_STREAM):
@@ -730,7 +761,7 @@ def build_server_info(bind_host: str, port: int, external_ip: str | None = None)
                 "loopback_only": False,
             }
 
-    lan_ips = detect_lan_ipv4_candidates()
+    lan_ips = [ip for ip in detect_lan_ipv4_candidates() if not _is_docker_bridge(ip)]
 
     if host in {"0.0.0.0", "::"}:
         if lan_ips:
