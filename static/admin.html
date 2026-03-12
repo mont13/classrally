@@ -80,25 +80,25 @@
         </div>
 
         <div class="tabs">
-          <button class="tab active" data-tab="questions">Banky otazek</button>
+          <button class="tab active" data-tab="questions">Sady otazek</button>
           <button class="tab" data-tab="editor">Editor otazek</button>
-          <button class="tab" data-tab="ai">AI Generator</button>
-          <button class="tab" data-tab="timing">Nastaveni</button>
+          <button class="tab" data-tab="ai">AI navrh otazek</button>
+          <button class="tab" data-tab="timing">Pokrocile nastaveni</button>
           <button class="tab" data-tab="history">Historie</button>
         </div>
 
         <div id="tab-questions" class="tab-content active">
-          <h2>Dostupne banky otazek</h2>
+          <h2>Dostupne sady otazek</h2>
           <div style="margin-bottom:12px;">
-            <input id="bankSearch" class="input" placeholder="Hledat banku..." style="font-size:1rem;padding:10px;max-width:400px;" />
+            <input id="bankSearch" class="input" placeholder="Hledat sadu..." style="font-size:1rem;padding:10px;max-width:400px;" />
           </div>
           <p id="bankCount" class="muted" style="margin:0 0 8px;font-size:0.95rem;"></p>
           <div id="bankList" class="bank-list"></div>
           <div style="margin-top: 14px;">
-            <h3>Vytvorit novou banku</h3>
+            <h3>Vytvorit novou sadu</h3>
             <div class="inline-row">
               <div class="form-group">
-                <label for="newBankName">Nazev souboru</label>
+                <label for="newBankName">Nazev sady otazek</label>
                 <input id="newBankName" placeholder="moje_otazky" />
               </div>
               <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvorit</button>
@@ -109,7 +109,7 @@
         <div id="tab-editor" class="tab-content">
           <h2>Editor otazek</h2>
           <div class="form-group">
-            <label for="editorBank">Banka k editaci</label>
+            <label for="editorBank">Sada k editaci</label>
             <select id="editorBank"></select>
           </div>
           <div class="btn-row" style="margin-bottom: 14px;">
@@ -121,7 +121,7 @@
         </div>
 
         <div id="tab-ai" class="tab-content">
-          <h2>AI Generator otazek (Ollama)</h2>
+          <h2>AI navrh otazek (Ollama)</h2>
           <div class="form-group">
             <label for="aiTopic">Tema otazek</label>
             <input id="aiTopic" placeholder="napr. Linuxove prikazy, Docker kontejnery, sitove protokoly..." />
@@ -132,15 +132,15 @@
               <input id="aiCount" type="number" value="5" min="1" max="20" />
             </div>
             <div class="form-group">
-              <label for="aiModel">Model</label>
+              <label for="aiModel">AI model</label>
               <input id="aiModel" />
             </div>
             <div class="form-group">
-              <label for="aiHost">Ollama Host</label>
+              <label for="aiHost">AI server (adresa)</label>
               <input id="aiHost" />
             </div>
             <div class="form-group">
-              <label for="aiPort">Port</label>
+              <label for="aiPort">AI server (port)</label>
               <input id="aiPort" type="number" />
             </div>
           </div>
@@ -155,7 +155,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="aiSaveAs">Ulozit do banky</label>
+              <label for="aiSaveAs">Ulozit do sady</label>
               <input id="aiSaveAs" placeholder="ai_otazky" />
             </div>
           </div>
@@ -185,22 +185,22 @@
           <h3 style="margin-top: 24px;">Ollama konfigurace</h3>
           <div class="inline-row">
             <div class="form-group">
-              <label for="cfgOllamaHost">Host</label>
+              <label for="cfgOllamaHost">AI server (adresa)</label>
               <input id="cfgOllamaHost" />
             </div>
             <div class="form-group">
-              <label for="cfgOllamaPort">Port</label>
+              <label for="cfgOllamaPort">AI server (port)</label>
               <input id="cfgOllamaPort" type="number" />
             </div>
             <div class="form-group">
-              <label for="cfgOllamaModel">Model</label>
+              <label for="cfgOllamaModel">AI model</label>
               <input id="cfgOllamaModel" />
             </div>
           </div>
           <button class="btn" id="btnSaveOllama">Ulozit Ollama config</button>
 
-          <h3 style="margin-top: 24px;">Host token</h3>
-          <p class="muted">Token pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
+          <h3 style="margin-top: 24px;">Pristupovy klic pro ovladani hry</h3>
+          <p class="muted">Klic pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
           <div id="hostTokenBox" class="host-token-box" style="cursor:pointer;">Nacitam...</div>
         </div>
 
@@ -360,8 +360,8 @@
         : allBanks;
 
       document.getElementById('bankCount').textContent = search
-        ? `${filtered.length} z ${allBanks.length} bank`
-        : `${allBanks.length} bank celkem`;
+        ? `${filtered.length} z ${allBanks.length} sad`
+        : `${allBanks.length} sad celkem`;
 
       filtered.forEach(b => {
         const div = document.createElement('div');
@@ -417,7 +417,7 @@
     async function activateBank(filename) {
       try {
         await api('/api/admin/bank/activate', 'POST', { filename });
-        alert('Banka aktivovana! Hra resetovana.');
+        alert('Sada aktivovana! Hra resetovana.');
         loadBanks();
       } catch (e) { alert(e.message); }
     }
@@ -445,7 +445,7 @@
     document.getElementById('btnLoadBank').addEventListener('click', async () => {
       const sel = document.getElementById('editorBank');
       editorFilename = sel.value;
-      if (!editorFilename) { alert('Vyberte banku'); return; }
+      if (!editorFilename) { alert('Vyberte sadu'); return; }
       try {
         const data = await api(`/api/admin/bank?filename=${encodeURIComponent(editorFilename)}`);
         editorQuestions = data.questions || [];
@@ -454,7 +454,7 @@
     });
 
     document.getElementById('btnSaveBank').addEventListener('click', async () => {
-      if (!editorFilename) { alert('Nejdrive nactete banku'); return; }
+      if (!editorFilename) { alert('Nejdrive nactete sadu'); return; }
       collectEditorData();
       try {
         await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
@@ -641,7 +641,7 @@
         const saveBtn = document.createElement('button');
         saveBtn.className = 'btn good';
         saveBtn.style.marginTop = '10px';
-        saveBtn.textContent = 'Ulozit do banky';
+        saveBtn.textContent = 'Ulozit do sady';
         saveBtn.addEventListener('click', async () => {
           let saveName = document.getElementById('aiSaveAs').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
           if (!saveName.endsWith('.json')) saveName += '.json';
@@ -656,10 +656,10 @@
         const appendBtn = document.createElement('button');
         appendBtn.className = 'btn secondary';
         appendBtn.style.cssText = 'margin-top:10px;margin-left:10px;';
-        appendBtn.textContent = 'Pridat ke stavajici bance';
+        appendBtn.textContent = 'Pridat do stavajici sady';
         appendBtn.addEventListener('click', async () => {
           const sel = document.getElementById('editorBank');
-          if (!sel.value) { alert('Vyberte banku v Editoru'); return; }
+          if (!sel.value) { alert('Vyberte sadu v Editoru'); return; }
           try {
             const existing = await api(`/api/admin/bank?filename=${encodeURIComponent(sel.value)}`);
             const merged = [...(existing.questions || []), ...result.questions];

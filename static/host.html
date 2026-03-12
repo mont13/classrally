@@ -10,7 +10,7 @@
   <main class="app">
     <section class="card">
       <h1>Kvíz host (učitel)</h1>
-      <p class="muted">Lokální hlasování z mobilů bez služeb třetích stran.</p>
+      <p class="muted">Promitni tuto obrazovku a spust kviz.</p>
       <div class="btn-row" style="margin-bottom:10px;">
         <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;">Ucitelsky portal</a>
       </div>
@@ -23,9 +23,9 @@
 
       <div class="btn-row">
         <button class="btn good" id="btnStart">Start</button>
-        <button class="btn secondary" id="btnReveal">Ukázat správnou odpověď</button>
+        <button class="btn secondary" id="btnReveal">Vyhodnotit</button>
         <button class="btn" id="btnNext">Další otázka</button>
-        <button class="btn warn" id="btnReset">Reset hry</button>
+        <button class="btn warn" id="btnReset">Reset hry (smaže body!)</button>
       </div>
 
       <div class="music-controls">
@@ -112,7 +112,7 @@
       if (phase === 'question') return 'Otázka';
       if (phase === 'reveal') return 'Vyhodnocení';
       if (phase === 'finished') return 'Konec';
-      return 'Lobby';
+      return 'Ceka se';
     }
 
     function formatSecondsLeft(value) {
@@ -775,7 +775,7 @@
 
     // Host token: prompt user if not set
     if (!hostToken) {
-      const token = prompt('Zadejte host token (zobrazen pri startu serveru nebo v admin portalu):');
+      const token = prompt('Zadej pristupovy klic (zobrazen pri startu serveru nebo v Ucitelskem portalu > Nastaveni):');
       if (token) {
         hostToken = token.trim();
         localStorage.setItem('quiz_host_token', hostToken);

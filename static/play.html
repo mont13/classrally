@@ -74,14 +74,14 @@
 
     <section id="gameCard" class="card hide">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;">Hrac: <span id="playerName">-</span></h2>
+        <h2 style="margin:0;">Ahoj, <span id="playerName">-</span></h2>
         <span id="phasePill" class="status-pill lobby">lobby</span>
       </div>
 
       <div class="kpi" style="margin:12px 0;">
         <div class="item"><div class="label">Skore</div><div class="value" id="myScore">0</div></div>
         <div class="item"><div class="label">Otazka</div><div class="value" id="qNo">-</div></div>
-        <div class="item"><div class="label">Hlasovalo</div><div class="value" id="answered">0</div></div>
+        <div class="item"><div class="label">Odpovedelo</div><div class="value" id="answered">0</div></div>
         <div class="item"><div class="label">Hraci</div><div class="value" id="players">0</div></div>
         <div class="item timer"><div class="label">Odpocet</div><div class="value" id="timer">-</div></div>
       </div>
@@ -93,7 +93,7 @@
       <p id="explanation" class="muted"></p>
       <div id="options" class="kahoot-options"></div>
       <div id="podium" class="hide"></div>
-      <p class="help">Po odeslani odpovedi uz volbu nelze zmenit.</p>
+      <p class="help">Odpoved je po odeslani finalni.</p>
     </section>
   </main>
 
@@ -110,7 +110,7 @@
       if (phase === 'question') return 'Otazka';
       if (phase === 'reveal') return 'Vyhodnoceni';
       if (phase === 'finished') return 'Konec';
-      return 'Lobby';
+      return 'Ceka se na start';
     }
 
     function formatSecondsLeft(value) {
@@ -262,7 +262,7 @@
           main.textContent = '';
           const pulse = document.createElement('span');
           pulse.className = 'waiting-pulse';
-          pulse.textContent = 'Cekej na start od ucitele...';
+          pulse.textContent = 'Jakmile ucitel spusti kviz, otazka se objevi automaticky.';
           main.appendChild(pulse);
           podium.classList.add('hide');
         }
