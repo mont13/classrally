@@ -1,7 +1,7 @@
 services:
-  quiz-web:
+  classrally:
     build: .
-    container_name: quiz-web
+    container_name: classrally
     restart: unless-stopped
     ports:
       - "8765:8765"

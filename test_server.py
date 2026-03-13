@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for quiz_web server."""
+"""Unit tests for ClassRally server."""
 
 import json
 import os

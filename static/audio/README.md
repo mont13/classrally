@@ -1,4 +1,4 @@
-# Audio soubory pro QuizWeb
+# Audio soubory pro ClassRally
 
 MP3 soubory nejsou soucasti repozitare (licence). Nahraj si vlastni do teto slozky.
 

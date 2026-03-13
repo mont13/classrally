@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# QuizWeb - Zobrazi logy kontejneru
+# ClassRally - Zobrazi logy kontejneru
 
 source "$(dirname "${BASH_SOURCE[0]}")/docker-common.sh"
 
 check_docker
-$COMPOSE_CMD logs -f quiz-web
+$COMPOSE_CMD logs -f classrally

@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
-LABEL maintainer="quiz-web"
-LABEL description="QuizWeb - Lokalni kvizova platforma (Kahoot-style)"
+LABEL maintainer="classrally"
+LABEL description="ClassRally - Lokalni kvizova platforma pro tridu"
 
 WORKDIR /app
 

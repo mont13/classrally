@@ -793,7 +793,7 @@ def build_server_info(bind_host: str, port: int, external_ip: str | None = None)
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "QuizWeb/2.1"
+    server_version = "ClassRally/2.1"
 
     def _json_response(self, payload: dict[str, Any] | list, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -897,7 +897,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/health":
-            self._json_response({"ok": True, "service": "quiz-web", "version": "2.1"})
+            self._json_response({"ok": True, "service": "classrally", "version": "2.1"})
             return
 
         if path == "/api/network":
