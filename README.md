@@ -1,6 +1,6 @@
-# QuizWeb - Kvizova platforma pro tridu
+# ClassRally - Kvizova platforma pro tridu
 
-QuizWeb je lokalni kviz pro tridu. Ucitel ho spusti na notebooku, promita host obrazovku na projektor a zaci se pripoji pres QR kod z mobilu. Internet ani studentske ucty nejsou potreba — vse bezi v lokalni siti.
+ClassRally je lokalni kviz pro tridu. Ucitel ho spusti na notebooku, promita host obrazovku na projektor a zaci se pripoji pres QR kod z mobilu. Internet ani studentske ucty nejsou potreba — vse bezi v lokalni siti.
 
 Staci Python nebo Docker, nic dalsiho neni treba instalovat.
 
@@ -56,7 +56,7 @@ Admin portal:  http://192.168.1.10:8765/admin
 
 Mobily musi byt ve stejne Wi-Fi siti jako server.
 
-## Proc QuizWeb
+## Proc ClassRally
 
 - **Bezi lokalne** — bez internetu, bez registraci, bez cloudu
 - **Zdarma bez limitu** — zadne omezeni poctu hracu (prakticky limit je sit a zarizeni)
@@ -66,7 +66,7 @@ Mobily musi byt ve stejne Wi-Fi siti jako server.
 
 ### Inspirace Kahootem
 
-QuizWeb pouziva overeny koncept: barevne odpovedi, odpocet, bodovani za rychlost, zive hlasovani, zebricek, podium. Ale na rozdil od cloudovych sluzeb bezi kompletne ve vasi siti.
+ClassRally pouziva overeny koncept: barevne odpovedi, odpocet, bodovani za rychlost, zive hlasovani, zebricek, podium. Ale na rozdil od cloudovych sluzeb bezi kompletne ve vasi siti.
 
 ## Ucitelsky portal (/admin)
 
@@ -172,7 +172,7 @@ Celkem **90 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI.
 ## Struktura projektu
 
 ```
-quiz_web/
+classrally/
   server.py                        # hlavni server (stdlib http.server)
   qrgen.py                         # QR kod generator (pure Python)
   Dockerfile                       # Docker image

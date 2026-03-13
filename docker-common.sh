@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared functions for QuizWeb Docker scripts
+# Shared functions for ClassRally Docker scripts
 # Sourced by start.sh, stop.sh, rebuild.sh, logs.sh
 
 set -euo pipefail
@@ -160,4 +160,50 @@ except: pass
         export QUIZ_EXTERNAL_IP="${candidates[0]}"
     fi
     info "Pouzivam IP: ${QUIZ_EXTERNAL_IP}"
+}
+
+# --- Startup info (shared by start.sh and rebuild.sh) ---
+wait_and_print_info() {
+    local PORT="${QUIZ_PORT:-8765}"
+    local EXT_IP="${QUIZ_EXTERNAL_IP:-}"
+
+    info "Cekam na spusteni serveru..."
+    for i in $(seq 1 15); do
+        if $DOCKER_CMD exec classrally python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/api/health')" &>/dev/null; then
+            echo ""
+            info "ClassRally bezi!"
+            echo ""
+            local BASE="${EXT_IP:-localhost}"
+            echo -e "  ${GREEN}Host obrazovka:${NC}   http://${BASE}:${PORT}/host"
+            echo -e "  ${GREEN}Admin portal:${NC}     http://${BASE}:${PORT}/admin"
+            echo -e "  ${GREEN}Hracska stranka:${NC}  http://${BASE}:${PORT}/play"
+            echo ""
+            if [[ -z "$EXT_IP" ]]; then
+                warn "LAN IP neni k dispozici - URL vyse ukazuji na localhost (jen tento pocitac)."
+                echo ""
+            fi
+
+            local TOKEN
+            TOKEN=$($DOCKER_CMD logs classrally 2>&1 | grep -oP 'HOST TOKEN: \K[a-f0-9]+' | tail -1 || true)
+            if [[ -n "$TOKEN" ]]; then
+                echo -e "  ${BOLD}${CYAN}Pristupovy klic: ${TOKEN}${NC}"
+                echo -e "  (zadej na /host pro ovladani hry)"
+                echo ""
+            else
+                echo -e "  Pristupovy klic: viz ${YELLOW}./logs.sh${NC} nebo ${YELLOW}/admin > Pokrocile nastaveni${NC}"
+                echo ""
+            fi
+
+            echo -e "  Zastaveni:  ${YELLOW}./stop.sh${NC}"
+            echo -e "  Logy:       ${YELLOW}./logs.sh${NC}"
+            echo -e "  Rebuild:    ${YELLOW}./rebuild.sh${NC}"
+            return 0
+        fi
+        printf "."
+        sleep 1
+    done
+    echo ""
+    warn "Server se nespustil vcas. Zkontroluj logy:"
+    echo "  ./logs.sh"
+    return 1
 }
