@@ -753,5 +753,169 @@ class TestAdminAuthHTTP(unittest.TestCase):
         server.ADMIN_AUTH._login_attempts.clear()
 
 
+class TestExamState(unittest.TestCase):
+    """Tests for ExamState (písemka / written-test mode)."""
+
+    def _sample_questions(self):
+        return [
+            {"id": "q1", "prompt": "2+2?", "options": ["3", "4", "5", "6"], "correct_index": 1},
+            {"id": "q2", "prompt": "Capital of CZ?", "options": ["Brno", "Praha", "Ostrava"], "correct_index": 1},
+            {"id": "q3", "prompt": "HTML is?", "options": ["markup", "database"], "correct_index": 0},
+        ]
+
+    def _exam(self, **cfg):
+        e = server.ExamState()
+        e.reload_questions(self._sample_questions(), "test")
+        if cfg:
+            e.update_config(cfg)
+        return e
+
+    def test_initial_phase_closed(self):
+        e = self._exam()
+        self.assertEqual(e.phase, "closed")
+
+    def test_register_and_open(self):
+        e = self._exam()
+        r = e.register_student("Alice")
+        self.assertIn("player_id", r)
+        e.open_exam()
+        self.assertEqual(e.phase, "open")
+        v = e.student_view(r["player_id"], r["player_secret"])
+        self.assertTrue(v["known"])
+        self.assertEqual(v["total"], 3)
+        self.assertEqual(len(v["questions"]), 3)
+
+    def test_open_without_questions_fails(self):
+        e = server.ExamState()
+        with self.assertRaises(ValueError):
+            e.open_exam()
+
+    def test_grading_all_correct(self):
+        e = self._exam(shuffle_questions=False, shuffle_options=False)
+        r = e.register_student("Bob")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        e.save_answer(pid, sec, "q1", 1)
+        e.save_answer(pid, sec, "q2", 1)
+        e.save_answer(pid, sec, "q3", 0)
+        res = e.submit(pid, sec)
+        self.assertEqual(res["score"], 3)
+        self.assertEqual(res["grade"], 1)
+        self.assertEqual(res["percent"], 100)
+
+    def test_grading_partial(self):
+        e = self._exam()
+        r = e.register_student("Cara")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        e.save_answer(pid, sec, "q1", 1)  # correct only one of three
+        res = e.submit(pid, sec)
+        self.assertEqual(res["score"], 1)
+        # 33% -> worst grade with default thresholds
+        self.assertEqual(res["grade"], 5)
+
+    def test_shuffle_preserves_oid_mapping(self):
+        e = self._exam(shuffle_questions=True, shuffle_options=True)
+        r = e.register_student("Dana")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        v = e.student_view(pid, sec)
+        # Answer every question with its correct ORIGINAL oid -> full marks
+        for q in v["questions"]:
+            orig = next(x for x in self._sample_questions() if x["id"] == q["id"])
+            e.save_answer(pid, sec, q["id"], orig["correct_index"])
+        res = e.submit(pid, sec)
+        self.assertEqual(res["score"], 3)
+
+    def test_cannot_answer_after_submit(self):
+        e = self._exam()
+        r = e.register_student("Eva")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        e.submit(pid, sec)
+        with self.assertRaises(ValueError):
+            e.save_answer(pid, sec, "q1", 1)
+
+    def test_wrong_secret_rejected(self):
+        e = self._exam()
+        r = e.register_student("Fred")
+        e.open_exam()
+        with self.assertRaises(ValueError):
+            e.save_answer(r["player_id"], "badsecret", "q1", 1)
+
+    def test_auto_submit_after_blurs(self):
+        e = self._exam(auto_submit_after_blurs=3)
+        r = e.register_student("Greta")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        out = None
+        for _ in range(3):
+            out = e.record_event(pid, sec, "blur")
+        self.assertTrue(out.get("auto_submitted"))
+        ov = e.overview()
+        student = ov["students"][0]
+        self.assertTrue(student["submitted"])
+        self.assertTrue(student["auto_submitted"])
+        self.assertEqual(student["blur_count"], 3)
+
+    def test_time_limit_auto_ends(self):
+        e = self._exam(time_limit_sec=30)
+        r = e.register_student("Hugo")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        # Force the clock back so the window appears expired
+        e.opened_at -= 31
+        v = e.student_view(pid, sec)
+        self.assertEqual(v["phase"], "ended")
+        self.assertIn("result", v)
+
+    def test_invalid_choice_rejected(self):
+        e = self._exam()
+        r = e.register_student("Iva")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        with self.assertRaises(ValueError):
+            e.save_answer(pid, sec, "q1", 99)
+
+    def test_grade_thresholds_config(self):
+        e = self._exam()
+        e.update_config({"grade_thresholds": [[50, 1], [0, 2]]})
+        self.assertEqual(e.config.grade_for_percent(100), 1)
+        self.assertEqual(e.config.grade_for_percent(49), 2)
+
+    def test_results_csv(self):
+        e = self._exam(shuffle_questions=False, shuffle_options=False)
+        r = e.register_student("Jana")
+        pid, sec = r["player_id"], r["player_secret"]
+        e.open_exam()
+        e.save_answer(pid, sec, "q1", 1)
+        e.submit(pid, sec)
+        csv_text = e.results_csv()
+        self.assertIn("Jana", csv_text)
+        self.assertIn("Znamka", csv_text)
+
+
+class TestExamMode(unittest.TestCase):
+    """Tests for the game/exam mode switch."""
+
+    def setUp(self):
+        server.set_app_mode("game")
+
+    def tearDown(self):
+        server.set_app_mode("game")
+
+    def test_default_mode_is_game(self):
+        self.assertEqual(server.get_app_mode(), "game")
+
+    def test_set_mode(self):
+        self.assertEqual(server.set_app_mode("exam"), "exam")
+        self.assertEqual(server.get_app_mode(), "exam")
+
+    def test_invalid_mode_ignored(self):
+        server.set_app_mode("exam")
+        server.set_app_mode("nonsense")
+        self.assertEqual(server.get_app_mode(), "exam")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

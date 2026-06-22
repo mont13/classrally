@@ -4,7 +4,7 @@ services:
     container_name: classrally
     restart: unless-stopped
     ports:
-      - "8765:8765"
+      - "${QUIZ_PORT:-48217}:${QUIZ_PORT:-48217}"
     volumes:
       # Persist data between restarts
       - ./history:/app/history
@@ -13,6 +13,7 @@ services:
       - ./static/audio:/app/static/audio
     environment:
       - QUIZ_ADMIN_PASSWORD=${QUIZ_ADMIN_PASSWORD:-}
+      - QUIZ_PORT=${QUIZ_PORT:-48217}
       - QUIZ_EXTERNAL_IP=${QUIZ_EXTERNAL_IP:-}
       - OLLAMA_HOST=${OLLAMA_HOST:-host.docker.internal}
       - OLLAMA_PORT=${OLLAMA_PORT:-11434}

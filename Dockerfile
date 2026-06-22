@@ -22,15 +22,15 @@ ENV OLLAMA_HOST="host.docker.internal"
 ENV OLLAMA_PORT="11434"
 ENV OLLAMA_MODEL="gpt-oss:20b"
 ENV QUIZ_HOST="0.0.0.0"
-ENV QUIZ_PORT="8765"
+ENV QUIZ_PORT="48217"
 ENV QUIZ_EXTERNAL_IP=""
 ENV QUESTION_TIME="20"
 ENV REVEAL_TIME="5"
 
-EXPOSE 8765
+EXPOSE 48217
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8765/api/health')" || exit 1
+    CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://localhost:'+os.environ.get('QUIZ_PORT','48217')+'/api/health')" || exit 1
 
 CMD python3 server.py \
     --host "${QUIZ_HOST}" \

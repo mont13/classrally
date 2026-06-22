@@ -164,7 +164,7 @@ except: pass
 
 # --- Startup info (shared by start.sh and rebuild.sh) ---
 wait_and_print_info() {
-    local PORT="${QUIZ_PORT:-8765}"
+    local PORT="${QUIZ_PORT:-48217}"
     local EXT_IP="${QUIZ_EXTERNAL_IP:-}"
 
     info "Cekam na spusteni serveru..."

@@ -1,0 +1,67 @@
+============================================================
+  ClassRally — jak připojit žáky (Wi-Fi / síť)
+============================================================
+
+DŮLEŽITÉ: notebook NEMUSÍ být router. Stačí, aby byl notebook
+i mobily žáků na STEJNÉ síti. Server jen běží na notebooku.
+
+
+────────────────────────────────────────────────────────────
+ZPŮSOB 1 — Školní Wi-Fi (nejjednodušší, když funguje)
+────────────────────────────────────────────────────────────
+  - Notebook i mobily žáků připojte na stejnou školní Wi-Fi.
+  - Spusťte ClassRally, žákům dejte QR / URL z portálu.
+
+  POZOR na "oddělení klientů" (AP / client isolation):
+  Některé školní Wi-Fi záměrně NEDOVOLÍ, aby se zařízení viděla
+  navzájem (kvůli bezpečnosti). Pak se mobil k notebooku
+  nepřipojí, i když jsou na stejné síti.
+  Poznáte to tak, že žákům se stránka vůbec nenačte.
+  Řešení: použijte ZPŮSOB 2 (hotspot z telefonu).
+
+
+────────────────────────────────────────────────────────────
+ZPŮSOB 2 — Hotspot z telefonu učitele (nejspolehlivější)
+────────────────────────────────────────────────────────────
+  Telefon udělá vlastní Wi-Fi (router), zvládne celou třídu.
+  1) Na telefonu zapněte "Přenosný hotspot / Sdílení internetu".
+  2) Notebook připojte na tento hotspot.
+  3) Mobily žáků připojte na stejný hotspot.
+  4) Spusťte ClassRally, rozdejte QR / URL.
+  (Mobilní data ani nemusí být zapnutá — stačí, že hotspot
+   vytvoří síť. Vše běží lokálně.)
+
+
+────────────────────────────────────────────────────────────
+ZPŮSOB 3 — Windows "Mobilní hotspot" (jen malá skupina)
+────────────────────────────────────────────────────────────
+  Windows umí udělat z notebooku Wi-Fi: Nastavení -> Síť a internet
+  -> Mobilní hotspot -> zapnout.
+  POZOR: Windows hotspot zvládne spolehlivě jen ~8 zařízení —
+  na celou třídu NESTAČÍ. Pro pár žáků ano.
+
+
+────────────────────────────────────────────────────────────
+ZPŮSOB 4 — Levný cestovní Wi-Fi router
+────────────────────────────────────────────────────────────
+  Malý router (i bez internetu) vytvoří síť pro celou třídu.
+  Notebook i mobily na něj připojte. Nejstabilnější pro velké třídy.
+
+
+────────────────────────────────────────────────────────────
+JAKOU ADRESU DÁT ŽÁKŮM
+────────────────────────────────────────────────────────────
+  Portál nahoře ukazuje "URL pro žáky", např.:
+      http://192.168.1.10:48217/play
+  Žáci ji buď naskenují z QR kódu, nebo napíšou do prohlížeče.
+  Číslo 192.168.x.x je adresa notebooku v síti — mění se podle
+  sítě, proto vždy použijte to, co ukazuje portál.
+
+
+────────────────────────────────────────────────────────────
+RYCHLÉ OVĚŘENÍ, ŽE TO PŮJDE
+────────────────────────────────────────────────────────────
+  Vezměte jeden mobil, naskenujte QR. Když se přihlašovací
+  stránka načte = síť je v pořádku, můžete rozdat žákům.
+  Když se NEnačte = nejspíš oddělení klientů -> ZPŮSOB 2.
+============================================================

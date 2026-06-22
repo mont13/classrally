@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ClassRally — Písemka</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border: none;
+            border-radius: 4rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            background: #e2e8f0;
+            color: #1a202c;
+            transition: all 0.2s;
+            margin-top: 0.75rem;
+            letter-spacing: 0.02em;
+            touch-action: manipulation;
+        }
+
+        .btn.good {
+            background: #276ef1;
+            color: white;
+            box-shadow: 0 4px 12px rgba(39, 110, 241, 0.3);
+        }
+
+        .btn.good:hover {
+            background: #1a5cd4;
+            transform: scale(1.02);
+        }
+
+        .btn.warn {
+            background: #f44336;
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+        }
+
+        .btn.warn:hover {
+            background: #d32f2f;
+            transform: scale(1.02);
+        }
+
+        .btn.small {
+            width: auto;
+            padding: 0.6rem 1.2rem;
+            font-size: 0.95rem;
+            margin: 0.25rem;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            transform: none;
+            pointer-events: none;
+        }
+
+        input {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            border-radius: 3rem;
+            border: 2px solid #e2e8f0;
+            font-size: 1.1rem;
+            margin: 0.75rem 0;
+            outline: none;
+            transition: border 0.2s;
+            background: #ffffff;
+        }
+
+        input:focus {
+            border-color: #276ef1;
+        }
+
+        .hide {
+            display: none !important;
+        }
+
+        .error-message {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 0.75rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 1rem;
+            color: #1a202c;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .timer {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: #1e293b;
+            color: white;
+            padding: 0.5rem 1.2rem;
+            border-radius: 3rem;
+            letter-spacing: 0.05em;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .timer.warning {
+            background: #d32f2f;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .player-name {
+            font-weight: 700;
+            font-size: 1.3rem;
+            background: #f1f5f9;
+            padding: 0.4rem 1.2rem;
+            border-radius: 2rem;
+        }
+
+        .navigator {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 1.25rem 0;
+        }
+
+        .nav-btn {
+            width: 2.8rem;
+            height: 2.8rem;
+            border-radius: 0.8rem;
+            border: none;
+            font-weight: 700;
+            font-size: 1rem;
+            background: #e2e8f0;
+            color: #4a5568;
+            cursor: pointer;
+            transition: 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .nav-btn.answered {
+            background: #4caf50;
+            color: white;
+        }
+
+        .nav-btn.active {
+            background: #276ef1;
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 4px 10px rgba(39, 110, 241, 0.4);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .question-text {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 1rem 0 1.5rem;
+            line-height: 1.4;
+            color: #0f172a;
+        }
+
+        .options-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+            margin: 1.5rem 0;
+        }
+
+        .option-btn {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            font-size: 1.1rem;
+            text-align: left;
+            font-weight: 500;
+            transition: all 0.15s;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .option-btn.selected {
+            background: #ebf4ff;
+            border-color: #276ef1;
+            box-shadow: 0 0 0 2px rgba(39, 110, 241, 0.3);
+        }
+
+        .option-letter {
+            font-weight: 800;
+            background: #e2e8f0;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .option-btn.selected .option-letter {
+            background: #276ef1;
+            color: white;
+        }
+
+        .nav-arrows {
+            display: flex;
+            gap: 0.75rem;
+            margin: 1rem 0;
+        }
+
+        .progress-indicator {
+            text-align: center;
+            font-weight: 600;
+            color: #4b5563;
+            margin: 0.5rem 0;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(211, 47, 47, 0.95);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            font-weight: 700;
+            font-size: 1.8rem;
+            backdrop-filter: blur(8px);
+        }
+
+        .result-grade {
+            font-size: 5rem;
+            font-weight: 800;
+            background: #f1f5f9;
+            display: inline-block;
+            padding: 0.5rem 2rem;
+            border-radius: 2rem;
+            margin: 1rem 0;
+        }
+
+        .qr-img {
+            display: block;
+            margin: 1rem auto;
+            max-width: 200px;
+            border-radius: 1rem;
+        }
+
+        .wait-message {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-align: center;
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="appContainer">
+        <!-- Sekce JOIN -->
+        <section id="joinSection" class="card">
+            <h1 class="section-title">Písemka — přihlášení</h1>
+            <input type="text" id="nicknameInput" placeholder="Tvoje přezdívka" maxlength="24" autocomplete="off">
+            <button id="joinButton" class="btn good">Vstoupit do písemky</button>
+            <div id="joinError" class="error-message hide"></div>
+            <img src="/api/qr" alt="QR kód" class="qr-img" id="qrImage">
+        </section>
+
+        <!-- Sekce WAIT -->
+        <section id="waitSection" class="card hide">
+            <div class="wait-message">⏳ Čekej, učitel písemku za chvíli spustí.</div>
+        </section>
+
+        <!-- Sekce TEST -->
+        <section id="testSection" class="card hide">
+            <div class="top-bar">
+                <span class="player-name" id="testPlayerName"></span>
+                <span class="timer" id="timerDisplay">00:00</span>
+            </div>
+            <div class="navigator" id="questionNavigator"></div>
+            <div class="progress-indicator" id="progressIndicator"></div>
+            <div class="card" style="box-shadow: none; border: 1px solid #e2e8f0;">
+                <div id="questionTitle" class="question-text"></div>
+                <div class="options-grid" id="optionsContainer"></div>
+            </div>
+            <div class="nav-arrows">
+                <button id="prevButton" class="btn small">◀ Předchozí</button>
+                <button id="nextButton" class="btn small" style="margin-left: auto;">Další ▶</button>
+            </div>
+            <button id="submitButton" class="btn warn">📩 Odevzdat písemku</button>
+        </section>
+
+        <!-- Sekce RESULT -->
+        <section id="resultSection" class="card hide">
+            <h2 style="text-align: center;">🏁 Písemka odevzdána</h2>
+            <div id="resultContent"></div>
+        </section>
+
+        <!-- Anti-cheat overlay -->
+        <div id="antiCheatOverlay" class="overlay hide">
+            <div>⚠️ Opustil(a) jsi test!</div>
+            <div style="font-size: 1.2rem; margin-top: 1rem;">Učitel to vidí. Vrať se k testu.</div>
+            <div style="margin-top: 1.5rem;" id="blurCounterDisplay">Opuštění okna: 0</div>
+        </div>
+    </div>
+
+    <script>
+        // If the app is in game mode, students belong on the live game UI.
+        fetch('/api/mode').then(r => r.json()).then(m => {
+            if (m && m.mode !== 'exam') location.replace('/play');
+        }).catch(() => {});
+
+        (function() {
+            // === DOM ELEMENTS ===
+            const joinSection = document.getElementById('joinSection');
+            const waitSection = document.getElementById('waitSection');
+            const testSection = document.getElementById('testSection');
+            const resultSection = document.getElementById('resultSection');
+            const nicknameInput = document.getElementById('nicknameInput');
+            const joinButton = document.getElementById('joinButton');
+            const joinError = document.getElementById('joinError');
+            const timerDisplay = document.getElementById('timerDisplay');
+            const testPlayerName = document.getElementById('testPlayerName');
+            const questionNavigator = document.getElementById('questionNavigator');
+            const progressIndicator = document.getElementById('progressIndicator');
+            const questionTitle = document.getElementById('questionTitle');
+            const optionsContainer = document.getElementById('optionsContainer');
+            const prevButton = document.getElementById('prevButton');
+            const nextButton = document.getElementById('nextButton');
+            const submitButton = document.getElementById('submitButton');
+            const resultContent = document.getElementById('resultContent');
+            const antiCheatOverlay = document.getElementById('antiCheatOverlay');
+            const blurCounterDisplay = document.getElementById('blurCounterDisplay');
+
+            // === STATE ===
+            let playerId = localStorage.getItem('exam_player_id');
+            let playerSecret = localStorage.getItem('exam_player_secret');
+            let knownPlayer = false;
+            let currentPhase = 'closed';
+            let timeLeft = 0;
+            let timeLimitSec = 0;
+            let serverTimeOffset = 0;
+            let questions = [];
+            let answeredMap = new Map(); // qid -> oid
+            let currentPosition = 0;
+            let config = { allow_back: false, disable_copy: false, auto_submit_after_blurs: 3 };
+            let blurCount = 0;
+            let isAway = false;
+            let pollTimer = null;
+            let localTimerInterval = null;
+            let blurDebounce = false;
+            let lastEventSent = '';
+
+            // === UTILS ===
+            function showSection(section) {
+                joinSection.classList.add('hide');
+                waitSection.classList.add('hide');
+                testSection.classList.add('hide');
+                resultSection.classList.add('hide');
+                if (section) section.classList.remove('hide');
+            }
+
+            function formatTime(seconds) {
+                if (seconds < 0) seconds = 0;
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+
+            async function apiCall(url, method, body = null) {
+                const options = {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                };
+                if (body) options.body = JSON.stringify(body);
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || `HTTP ${response.status}`);
+                }
+                return await response.json();
+            }
+
+            function updateLocalTimerFromServer(serverSeconds) {
+                timeLeft = serverSeconds;
+                serverTimeOffset = Date.now();
+            }
+
+            function getAdjustedTimeLeft() {
+                if (timeLeft <= 0) return 0;
+                const elapsed = (Date.now() - serverTimeOffset) / 1000;
+                return Math.max(0, timeLeft - elapsed);
+            }
+
+            function stopTimers() {
+                if (pollTimer) clearInterval(pollTimer);
+                if (localTimerInterval) clearInterval(localTimerInterval);
+                pollTimer = null;
+                localTimerInterval = null;
+            }
+
+            // === ANTI-CHEAT ===
+            function applyAntiCheat() {
+                if (config.disable_copy && currentPhase === 'open') {
+                    document.addEventListener('copy', preventDefaultEvent);
+                    document.addEventListener('paste', preventDefaultEvent);
+                    document.addEventListener('cut', preventDefaultEvent);
+                    document.addEventListener('contextmenu', preventDefaultEvent);
+                } else {
+                    document.removeEventListener('copy', preventDefaultEvent);
+                    document.removeEventListener('paste', preventDefaultEvent);
+                    document.removeEventListener('cut', preventDefaultEvent);
+                    document.removeEventListener('contextmenu', preventDefaultEvent);
+                }
+            }
+
+            function preventDefaultEvent(e) {
+                e.preventDefault();
+                return false;
+            }
+
+            function sendBlurEvent() {
+                if (blurDebounce || currentPhase !== 'open' || !playerId) return;
+                blurDebounce = true;
+                setTimeout(() => { blurDebounce = false; }, 500);
+                apiCall('/api/exam/event', 'POST', {
+                    player_id: playerId,
+                    player_secret: playerSecret,
+                    type: 'blur'
+                }).then(data => {
+                    if (data.blur_count !== undefined) {
+                        blurCount = data.blur_count;
+                        updateBlurOverlay();
+                    }
+                    if (data.auto_submitted) {
+                        handleAutoSubmit(data);
+                    }
+                }).catch(() => {});
+            }
+
+            function sendFocusEvent() {
+                if (currentPhase !== 'open' || !playerId) return;
+                apiCall('/api/exam/event', 'POST', {
+                    player_id: playerId,
+                    player_secret: playerSecret,
+                    type: 'focus'
+                }).then(data => {
+                    if (data.blur_count !== undefined) {
+                        blurCount = data.blur_count;
+                        updateBlurOverlay();
+                    }
+                }).catch(() => {});
+            }
+
+            function updateBlurOverlay() {
+                if (blurCounterDisplay) {
+                    blurCounterDisplay.textContent = `Opuštění okna: ${blurCount}`;
+                }
+            }
+
+            function showAntiCheatOverlay() {
+                if (!isAway && currentPhase === 'open') {
+                    isAway = true;
+                    antiCheatOverlay.classList.remove('hide');
+                    sendBlurEvent();
+                }
+            }
+
+            function hideAntiCheatOverlay() {
+                if (isAway) {
+                    isAway = false;
+                    antiCheatOverlay.classList.add('hide');
+                    sendFocusEvent();
+                }
+            }
+
+            // Visibility & blur/focus
+            document.addEventListener('visibilitychange', () => {
+                if (currentPhase !== 'open') return;
+                if (document.hidden) {
+                    showAntiCheatOverlay();
+                } else {
+                    hideAntiCheatOverlay();
+                }
+            });
+
+            window.addEventListener('blur', () => {
+                if (currentPhase === 'open') showAntiCheatOverlay();
+            });
+
+            window.addEventListener('focus', () => {
+                if (currentPhase === 'open') hideAntiCheatOverlay();
+            });
+
+            // === RENDER TEST ===
+            function renderNavigator() {
+                if (!questionNavigator) return;
+                questionNavigator.innerHTML = '';
+                questions.forEach((q, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'nav-btn';
+                    btn.textContent = idx + 1;
+                    if (answeredMap.has(q.id)) btn.classList.add('answered');
+                    if (idx === currentPosition) btn.classList.add('active');
+                    btn.addEventListener('click', () => {
+                        if (idx === currentPosition) return;
+                        if (!config.allow_back) return;
+                        changePosition(idx);
+                    });
+                    if (!config.allow_back && idx !== currentPosition) {
+                        btn.disabled = true;
+                    }
+                    questionNavigator.appendChild(btn);
+                });
+                updateProgress();
+            }
+
+            function updateProgress() {
+                const answered = answeredMap.size;
+                const total = questions.length;
+                if (progressIndicator) {
+                    progressIndicator.textContent = `Zodpovězeno ${answered} z ${total}`;
+                }
+            }
+
+            function renderQuestion() {
+                if (!questions.length || currentPosition >= questions.length) return;
+                const q = questions[currentPosition];
+                questionTitle.textContent = `Otázka ${currentPosition + 1} z ${questions.length}`;
+                
+                const promptEl = document.createElement('div');
+                promptEl.textContent = q.prompt;
+                questionTitle.innerHTML = '';
+                questionTitle.appendChild(document.createTextNode(`Otázka ${currentPosition + 1} z ${questions.length}: `));
+                questionTitle.appendChild(promptEl);
+                
+                optionsContainer.innerHTML = '';
+                const selectedOid = answeredMap.get(q.id);
+                // When going back is disabled, an answered question is locked.
+                const locked = (!config.allow_back && answeredMap.has(q.id));
+
+                q.options.forEach((opt, optIdx) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'option-btn';
+                    if (selectedOid === opt.oid) btn.classList.add('selected');
+
+                    const letterSpan = document.createElement('span');
+                    letterSpan.className = 'option-letter';
+                    letterSpan.textContent = String.fromCharCode(65 + optIdx);
+
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = opt.text;
+
+                    btn.appendChild(letterSpan);
+                    btn.appendChild(textSpan);
+
+                    if (locked) {
+                        btn.disabled = true;
+                    } else {
+                        btn.addEventListener('click', () => selectAnswer(q.id, opt.oid));
+                    }
+                    optionsContainer.appendChild(btn);
+                });
+
+                prevButton.disabled = (currentPosition === 0);
+                nextButton.disabled = (currentPosition === questions.length - 1);
+            }
+
+            async function selectAnswer(qid, oid) {
+                if (!playerId || currentPhase !== 'open') return;
+                try {
+                    await apiCall('/api/exam/answer', 'POST', {
+                        player_id: playerId,
+                        player_secret: playerSecret,
+                        question_id: qid,
+                        choice: oid
+                    });
+                    answeredMap.set(qid, oid);
+                    renderNavigator();
+                    renderQuestion();
+                } catch (e) {
+                    console.error('Answer failed', e);
+                }
+            }
+
+            async function changePosition(newPos) {
+                if (newPos < 0 || newPos >= questions.length) return;
+                try {
+                    await apiCall('/api/exam/position', 'POST', {
+                        player_id: playerId,
+                        player_secret: playerSecret,
+                        position: newPos
+                    });
+                    currentPosition = newPos;
+                    renderNavigator();
+                    renderQuestion();
+                } catch (e) {
+                    console.error('Position change failed', e);
+                }
+            }
+
+            prevButton.addEventListener('click', () => {
+                if (currentPosition > 0) changePosition(currentPosition - 1);
+            });
+
+            nextButton.addEventListener('click', () => {
+                if (currentPosition < questions.length - 1) changePosition(currentPosition + 1);
+            });
+
+            submitButton.addEventListener('click', async () => {
+                if (!confirm('Opravdu chcete odevzdat písemku?')) return;
+                await submitExam();
+            });
+
+            async function submitExam() {
+                try {
+                    const data = await apiCall('/api/exam/submit', 'POST', {
+                        player_id: playerId,
+                        player_secret: playerSecret
+                    });
+                    handleResult(data);
+                } catch (e) {
+                    alert('Odevzdání selhalo.');
+                }
+            }
+
+            function handleAutoSubmit(data) {
+                stopTimers();
+                applyAntiCheat();
+                handleResult(data);
+            }
+
+            function handleResult(data) {
+                stopTimers();
+                currentPhase = 'ended';
+                applyAntiCheat();
+                showSection(resultSection);
+                hideAntiCheatOverlay();
+                
+                resultContent.innerHTML = '';
+                if (data.grade !== undefined && data.grade !== null) {
+                    const gradeEl = document.createElement('div');
+                    gradeEl.className = 'result-grade';
+                    gradeEl.textContent = data.grade;
+                    
+                    const detailEl = document.createElement('p');
+                    detailEl.style.textAlign = 'center';
+                    detailEl.style.fontSize = '1.2rem';
+                    detailEl.textContent = `Správně ${data.score} z ${data.total} (${data.percent}%)`;
+                    
+                    resultContent.appendChild(gradeEl);
+                    resultContent.appendChild(detailEl);
+                } else {
+                    const msgEl = document.createElement('p');
+                    msgEl.textContent = 'Děkujeme, výsledek se dozvíš od učitele.';
+                    msgEl.style.textAlign = 'center';
+                    msgEl.style.fontSize = '1.2rem';
+                    resultContent.appendChild(msgEl);
+                }
+                
+                if (data.auto_submitted) {
+                    const autoMsg = document.createElement('p');
+                    autoMsg.style.color = '#d32f2f';
+                    autoMsg.style.fontWeight = 'bold';
+                    autoMsg.style.textAlign = 'center';
+                    autoMsg.textContent = 'Automaticky odevzdáno.';
+                    resultContent.appendChild(autoMsg);
+                }
+            }
+
+            // === POLLING & PHASE MANAGEMENT ===
+            async function pollState() {
+                if (!playerId || !playerSecret) return;
+                try {
+                    const state = await apiCall('/api/exam/state?player_id=' + encodeURIComponent(playerId) + '&secret=' + encodeURIComponent(playerSecret), 'GET');
+
+                    if (!state.known) {
+                        // Server restarted / unknown player — clear and rejoin
+                        localStorage.removeItem('exam_player_id');
+                        localStorage.removeItem('exam_player_secret');
+                        stopTimers();
+                        location.reload();
+                        return;
+                    }
+
+                    // Already submitted (even if the exam is globally still open) -> show result
+                    if (state.result && currentPhase !== 'ended') {
+                        handleResult(state.result);
+                        return;
+                    }
+
+                    if (state.phase === 'ended' && currentPhase !== 'ended') {
+                        handleResult(state.result || { submitted: true });
+                        return;
+                    }
+                    
+                    if (state.phase === 'open' && currentPhase !== 'open') {
+                        // Přechod do testu
+                        if (state.questions) questions = state.questions;
+                        if (state.answers) {
+                            answeredMap = new Map(Object.entries(state.answers));
+                        }
+                        if (state.config) config = state.config;
+                        if (state.blur_count !== undefined) blurCount = state.blur_count;
+                        currentPosition = state.current_pos || 0;
+                        timeLimitSec = state.time_limit_sec;
+                        updateLocalTimerFromServer(state.time_left);
+                        currentPhase = 'open';
+                        showSection(testSection);
+                        testPlayerName.textContent = state.name || 'Hráč';
+                        applyAntiCheat();
+                        renderNavigator();
+                        renderQuestion();
+                        startLocalTimer();
+                        if (pollTimer) clearInterval(pollTimer);
+                        pollTimer = setInterval(pollState, 3000);
+                        return;
+                    }
+                    
+                    if (state.phase === 'closed') {
+                        currentPhase = 'closed';
+                        showSection(waitSection);
+                    }
+                    
+                    if (state.phase === 'open' && currentPhase === 'open') {
+                        updateLocalTimerFromServer(state.time_left);
+                        if (state.blur_count !== undefined) blurCount = state.blur_count;
+                        updateBlurOverlay();
+                        // Sync answers
+                        if (state.answers) {
+                            const serverAnswers = new Map(Object.entries(state.answers));
+                            if (JSON.stringify([...serverAnswers]) !== JSON.stringify([...answeredMap])) {
+                                answeredMap = serverAnswers;
+                                renderNavigator();
+                                renderQuestion();
+                            }
+                        }
+                    }
+                    
+                } catch (e) {
+                    console.error('Poll error', e);
+                }
+            }
+
+            function startLocalTimer() {
+                if (localTimerInterval) clearInterval(localTimerInterval);
+                localTimerInterval = setInterval(() => {
+                    const adjusted = getAdjustedTimeLeft();
+                    timerDisplay.textContent = formatTime(adjusted);
+                    if (adjusted <= 60) {
+                        timerDisplay.classList.add('warning');
+                    } else {
+                        timerDisplay.classList.remove('warning');
+                    }
+                    if (adjusted <= 0 && currentPhase === 'open') {
+                        clearInterval(localTimerInterval);
+                        submitExam();
+                    }
+                }, 250);
+            }
+
+            // === JOIN LOGIC ===
+            joinButton.addEventListener('click', async () => {
+                const name = nicknameInput.value.trim();
+                if (!name) {
+                    joinError.textContent = 'Zadej přezdívku.';
+                    joinError.classList.remove('hide');
+                    return;
+                }
+                try {
+                    const data = await apiCall('/api/register', 'POST', { name: name });
+                    playerId = data.player_id;
+                    playerSecret = data.player_secret;
+                    localStorage.setItem('exam_player_id', playerId);
+                    localStorage.setItem('exam_player_secret', playerSecret);
+                    knownPlayer = true;
+                    joinError.classList.add('hide');
+                    // Start polling
+                    pollState();
+                    pollTimer = setInterval(pollState, 3000);
+                } catch (e) {
+                    joinError.textContent = 'Chyba připojení: ' + (e.message || 'neznámá');
+                    joinError.classList.remove('hide');
+                }
+            });
+
+            // Inicializace
+            if (playerId && playerSecret) {
+                knownPlayer = true;
+                showSection(waitSection);
+                pollState();
+                pollTimer = setInterval(pollState, 3000);
+            } else {
+                showSection(joinSection);
+            }
+
+            // Cleanup na unload
+            window.addEventListener('beforeunload', () => {
+                stopTimers();
+            });
+
+            // Nastavení anti-cheat stylů pro disable_copy
+            const styleSheet = document.createElement("style");
+            styleSheet.textContent = `
+                .disable-copy .card, .disable-copy .option-btn, .disable-copy .question-text {
+                    user-select: none;
+                    -webkit-user-select: none;
+                }
+            `;
+            document.head.appendChild(styleSheet);
+            
+            // Dynamické přidání třídy pro disable_copy
+            setInterval(() => {
+                if (currentPhase === 'open' && config.disable_copy) {
+                    document.body.classList.add('disable-copy');
+                } else {
+                    document.body.classList.remove('disable-copy');
+                }
+            }, 1000);
+        })();
+    </script>
+</body>
+</html>

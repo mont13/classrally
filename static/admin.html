@@ -81,6 +81,7 @@
 
         <div class="tabs">
           <button class="tab active" data-tab="questions">Sady otazek</button>
+          <button class="tab" data-tab="exam">Pisemka (test)</button>
           <button class="tab" data-tab="editor">Editor otazek</button>
           <button class="tab" data-tab="ai">AI navrh otazek</button>
           <button class="tab" data-tab="timing">Pokrocile nastaveni</button>
@@ -104,6 +105,57 @@
               <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvorit</button>
             </div>
           </div>
+        </div>
+
+        <div id="tab-exam" class="tab-content">
+          <h2>Pisemka (test pro znamku)</h2>
+          <p class="muted">Zaci delaji test kazdy svym tempem na mobilu. Po odevzdani se automaticky znamkuje. Behem testu vidite, kdo opustil okno (dohled).</p>
+
+          <h3 style="margin-top:18px;">1. Vyber sadu a nastav pisemku</h3>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="examBank">Sada otazek</label>
+              <select id="examBank"></select>
+            </div>
+            <div class="form-group">
+              <label for="examTime">Casovy limit (minuty)</label>
+              <input id="examTime" type="number" min="1" max="240" value="30" />
+            </div>
+            <div class="form-group">
+              <label for="examAutoSubmit">Auto-odevzdat po N opusteni okna (0 = vyp)</label>
+              <input id="examAutoSubmit" type="number" min="0" max="100" value="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="examThresholds">Hranice znamek — min. % pro 1, 2, 3, 4 (zbytek = 5)</label>
+            <input id="examThresholds" placeholder="90, 75, 60, 45" value="90, 75, 60, 45" />
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin:8px 0 14px;">
+            <label class="check-row"><input type="checkbox" id="examShuffleQ" checked /> Zamichat poradi otazek</label>
+            <label class="check-row"><input type="checkbox" id="examShuffleO" checked /> Zamichat poradi odpovedi</label>
+            <label class="check-row"><input type="checkbox" id="examAllowBack" checked /> Povolit vracet se a menit odpovedi</label>
+            <label class="check-row"><input type="checkbox" id="examDisableCopy" checked /> Zakazat kopirovani</label>
+            <label class="check-row"><input type="checkbox" id="examShowResults" checked /> Ukazat zakovi znamku po odevzdani</label>
+          </div>
+          <button class="btn good" id="btnExamPrepare">Pripravit pisemku (aktivovat sadu)</button>
+
+          <h3 style="margin-top:24px;">2. Ovladani</h3>
+          <div class="btn-row">
+            <button class="btn good" id="btnExamOpen">Spustit pisemku</button>
+            <button class="btn warn" id="btnExamEnd">Ukoncit pro vsechny</button>
+            <button class="btn secondary" id="btnExamExtend">+5 minut</button>
+            <button class="btn secondary" id="btnExamExport">Stahnout vysledky (CSV)</button>
+            <button class="btn ghost" id="btnExamReset">Vymazat zaky</button>
+          </div>
+          <p id="examStatusLine" class="muted" style="margin-top:10px;font-weight:800;"></p>
+
+          <h3 style="margin-top:24px;">3. Zivy prehled (dohled)</h3>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <label class="check-row"><input type="checkbox" id="examAutoRefresh" checked /> Automaticky obnovovat (kazde 3 s)</label>
+            <button class="btn" id="btnExamRefresh" style="padding:6px 14px;">Obnovit ted</button>
+            <span id="examOverviewSummary" class="muted"></span>
+          </div>
+          <div id="examOverview" style="overflow-x:auto;"></div>
         </div>
 
         <div id="tab-editor" class="tab-content">
@@ -218,9 +270,11 @@
 
   <script>
     let adminToken = localStorage.getItem('quiz_admin_token') || '';
+    let hostToken = localStorage.getItem('quiz_host_token') || '';
     const abc = ['A','B','C','D','E','F'];
     let editorQuestions = [];
     let editorFilename = '';
+    let examOverviewTimer = null;
 
     async function api(path, method='GET', body=null) {
       const headers = { 'Content-Type': 'application/json' };
@@ -298,6 +352,7 @@
         // Auto-load data when switching tabs
         if (tab.dataset.tab === 'history') loadHistory();
         if (tab.dataset.tab === 'questions') loadBanks();
+        if (tab.dataset.tab === 'exam') openExamTab(); else stopExamOverview();
       });
     });
 
@@ -307,6 +362,7 @@
         const data = await api('/api/host/token');
         const box = document.getElementById('hostTokenBox');
         box.textContent = data.host_token;
+        hostToken = data.host_token;
         // Also save to localStorage for host page
         localStorage.setItem('quiz_host_token', data.host_token);
       } catch {
@@ -789,6 +845,225 @@
 
           list.appendChild(div);
         });
+      } catch (e) { console.error(e); }
+    }
+
+    // --- Exam (pisemka) ---
+    async function examHostAction(action, extra) {
+      if (!hostToken) {
+        try { const d = await api('/api/host/token'); hostToken = d.host_token; } catch {}
+      }
+      const res = await fetch('/api/host/exam-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hostToken}` },
+        body: JSON.stringify(Object.assign({ action }, extra || {})),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Akce selhala');
+      return data;
+    }
+
+    function openExamTab() {
+      // Fill bank select from already-loaded banks
+      const sel = document.getElementById('examBank');
+      sel.innerHTML = '';
+      allBanks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.filename;
+        opt.textContent = `${b.name} (${b.question_count})`;
+        if (b.filename === activeBankName) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      loadExamConfig();
+      refreshExamOverview();
+      startExamOverview();
+    }
+
+    async function loadExamConfig() {
+      try {
+        const cfg = await api('/api/admin/exam/config');
+        document.getElementById('examTime').value = Math.round((cfg.time_limit_sec || 1800) / 60);
+        document.getElementById('examAutoSubmit').value = cfg.auto_submit_after_blurs || 0;
+        document.getElementById('examShuffleQ').checked = !!cfg.shuffle_questions;
+        document.getElementById('examShuffleO').checked = !!cfg.shuffle_options;
+        document.getElementById('examAllowBack').checked = !!cfg.allow_back;
+        document.getElementById('examDisableCopy').checked = !!cfg.disable_copy;
+        document.getElementById('examShowResults').checked = !!cfg.show_results_to_student;
+        if (Array.isArray(cfg.grade_thresholds)) {
+          // Show min% for grades 1..4 in order
+          const byGrade = {};
+          cfg.grade_thresholds.forEach(([pct, g]) => { byGrade[g] = pct; });
+          const parts = [1, 2, 3, 4].map(g => byGrade[g]).filter(v => v !== undefined);
+          if (parts.length) document.getElementById('examThresholds').value = parts.join(', ');
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    function collectExamConfig() {
+      const minutes = parseInt(document.getElementById('examTime').value) || 30;
+      const thrRaw = document.getElementById('examThresholds').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+      // Map first four numbers to grades 1..4, append [0,5]
+      const thresholds = [];
+      [1, 2, 3, 4].forEach((g, i) => { if (thrRaw[i] !== undefined) thresholds.push([thrRaw[i], g]); });
+      thresholds.push([0, 5]);
+      return {
+        time_limit_sec: minutes * 60,
+        auto_submit_after_blurs: parseInt(document.getElementById('examAutoSubmit').value) || 0,
+        shuffle_questions: document.getElementById('examShuffleQ').checked,
+        shuffle_options: document.getElementById('examShuffleO').checked,
+        allow_back: document.getElementById('examAllowBack').checked,
+        disable_copy: document.getElementById('examDisableCopy').checked,
+        show_results_to_student: document.getElementById('examShowResults').checked,
+        grade_thresholds: thresholds,
+      };
+    }
+
+    document.getElementById('btnExamPrepare').addEventListener('click', async () => {
+      const filename = document.getElementById('examBank').value;
+      if (!filename) { alert('Vyberte sadu otazek'); return; }
+      try {
+        await api('/api/admin/exam/config', 'POST', collectExamConfig());
+        await api('/api/admin/bank/activate', 'POST', { filename, mode: 'exam' });
+        alert('Pisemka pripravena. Zaci se mohou prihlasit na URL pro zaky. Az budou pripraveni, klikni "Spustit pisemku".');
+        refreshExamOverview();
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamOpen').addEventListener('click', async () => {
+      try {
+        // Save current config (time limit etc.) before opening
+        await api('/api/admin/exam/config', 'POST', collectExamConfig());
+        await examHostAction('open');
+        document.getElementById('examStatusLine').textContent = 'Pisemka spustena!';
+        refreshExamOverview();
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamEnd').addEventListener('click', async () => {
+      if (!confirm('Ukoncit pisemku pro vsechny? Neodevzdane se automaticky oznamkuji.')) return;
+      try { await examHostAction('end'); refreshExamOverview(); } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamExtend').addEventListener('click', async () => {
+      try { await examHostAction('extend', { seconds: 300 }); refreshExamOverview(); } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamReset').addEventListener('click', async () => {
+      if (!confirm('Vymazat vsechny zaky a jejich odpovedi? Pouzij pred novou pisemkou.')) return;
+      try { await examHostAction('reset'); refreshExamOverview(); } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamExport').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/admin/exam/results.csv', {
+          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : {},
+        });
+        if (!res.ok) throw new Error('Export selhal');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'vysledky-pisemky.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExamRefresh').addEventListener('click', refreshExamOverview);
+
+    function startExamOverview() {
+      stopExamOverview();
+      if (document.getElementById('examAutoRefresh').checked) {
+        examOverviewTimer = setInterval(refreshExamOverview, 3000);
+      }
+    }
+    function stopExamOverview() {
+      if (examOverviewTimer) { clearInterval(examOverviewTimer); examOverviewTimer = null; }
+    }
+    document.getElementById('examAutoRefresh').addEventListener('change', startExamOverview);
+
+    const phaseLabels = { closed: 'Pripraveno (ceka na spusteni)', open: 'PROBIHA', ended: 'Ukonceno' };
+
+    async function refreshExamOverview() {
+      try {
+        const ov = await api('/api/admin/exam/overview');
+        const mins = Math.floor((ov.time_left || 0) / 60);
+        const secs = (ov.time_left || 0) % 60;
+        const phaseTxt = phaseLabels[ov.phase] || ov.phase;
+        document.getElementById('examStatusLine').textContent =
+          `Stav: ${phaseTxt} | Otazek: ${ov.total_questions} | Zaku: ${ov.student_count} | Odevzdalo: ${ov.submitted_count}` +
+          (ov.phase === 'open' ? ` | Zbyva: ${mins}:${String(secs).padStart(2, '0')}` : '');
+
+        const box = document.getElementById('examOverview');
+        box.innerHTML = '';
+        if (!ov.students.length) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = 'Zatim se neprihlasil zadny zak.';
+          box.appendChild(p);
+          document.getElementById('examOverviewSummary').textContent = '';
+          return;
+        }
+        document.getElementById('examOverviewSummary').textContent = `${ov.submitted_count}/${ov.student_count} odevzdalo`;
+
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        const htr = document.createElement('tr');
+        ['Zak', 'Otazka', 'Zodpov.', 'Opusteni okna', 'Mimo (s)', 'Stav', 'Znamka'].forEach(h => {
+          const th = document.createElement('th'); th.textContent = h; htr.appendChild(th);
+        });
+        thead.appendChild(htr);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+
+        ov.students.forEach(s => {
+          const tr = document.createElement('tr');
+          if (s.blur_count > 0 && !s.submitted) tr.style.background = 'rgba(249,115,22,0.18)';
+
+          const tdName = document.createElement('td');
+          tdName.textContent = s.name + (s.online ? '' : ' (offline)');
+          tdName.style.fontWeight = '800';
+          tr.appendChild(tdName);
+
+          const tdQ = document.createElement('td');
+          tdQ.textContent = s.submitted ? '—' : `${s.current_q}/${s.total}`;
+          tr.appendChild(tdQ);
+
+          const tdAns = document.createElement('td');
+          tdAns.textContent = `${s.answered}/${s.total}`;
+          tr.appendChild(tdAns);
+
+          const tdBlur = document.createElement('td');
+          tdBlur.textContent = s.blur_count;
+          if (s.blur_count > 0) { tdBlur.style.color = '#b91c1c'; tdBlur.style.fontWeight = '900'; }
+          tr.appendChild(tdBlur);
+
+          const tdAway = document.createElement('td');
+          tdAway.textContent = s.away_sec;
+          tr.appendChild(tdAway);
+
+          const tdState = document.createElement('td');
+          if (s.submitted) {
+            tdState.textContent = s.auto_submitted ? 'Auto-odevzdano' : 'Odevzdano';
+            tdState.style.color = s.auto_submitted ? '#b91c1c' : '#16a34a';
+            tdState.style.fontWeight = '800';
+          } else {
+            tdState.textContent = 'Pise...';
+          }
+          tr.appendChild(tdState);
+
+          const tdGrade = document.createElement('td');
+          tdGrade.textContent = (s.grade !== null && s.grade !== undefined) ? s.grade : '';
+          tdGrade.style.fontWeight = '900';
+          tdGrade.style.fontSize = '1.2rem';
+          tr.appendChild(tdGrade);
+
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        box.appendChild(table);
       } catch (e) { console.error(e); }
     }
 

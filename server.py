@@ -19,6 +19,7 @@ import json
 import math
 import mimetypes
 import os
+import random
 import re
 import socket
 import subprocess
@@ -44,6 +45,8 @@ HISTORY_DIR = BASE_DIR / "history"
 DEFAULT_QUESTIONS_FILE = "default.json"
 QUESTION_DURATION_SEC = 20
 REVEAL_DURATION_SEC = 5
+# Atypical high port (avoids clashes on shared machines); override via QUIZ_PORT.
+DEFAULT_PORT = int(os.environ.get("QUIZ_PORT", "48217"))
 
 # Ensure directories exist
 QUESTIONS_DIR.mkdir(exist_ok=True)
@@ -628,6 +631,436 @@ class QuizState:
             return response
 
 
+# --- Exam (písemka) mode ---
+#
+# A serious written-test mode that runs alongside the live game. Unlike the
+# lockstep game, each student works through the whole test at their own pace
+# within a shared time window, answers are graded (Czech 1-5), question/option
+# order can be shuffled per student, and lightweight proctoring records when a
+# student leaves the test window (Page Visibility blur events).
+
+DEFAULT_GRADE_THRESHOLDS = [[90, 1], [75, 2], [60, 3], [45, 4], [0, 5]]
+EXAM_TIME_LIMIT_SEC = 1800  # 30 minutes
+MAX_PROCTOR_EVENTS = 300
+
+
+@dataclass
+class ExamConfig:
+    time_limit_sec: int = EXAM_TIME_LIMIT_SEC
+    shuffle_questions: bool = True
+    shuffle_options: bool = True
+    allow_back: bool = True               # student may revisit and change answers
+    disable_copy: bool = True             # client disables copy/paste/context menu
+    show_results_to_student: bool = True  # show grade to student after submit
+    auto_submit_after_blurs: int = 0      # 0 = off; otherwise auto-submit after N window-leaves
+    grade_thresholds: list = field(default_factory=lambda: [r[:] for r in DEFAULT_GRADE_THRESHOLDS])
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "time_limit_sec": self.time_limit_sec,
+            "shuffle_questions": self.shuffle_questions,
+            "shuffle_options": self.shuffle_options,
+            "allow_back": self.allow_back,
+            "disable_copy": self.disable_copy,
+            "show_results_to_student": self.show_results_to_student,
+            "auto_submit_after_blurs": self.auto_submit_after_blurs,
+            "grade_thresholds": [row[:] for row in self.grade_thresholds],
+        }
+
+    def update(self, data: dict[str, Any]) -> None:
+        if "time_limit_sec" in data:
+            self.time_limit_sec = max(30, min(4 * 3600, int(data["time_limit_sec"])))
+        for flag in ("shuffle_questions", "shuffle_options", "allow_back",
+                     "disable_copy", "show_results_to_student"):
+            if flag in data:
+                self[flag] = bool(data[flag])
+        if "auto_submit_after_blurs" in data:
+            self.auto_submit_after_blurs = max(0, min(100, int(data["auto_submit_after_blurs"])))
+        if "grade_thresholds" in data:
+            self._set_thresholds(data["grade_thresholds"])
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        setattr(self, key, value)
+
+    def _set_thresholds(self, rows: Any) -> None:
+        if not isinstance(rows, list) or not rows:
+            return
+        clean: list[list[int]] = []
+        for row in rows:
+            if not isinstance(row, (list, tuple)) or len(row) != 2:
+                continue
+            pct, grade = int(row[0]), int(row[1])
+            pct = max(0, min(100, pct))
+            clean.append([pct, grade])
+        if not clean:
+            return
+        # Sort by percentage descending so grade lookup walks high -> low.
+        clean.sort(key=lambda r: -r[0])
+        self.grade_thresholds = clean
+
+    def grade_for_percent(self, percent: float) -> int:
+        for min_pct, grade in self.grade_thresholds:
+            if percent >= min_pct:
+                return grade
+        # Below every threshold -> worst grade defined.
+        return self.grade_thresholds[-1][1] if self.grade_thresholds else 5
+
+
+@dataclass
+class ExamStudent:
+    name: str
+    secret: str
+    order: list[int] = field(default_factory=list)            # permutation of question indices
+    option_orders: dict[int, list[int]] = field(default_factory=dict)  # qindex -> option permutation
+    answers: dict[str, int] = field(default_factory=dict)     # qid -> chosen ORIGINAL option index
+    started_at: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.time)
+    current_pos: int = 0                                      # position within their order (for live view)
+    submitted_at: float | None = None
+    auto_submitted: bool = False
+    score: int | None = None                                 # number correct
+    grade: int | None = None
+    # proctoring
+    blur_count: int = 0
+    away_ms: float = 0.0
+    last_blur_at: float | None = None
+    events: list[dict[str, Any]] = field(default_factory=list)
+
+
+class ExamState:
+    def __init__(self, questions: list[dict[str, Any]] | None = None) -> None:
+        self._lock = threading.Lock()
+        self.questions = questions or []
+        self.config = ExamConfig()
+        self.students: dict[str, ExamStudent] = {}
+        self.phase = "closed"  # closed (lobby) | open (running) | ended
+        self.opened_at = 0.0
+        self.ended_at = 0.0
+        self._active_bank: str | None = None
+
+    # -- setup --
+
+    def reload_questions(self, questions: list[dict[str, Any]], bank_name: str | None = None) -> None:
+        with self._lock:
+            self.questions = questions
+            self._active_bank = bank_name
+            self.phase = "closed"
+            self.opened_at = 0.0
+            self.ended_at = 0.0
+            self.students = {}
+
+    def update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            self.config.update(data)
+            return self.config.to_dict()
+
+    def register_student(self, name: str) -> dict[str, Any]:
+        clean = " ".join(name.strip().split())[:24]
+        if not clean:
+            raise ValueError("Jmeno je povinne")
+        with self._lock:
+            player_id = uuid.uuid4().hex[:10]
+            secret = uuid.uuid4().hex
+            student = ExamStudent(name=clean, secret=secret)
+            if self.phase == "open":
+                self._build_order_locked(player_id, student)
+            self.students[player_id] = student
+            return {"player_id": player_id, "player_secret": secret, "name": clean}
+
+    def verify_student(self, player_id: str, secret: str) -> bool:
+        with self._lock:
+            s = self.students.get(player_id)
+            return bool(s and s.secret == secret)
+
+    def _build_order_locked(self, player_id: str, student: ExamStudent) -> None:
+        n = len(self.questions)
+        order = list(range(n))
+        rng = random.Random(player_id)  # deterministic per student
+        if self.config.shuffle_questions:
+            rng.shuffle(order)
+        student.order = order
+        student.option_orders = {}
+        if self.config.shuffle_options:
+            for qi in order:
+                opt_n = len(self.questions[qi].get("options", []))
+                perm = list(range(opt_n))
+                rng.shuffle(perm)
+                student.option_orders[qi] = perm
+
+    # -- host controls --
+
+    def open_exam(self) -> None:
+        with self._lock:
+            if not self.questions:
+                raise ValueError("Pisemka nema otazky")
+            now = time.time()
+            self.phase = "open"
+            self.opened_at = now
+            self.ended_at = 0.0
+            for pid, student in self.students.items():
+                if not student.order:
+                    self._build_order_locked(pid, student)
+                student.started_at = now
+
+    def end_exam(self) -> None:
+        with self._lock:
+            self._end_locked(time.time())
+
+    def extend(self, seconds: int) -> None:
+        with self._lock:
+            seconds = max(-3600, min(3600, int(seconds)))
+            self.config.time_limit_sec = max(30, self.config.time_limit_sec + seconds)
+
+    def reset(self) -> None:
+        with self._lock:
+            self.phase = "closed"
+            self.opened_at = 0.0
+            self.ended_at = 0.0
+            self.students = {}
+
+    def _end_locked(self, now: float) -> None:
+        if self.phase == "ended":
+            return
+        self.phase = "ended"
+        self.ended_at = now
+        for student in self.students.values():
+            if student.submitted_at is None:
+                self._grade_locked(student, now, auto=True)
+
+    def _sync_locked(self, now: float) -> None:
+        if self.phase == "open" and self.opened_at > 0:
+            if now - self.opened_at >= self.config.time_limit_sec:
+                self._end_locked(self.opened_at + self.config.time_limit_sec)
+
+    def _time_left_locked(self, now: float) -> int:
+        if self.phase == "open" and self.opened_at > 0:
+            return max(0, int(math.ceil(self.config.time_limit_sec - (now - self.opened_at))))
+        return 0
+
+    # -- student actions --
+
+    def save_answer(self, player_id: str, secret: str, qid: str, choice: int) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            self._sync_locked(now)
+            student = self._auth_locked(player_id, secret)
+            if self.phase != "open":
+                raise ValueError("Pisemka neni spustena")
+            if student.submitted_at is not None:
+                raise ValueError("Pisemka uz byla odevzdana")
+            qindex = self._qindex_by_id(qid)
+            if qindex is None:
+                raise ValueError("Neznama otazka")
+            options = self.questions[qindex].get("options", [])
+            if not isinstance(choice, int) or choice < 0 or choice >= len(options):
+                raise ValueError("Neplatna volba")
+            if not self.config.allow_back and qid in student.answers:
+                raise ValueError("Odpoved nelze zmenit")
+            student.answers[qid] = choice
+            student.last_seen = now
+            return {"ok": True, "answered": len(student.answers)}
+
+    def set_position(self, player_id: str, secret: str, pos: int) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            student = self._auth_locked(player_id, secret)
+            if isinstance(pos, int) and 0 <= pos < len(student.order):
+                student.current_pos = pos
+            student.last_seen = now
+            return {"ok": True}
+
+    def record_event(self, player_id: str, secret: str, event_type: str) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            self._sync_locked(now)
+            student = self._auth_locked(player_id, secret)
+            student.last_seen = now
+            if event_type == "blur":
+                student.blur_count += 1
+                student.last_blur_at = now
+                if len(student.events) < MAX_PROCTOR_EVENTS:
+                    student.events.append({"type": "blur", "t": now})
+                limit = self.config.auto_submit_after_blurs
+                if (limit > 0 and student.blur_count >= limit
+                        and student.submitted_at is None and self.phase == "open"):
+                    self._grade_locked(student, now, auto=True)
+                    return {"ok": True, "auto_submitted": True, "blur_count": student.blur_count}
+            elif event_type == "focus":
+                if student.last_blur_at is not None:
+                    student.away_ms += (now - student.last_blur_at) * 1000.0
+                    student.last_blur_at = None
+            return {"ok": True, "blur_count": student.blur_count}
+
+    def submit(self, player_id: str, secret: str) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            self._sync_locked(now)
+            student = self._auth_locked(player_id, secret)
+            if student.submitted_at is not None:
+                return self._result_payload_locked(student)
+            self._grade_locked(student, now, auto=False)
+            return self._result_payload_locked(student)
+
+    # -- grading --
+
+    def _grade_locked(self, student: ExamStudent, now: float, auto: bool) -> None:
+        correct = 0
+        for q in self.questions:
+            qid = q["id"]
+            if student.answers.get(qid) == q.get("correct_index"):
+                correct += 1
+        total = len(self.questions)
+        percent = (correct / total * 100.0) if total else 0.0
+        student.score = correct
+        student.grade = self.config.grade_for_percent(percent)
+        student.submitted_at = now
+        student.auto_submitted = auto
+        if student.last_blur_at is not None:
+            student.away_ms += (now - student.last_blur_at) * 1000.0
+            student.last_blur_at = None
+
+    def _result_payload_locked(self, student: ExamStudent) -> dict[str, Any]:
+        total = len(self.questions)
+        payload: dict[str, Any] = {
+            "ok": True,
+            "submitted": True,
+            "auto_submitted": student.auto_submitted,
+        }
+        if self.config.show_results_to_student:
+            payload.update({
+                "score": student.score,
+                "total": total,
+                "percent": round((student.score or 0) / total * 100) if total else 0,
+                "grade": student.grade,
+            })
+        return payload
+
+    # -- helpers --
+
+    def _auth_locked(self, player_id: str, secret: str) -> ExamStudent:
+        student = self.students.get(player_id)
+        if not student:
+            raise ValueError("Neznamy player_id")
+        if student.secret != secret:
+            raise ValueError("Neplatny player_secret")
+        return student
+
+    def _qindex_by_id(self, qid: str) -> int | None:
+        for i, q in enumerate(self.questions):
+            if q["id"] == qid:
+                return i
+        return None
+
+    # -- views --
+
+    def student_view(self, player_id: str, secret: str | None = None) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            self._sync_locked(now)
+            student = self.students.get(player_id)
+            if not student:
+                return {"phase": self.phase, "known": False}
+            if secret is not None and student.secret != secret:
+                return {"phase": self.phase, "known": False}
+            student.last_seen = now
+            view: dict[str, Any] = {
+                "known": True,
+                "phase": self.phase,
+                "name": student.name,
+                "time_left": self._time_left_locked(now),
+                "time_limit_sec": self.config.time_limit_sec,
+                "answered": len(student.answers),
+                "total": len(self.questions),
+                "current_pos": student.current_pos,
+                "config": {
+                    "allow_back": self.config.allow_back,
+                    "disable_copy": self.config.disable_copy,
+                    "auto_submit_after_blurs": self.config.auto_submit_after_blurs,
+                },
+                "blur_count": student.blur_count,
+            }
+            if student.submitted_at is not None:
+                view["result"] = self._result_payload_locked(student)
+                return view
+            if self.phase == "open" and student.order:
+                questions = []
+                for qi in student.order:
+                    q = self.questions[qi]
+                    opts = q.get("options", [])
+                    perm = student.option_orders.get(qi) or list(range(len(opts)))
+                    questions.append({
+                        "id": q["id"],
+                        "prompt": q["prompt"],
+                        # each option carries its ORIGINAL index (oid) so the
+                        # client returns oid on answer regardless of display order
+                        "options": [{"text": opts[oi], "oid": oi} for oi in perm],
+                    })
+                view["questions"] = questions
+                view["answers"] = dict(student.answers)
+            return view
+
+    def overview(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            self._sync_locked(now)
+            total = len(self.questions)
+            rows = []
+            for student in self.students.values():
+                online = (now - student.last_seen) < 8
+                rows.append({
+                    "name": student.name,
+                    "answered": len(student.answers),
+                    "total": total,
+                    "current_q": (student.current_pos + 1) if student.order else 0,
+                    "submitted": student.submitted_at is not None,
+                    "auto_submitted": student.auto_submitted,
+                    "score": student.score,
+                    "grade": student.grade,
+                    "blur_count": student.blur_count,
+                    "away_sec": round(student.away_ms / 1000),
+                    "online": online,
+                })
+            rows.sort(key=lambda r: r["name"].lower())
+            submitted = sum(1 for r in rows if r["submitted"])
+            return {
+                "phase": self.phase,
+                "active_bank": self._active_bank,
+                "total_questions": total,
+                "time_left": self._time_left_locked(now),
+                "time_limit_sec": self.config.time_limit_sec,
+                "config": self.config.to_dict(),
+                "student_count": len(rows),
+                "submitted_count": submitted,
+                "students": rows,
+            }
+
+    def results_csv(self) -> str:
+        import csv
+        import io
+        with self._lock:
+            total = len(self.questions)
+            buf = io.StringIO()
+            writer = csv.writer(buf, delimiter=";")
+            writer.writerow(["Jmeno", "Spravne", "Celkem", "Procenta", "Znamka",
+                             "Odevzdano", "Auto", "Opusteni okna", "Cas mimo (s)"])
+            for student in sorted(self.students.values(), key=lambda s: s.name.lower()):
+                percent = round((student.score or 0) / total * 100) if total and student.score is not None else ""
+                submitted = (datetime.fromtimestamp(student.submitted_at).strftime("%Y-%m-%d %H:%M:%S")
+                             if student.submitted_at else "")
+                writer.writerow([
+                    student.name,
+                    student.score if student.score is not None else "",
+                    total,
+                    percent,
+                    student.grade if student.grade is not None else "",
+                    submitted,
+                    "ano" if student.auto_submitted else "ne",
+                    student.blur_count,
+                    round(student.away_ms / 1000),
+                ])
+            return buf.getvalue()
+
+
 def list_audio_tracks() -> dict[str, list[dict[str, str]]]:
     allowed = {".mp3", ".ogg", ".wav", ".m4a", ".aac"}
     loops: list[dict[str, str]] = []
@@ -664,11 +1097,32 @@ def list_audio_tracks() -> dict[str, list[dict[str, str]]]:
 
 
 QUIZ = QuizState(load_default_questions())
+EXAM = ExamState()
+
+# Active app mode: "game" (live Kahoot-style) or "exam" (písemka). The student
+# join page adapts to this; the teacher switches it when activating a bank.
+_MODE_LOCK = threading.Lock()
+_APP_MODE = "game"
+
+
+def get_app_mode() -> str:
+    with _MODE_LOCK:
+        return _APP_MODE
+
+
+def set_app_mode(mode: str) -> str:
+    global _APP_MODE
+    with _MODE_LOCK:
+        if mode in ("game", "exam"):
+            _APP_MODE = mode
+        return _APP_MODE
+
+
 SERVER_INFO: dict[str, Any] = {
     "bind_host": "0.0.0.0",
-    "port": 8765,
-    "host_urls": ["http://127.0.0.1:8765/host"],
-    "play_urls": ["http://127.0.0.1:8765/play"],
+    "port": DEFAULT_PORT,
+    "host_urls": [f"http://127.0.0.1:{DEFAULT_PORT}/host"],
+    "play_urls": [f"http://127.0.0.1:{DEFAULT_PORT}/play"],
     "loopback_only": False,
 }
 
@@ -734,7 +1188,24 @@ def detect_lan_ipv4_candidates() -> list[str]:
     except (OSError, subprocess.TimeoutExpired):
         pass
 
-    # Method 3: hostname resolution fallback
+    # Method 3: Windows 'ipconfig' parse (Linux 'ip addr' is absent there)
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["ipconfig"], capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    # Localized Windows: match "IPv4 ... : 192.168.1.10"
+                    if "IPv4" in line or "IPv4 Address" in line:
+                        m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", line)
+                        if m:
+                            add(m.group(1))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    # Method 4: hostname resolution fallback
     try:
         hostname = socket.gethostname()
         for result in socket.getaddrinfo(hostname, None, family=socket.AF_INET, type=socket.SOCK_STREAM):
@@ -880,6 +1351,10 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(STATIC_DIR / "admin.html")
             return
 
+        if path == "/exam":
+            self._serve_file(STATIC_DIR / "exam.html")
+            return
+
         if path.startswith("/static/"):
             relative = path.removeprefix("/static/")
             safe = (STATIC_DIR / relative).resolve()
@@ -900,6 +1375,20 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response({"ok": True, "service": "classrally", "version": "2.1"})
             return
 
+        if path == "/api/mode":
+            self._json_response({"mode": get_app_mode()})
+            return
+
+        if path == "/api/exam/state":
+            q = parse_qs(parsed.query)
+            player_id = q.get("player_id", [None])[0]
+            secret = q.get("secret", [None])[0]
+            if not player_id:
+                self._json_response({"phase": EXAM.phase, "known": False})
+                return
+            self._json_response(EXAM.student_view(player_id, secret))
+            return
+
         if path == "/api/network":
             self._json_response(SERVER_INFO)
             return
@@ -914,7 +1403,7 @@ class Handler(BaseHTTPRequestHandler):
             if not url:
                 # Default: first play URL
                 urls = SERVER_INFO.get("play_urls", [])
-                url = urls[0] if urls else f"http://127.0.0.1:{SERVER_INFO.get('port', 8765)}/play"
+                url = urls[0] if urls else f"http://127.0.0.1:{SERVER_INFO.get('port', DEFAULT_PORT)}/play"
             try:
                 svg = generate_qr_svg(url, module_size=8, margin=4)
             except Exception as e:
@@ -934,6 +1423,12 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             self._json_response({"host_token": HOST_TOKEN})
+            return
+
+        if path == "/api/host/exam/overview":
+            if not self._require_host_token():
+                return
+            self._json_response(EXAM.overview())
             return
 
         # --- Admin API (GET) ---
@@ -971,6 +1466,31 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response(list_game_history())
             return
 
+        if path == "/api/admin/exam/overview":
+            if not self._require_admin():
+                return
+            self._json_response(EXAM.overview())
+            return
+
+        if path == "/api/admin/exam/config":
+            if not self._require_admin():
+                return
+            self._json_response(EXAM.config.to_dict())
+            return
+
+        if path == "/api/admin/exam/results.csv":
+            if not self._require_admin():
+                return
+            csv_text = EXAM.results_csv()
+            body = ("﻿" + csv_text).encode("utf-8")  # BOM for Excel
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="vysledky-pisemky.csv"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/admin/ollama/models":
             if not self._require_admin():
                 return
@@ -994,7 +1514,39 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/register":
                 name = str(data.get("name", ""))
-                self._json_response(QUIZ.register_player(name))
+                if get_app_mode() == "exam":
+                    self._json_response(EXAM.register_student(name))
+                else:
+                    self._json_response(QUIZ.register_player(name))
+                return
+
+            # --- Exam (písemka) student API ---
+            if path == "/api/exam/answer":
+                player_id = str(data.get("player_id", ""))
+                secret = str(data.get("player_secret", ""))
+                qid = str(data.get("question_id", ""))
+                choice = int(data.get("choice", -1))
+                self._json_response(EXAM.save_answer(player_id, secret, qid, choice))
+                return
+
+            if path == "/api/exam/position":
+                player_id = str(data.get("player_id", ""))
+                secret = str(data.get("player_secret", ""))
+                pos = int(data.get("position", 0))
+                self._json_response(EXAM.set_position(player_id, secret, pos))
+                return
+
+            if path == "/api/exam/event":
+                player_id = str(data.get("player_id", ""))
+                secret = str(data.get("player_secret", ""))
+                event_type = str(data.get("type", ""))
+                self._json_response(EXAM.record_event(player_id, secret, event_type))
+                return
+
+            if path == "/api/exam/submit":
+                player_id = str(data.get("player_id", ""))
+                secret = str(data.get("player_secret", ""))
+                self._json_response(EXAM.submit(player_id, secret))
                 return
 
             if path == "/api/submit":
@@ -1009,6 +1561,23 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 action = str(data.get("action", ""))
                 self._json_response(QUIZ.host_action(action))
+                return
+
+            if path == "/api/host/exam-action":
+                if not self._require_host_token():
+                    return
+                action = str(data.get("action", ""))
+                if action == "open":
+                    EXAM.open_exam()
+                elif action == "end":
+                    EXAM.end_exam()
+                elif action == "extend":
+                    EXAM.extend(int(data.get("seconds", 300)))
+                elif action == "reset":
+                    EXAM.reset()
+                else:
+                    raise ValueError("Neznamy action")
+                self._json_response({"ok": True, "phase": EXAM.phase})
                 return
 
             # --- Admin API (POST) ---
@@ -1053,15 +1622,37 @@ class Handler(BaseHTTPRequestHandler):
                 if not self._require_admin():
                     return
                 filename = str(data.get("filename", ""))
+                mode = str(data.get("mode", "game"))
                 if not filename:
                     self._json_response({"error": "filename required"}, status=400)
                     return
                 try:
                     questions = load_questions_from_file(filename)
-                    QUIZ.reload_questions(questions, bank_name=filename)
-                    self._json_response({"ok": True, "count": len(questions)})
+                    if mode == "exam":
+                        EXAM.reload_questions(questions, bank_name=filename)
+                        set_app_mode("exam")
+                    else:
+                        QUIZ.reload_questions(questions, bank_name=filename)
+                        set_app_mode("game")
+                    self._json_response({"ok": True, "count": len(questions), "mode": get_app_mode()})
                 except Exception as e:
                     self._json_response({"error": str(e)}, status=400)
+                return
+
+            if path == "/api/admin/mode":
+                if not self._require_admin():
+                    return
+                mode = str(data.get("mode", ""))
+                if mode not in ("game", "exam"):
+                    self._json_response({"error": "mode must be game or exam"}, status=400)
+                    return
+                self._json_response({"ok": True, "mode": set_app_mode(mode)})
+                return
+
+            if path == "/api/admin/exam/config":
+                if not self._require_admin():
+                    return
+                self._json_response({"ok": True, "config": EXAM.update_config(data)})
                 return
 
             if path == "/api/admin/timing":
@@ -1134,7 +1725,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Local classroom quiz web")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--admin-password", default=os.environ.get("QUIZ_ADMIN_PASSWORD", ""),
                         help="Password for admin portal (empty = no auth)")
     parser.add_argument("--ollama-host", default=os.environ.get("OLLAMA_HOST", "localhost"))

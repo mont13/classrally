@@ -1,0 +1,47 @@
+============================================================
+  ClassRally — rychlý start pro učitele (Windows)
+============================================================
+
+CO TO JE
+  Nástroj na kvíz NEBO písemku ve třídě. Server běží na vašem
+  notebooku, žáci se připojí mobilem přes QR kód. Funguje BEZ
+  internetu — stačí, aby notebook i mobily byly na stejné Wi-Fi.
+
+
+SPUŠTĚNÍ (3 kroky)
+  1) Rozbalte celou složku ClassRally na plochu (nebo kamkoli).
+  2) Dvojklik na  Spustit-ClassRally.bat
+     - Při PRVNÍM spuštění Windows zobrazí dotaz firewallu —
+       klikněte na "Povolit přístup" (jinak se žáci nepřipojí).
+     - Objeví se černé okno. NECHTE HO OTEVŘENÉ — drží server.
+       Zavřením okna server vypnete.
+  3) Sám se otevře učitelský portál (http://127.0.0.1:48217/admin).
+
+
+JAK ZADAT PÍSEMKU
+  V portálu klikněte na záložku  "Pisemka (test)":
+  1) Vyberte sadu otázek, nastavte časový limit a volby
+     (míchání pořadí, zákaz kopírování, auto-odevzdání…).
+  2) Klikněte "Pripravit pisemku".
+  3) Řekněte žákům, ať na mobilu otevřou URL pro žáky
+     (je nahoře v portálu) nebo naskenují QR kód.
+  4) Až jsou všichni přihlášení, klikněte "Spustit pisemku".
+  5) V "Zivy prehled" vidíte, kdo kde je a kdo opustil okno testu.
+  6) Po skončení "Stahnout vysledky (CSV)" — otevřete v Excelu.
+
+
+JAK SPUSTIT HRU (kvíz jako Kahoot)
+  V záložce "Sady otazek" klikněte u sady na "Aktivovat".
+  Pak otevřete "Host obrazovka" na projektoru a žáci hrají živě.
+
+
+PŘIPOJENÍ ŽÁKŮ NEFUNGUJE?
+  Viz soubor  WIFI-NAVOD.txt  — vysvětluje tři způsoby připojení
+  a nejčastější problém (oddělení klientů na školní Wi-Fi).
+
+
+HESLO DO PORTÁLU (volitelné)
+  Bez hesla je portál otevřený komukoli v síti. Chcete-li heslo,
+  spusťte přes příkaz:
+     set QUIZ_ADMIN_PASSWORD=mojeheslo  &&  Spustit-ClassRally.bat
+============================================================

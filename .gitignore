@@ -25,6 +25,17 @@ Thumbs.db
 # Claude Code sessions
 .claude/
 
+# Windows package build artifacts
+windows-build/
+dist/
+.cache/
+
+# DeepSeek delegation audit log (gitignored per skill convention)
+deepseek/calls.jsonl
+
+# Teoreticka cast zaverecne prace — SOUKROME, nepatri na verejny GitHub
+research/
+
 # Old/deprecated scripts
 docker-run.sh
 download_free_quiz_music.sh

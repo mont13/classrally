@@ -1,8 +1,15 @@
-# ClassRally - Kvizova platforma pro tridu
+# ClassRally - Kvizova a testovaci platforma pro tridu
 
-ClassRally je lokalni kviz pro tridu. Ucitel ho spusti na notebooku, promita host obrazovku na projektor a zaci se pripoji pres QR kod z mobilu. Internet ani studentske ucty nejsou potreba — vse bezi v lokalni siti.
+ClassRally je lokalni nastroj pro tridu se dvema rezimy:
 
-Staci Python nebo Docker, nic dalsiho neni treba instalovat.
+- **Hra (Kahoot styl)** — ziva lockstep hra, vsichni na stejne otazce, body za rychlost, leaderboard, hudba, podium.
+- **Pisemka (test pro znamku)** — kazdy zak svym tempem, vlastni zamichane poradi otazek/odpovedi, casovy limit, automaticke znamkovani (ceske 1-5) a **dohled** (vidite, kdo opustil okno testu).
+
+Ucitel server spusti na notebooku, zaci se pripoji pres QR kod z mobilu. Internet ani studentske ucty nejsou potreba — vse bezi v lokalni siti.
+
+Staci Python nebo Docker (Linux/Mac), na Windows hotovy ZIP s pribalenym Pythonem — nic dalsiho neni treba instalovat.
+
+> **Port:** vychozi je atypicky **48217** (aby nekolidoval na sdilenych strojich). Zmenite promennou `QUIZ_PORT`.
 
 ## Jak odehrat prvni hru
 
@@ -36,25 +43,56 @@ QUIZ_ADMIN_PASSWORD=mojeHeslo ./start.sh
 ### Bez Dockeru
 
 ```bash
-python3 server.py --host 0.0.0.0 --port 8765
+python3 server.py --host 0.0.0.0 --port 48217
 ```
 
 Server vypise URL a pristupovy klic:
 
 ```
-Host screen:   http://192.168.1.10:8765/host
-Player screen: http://192.168.1.10:8765/play
-Admin portal:  http://192.168.1.10:8765/admin
+Host screen:   http://192.168.1.10:48217/host
+Player screen: http://192.168.1.10:48217/play
+Admin portal:  http://192.168.1.10:48217/admin
 *** HOST TOKEN: a1b2c3d4e5f6... ***
 ```
 
 | Adresa | Kdo ji pouziva | K cemu slouzi |
 |--------|---------------|---------------|
-| `/host` | Ucitel (projektor) | Ridici obrazovka — otazky, zebricek, hudba, QR kod |
-| `/play` | Zaci (mobily) | Prihlaseni a odpovedi |
-| `/admin` | Ucitel (PC) | Sprava sad otazek, AI generator, historie, nastaveni |
+| `/host` | Ucitel (projektor) | Ridici obrazovka hry — otazky, zebricek, hudba, QR kod |
+| `/play` | Zaci (mobily) | Prihlaseni a odpovedi (hra) |
+| `/exam` | Zaci (mobily) | Pisemka — test pro znamku (sem se `/play` automaticky prepne v rezimu Pisemka) |
+| `/admin` | Ucitel (PC) | Sprava sad, rezim Pisemka, AI generator, historie, nastaveni |
 
 Mobily musi byt ve stejne Wi-Fi siti jako server.
+
+### Windows (pro ucitele bez znalosti)
+
+Na Windows nepouzivame `.exe` (kvuli podpisu/SmartScreen). Misto toho **prenosny Python v ZIPu**:
+
+```bash
+# Sestaveni balicku (na Linux/Mac; stahne prenosny Python a zabali aplikaci)
+./make-windows-package.sh
+# -> dist/ClassRally-Windows.zip
+```
+
+Ucitel pak:
+1. Rozbali `ClassRally-Windows.zip`.
+2. Dvojklik na `Spustit-ClassRally.bat` (zadny Python instalovat netreba).
+3. Pri prvnim spusteni klikne ve firewallu na **Povolit pristup**.
+4. Sam se otevre ucitelsky portal; zaci se pripoji pres QR.
+
+Navody pro ucitele jsou primo v ZIPu (`CTI-ME-PRVNI.txt`, `WIFI-NAVOD.txt`).
+
+## Pisemka (test pro znamku)
+
+V ucitelskem portalu (`/admin`) zalozka **Pisemka (test)**:
+
+1. **Vyber sadu** a nastav casovy limit, michani poradi, zakaz kopirovani, hranice znamek (min % pro 1/2/3/4) a pripadne auto-odevzdani po N opusteni okna.
+2. **Pripravit pisemku** — aktivuje sadu do rezimu Pisemka (`/play` u zaku se automaticky prepne na `/exam`).
+3. **Spustit pisemku** — od ted bezi spolecny casovy limit.
+4. **Zivy prehled (dohled)** — u kazdeho zaka vidite: u ktere otazky je, kolik zodpovedel, **kolikrat opustil okno testu** a jak dlouho byl mimo, stav a vyslednou znamku.
+5. **Stahnout vysledky (CSV)** — otevrete v Excelu.
+
+**Dohled / anti-cheat:** detekce prepnuti aplikace/zalozky (Page Visibility API) s varovnim pres celou obrazovku, volitelne auto-odevzdani, zakaz kopirovani a michani poradi otazek i odpovedi kazdemu zakovi jinak. Pozn.: v mobilnim prohlizeci nelze vynutit tvrdy lockdown — opusteni okna se **meri a hlasi ucitelovi**, neda se mu zabranit.
 
 ## Proc ClassRally
 
@@ -154,6 +192,7 @@ Celkem **90 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI.
 | Promenna | Default | Popis |
 |----------|---------|-------|
 | `QUIZ_ADMIN_PASSWORD` | _(prazdne)_ | Heslo pro ucitelsky portal |
+| `QUIZ_PORT` | `48217` | Port serveru (atypicky vychozi kvuli sdilenym strojum) |
 | `QUIZ_EXTERNAL_IP` | _(auto)_ | IP adresa pro URL hracu (Docker) |
 | `OLLAMA_HOST` | `localhost` | Adresa AI serveru |
 | `OLLAMA_PORT` | `11434` | Port AI serveru |
@@ -179,22 +218,29 @@ classrally/
   docker-compose.yml               # Docker Compose konfigurace
   start.sh / stop.sh / rebuild.sh / logs.sh  # Docker skripty
   docker-common.sh                 # sdilene funkce
+  make-windows-package.sh          # sestavi ClassRally-Windows.zip (prenosny Python)
+  windows/
+    Spustit-ClassRally.bat         # spousteci skript pro ucitele
+    CTI-ME-PRVNI.txt               # rychly start pro ucitele
+    WIFI-NAVOD.txt                 # navod na pripojeni zaku
   static/
-    host.html                      # ucitelska obrazovka (projektor)
-    play.html                      # hracska obrazovka (mobil)
-    admin.html                     # ucitelsky portal
+    host.html                      # ucitelska obrazovka hry (projektor)
+    play.html                      # hracska obrazovka hry (mobil)
+    exam.html                      # studentska obrazovka pisemky (mobil)
+    admin.html                     # ucitelsky portal (vc. rezimu Pisemka)
     style.css                      # spolecne styly
     audio/                         # vlastni MP3/OGG/WAV
   questions/                       # sady otazek (JSON)
   history/                         # historie her (generovano za behu)
-  test_server.py                   # 77 unit + integracnich testu
+  test_server.py                   # 93 unit + integracnich testu
 ```
 
 ## Testy
 
 ```bash
-python3 test_server.py        # 77 unit + integracnich testu
-./smoke_test.sh               # end-to-end smoke test
+python3 test_server.py        # 93 unit + integracnich testu (hra i pisemka)
+./smoke_test.sh               # end-to-end smoke test (hra i pisemka)
+PORT=48999 ./smoke_test.sh    # na jinem portu, kdyz je vychozi obsazeny
 ```
 
 ## API Reference
@@ -211,6 +257,18 @@ python3 test_server.py        # 77 unit + integracnich testu
 | POST | `/api/register` | `{"name":"Jmeno"}` → registrace hrace |
 | POST | `/api/submit` | `{"player_id":"X","player_secret":"S","choice":0}` |
 | POST | `/api/host/action` | `{"action":"start\|reveal\|next\|reset\|save_history"}` |
+| GET | `/api/mode` | Aktivni rezim (`game` / `exam`) — `/play` se podle nej prepina |
+
+### Pisemka (exam) endpointy
+
+| Metoda | Endpoint | Popis |
+|--------|----------|-------|
+| GET | `/api/exam/state?player_id=X&secret=S` | Stav pisemky pro zaka (otazky, cas, vysledek) |
+| POST | `/api/exam/answer` | `{"player_id","player_secret","question_id","choice"}` (choice = original `oid`) |
+| POST | `/api/exam/position` | `{"player_id","player_secret","position"}` (pro zivy prehled) |
+| POST | `/api/exam/event` | `{"player_id","player_secret","type":"blur\|focus"}` (dohled) |
+| POST | `/api/exam/submit` | Odevzdani + znamkovani |
+| POST | `/api/host/exam-action` | host token: `{"action":"open\|end\|extend\|reset"}` |
 
 ### Admin endpointy
 
@@ -221,8 +279,12 @@ python3 test_server.py        # 77 unit + integracnich testu
 | GET | `/api/admin/bank?filename=X` | Nacist sadu |
 | POST | `/api/admin/bank/save` | Ulozit sadu |
 | POST | `/api/admin/bank/delete` | Smazat sadu |
-| POST | `/api/admin/bank/activate` | Aktivovat sadu do hry |
-| POST | `/api/admin/timing` | Nastavit casovani |
+| POST | `/api/admin/bank/activate` | Aktivovat sadu (`{"filename","mode":"game\|exam"}`) |
+| POST | `/api/admin/mode` | Prepnout rezim (`{"mode":"game\|exam"}`) |
+| GET/POST | `/api/admin/exam/config` | Cist/ulozit nastaveni pisemky |
+| GET | `/api/admin/exam/overview` | Zivy prehled zaku (dohled) |
+| GET | `/api/admin/exam/results.csv` | Export vysledku (CSV pro Excel) |
+| POST | `/api/admin/timing` | Nastavit casovani hry |
 | GET | `/api/admin/history` | Historie her |
 | POST | `/api/admin/ai/generate` | AI generovani otazek |
 

@@ -98,6 +98,11 @@
   </main>
 
   <script>
+    // If the teacher switched to exam (písemka) mode, send students to the test UI.
+    fetch('/api/mode').then(r => r.json()).then(m => {
+      if (m && m.mode === 'exam') location.replace('/exam');
+    }).catch(() => {});
+
     const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
     const shapes = ['\u25B2', '\u25C6', '\u25CF', '\u25A0'];
     const KEY = 'quiz_player_id';
