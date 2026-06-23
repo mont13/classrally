@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title data-i18n="landing.page_title">ClassRally</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/i18n.js"></script>
+  <style>
+    .landing-wrap {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 80vh; gap: 32px; padding: 32px 16px; text-align: center;
+    }
+    .landing-logo { font-size: clamp(2.8rem, 5vw, 4rem); font-weight: 900; color: #fff;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .landing-sub { color: rgba(255,255,255,0.75); font-size: 1.2rem; max-width: 500px; }
+    .role-cards { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+    .role-card {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      padding: 36px 40px; border-radius: var(--radius); background: var(--panel);
+      box-shadow: var(--shadow); cursor: pointer; text-decoration: none; color: var(--ink);
+      transition: transform 150ms ease, box-shadow 150ms ease;
+      min-width: 200px;
+    }
+    .role-card:hover { transform: translateY(-4px); box-shadow: 0 24px 50px rgba(3,10,25,0.35); }
+    .role-icon { font-size: 3rem; }
+    .role-title { font-size: 1.5rem; font-weight: 900; }
+    .role-desc { color: var(--muted); font-size: 0.95rem; max-width: 200px; }
+
+    /* Setup card */
+    .setup-card {
+      background: var(--panel); border-radius: var(--radius); padding: 36px 32px;
+      box-shadow: var(--shadow); max-width: 420px; width: 90%; text-align: center;
+    }
+    .setup-card h2 { margin: 0 0 8px; font-size: 1.6rem; }
+    .setup-card p { color: var(--muted); margin: 0 0 20px; font-size: 0.95rem; }
+    .setup-card input { width: 100%; padding: 12px; border: 2px solid #7dd3fc; border-radius: 10px;
+      font-size: 1.1rem; margin-bottom: 12px; box-sizing: border-box; }
+    .setup-card input:focus { outline: 0; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.2); }
+    .setup-error { color: var(--bad); font-weight: 700; font-size: 0.95rem; margin-bottom: 10px; display: none; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="landing-wrap">
+    <div class="landing-logo">ClassRally</div>
+
+    <!-- Setup form — shown when no teacher account exists -->
+    <div id="setupCard" class="setup-card hidden">
+      <h2 data-i18n="landing.setup_title">Prvni spusteni</h2>
+      <p data-i18n="landing.setup_desc">Vytvorte si ucitelsky ucet. Budete mit plnou kontrolu nad hrou.</p>
+      <div id="setupError" class="setup-error"></div>
+      <input type="text" id="setupNickname" data-i18n-placeholder="landing.setup_nickname_placeholder" placeholder="Prezdivka (napr. Ucitel Novak)" autocomplete="username" />
+      <input type="password" id="setupPassword" data-i18n-placeholder="landing.setup_password_placeholder" placeholder="Heslo (min. 4 znaky)" autocomplete="new-password" />
+      <input type="password" id="setupPassword2" data-i18n-placeholder="landing.setup_password2_placeholder" placeholder="Heslo znovu" autocomplete="new-password" />
+      <button class="btn good" id="setupBtn" style="width:100%;margin-top:4px;" data-i18n="landing.setup_btn">Vytvorit ucet a zacit</button>
+    </div>
+
+    <!-- Role selection — shown when teacher exists -->
+    <div id="roleSelection" class="hidden">
+      <div class="landing-sub" data-i18n="landing.subtitle">Interaktivni kviz pro tridu. Vyber svou roli:</div>
+      <div class="role-cards" style="margin-top:24px;">
+        <a href="/play" class="role-card">
+          <div class="role-icon">&#x1F3AE;</div>
+          <div class="role-title" data-i18n="landing.role_student">Zak</div>
+          <div class="role-desc" data-i18n="landing.role_student_desc">Pripoj se do kvizu z mobilu a odpovidej na otazky.</div>
+        </a>
+        <a href="/host" class="role-card">
+          <div class="role-icon">&#x1F4BB;</div>
+          <div class="role-title" data-i18n="landing.role_teacher">Ucitel</div>
+          <div class="role-desc" data-i18n="landing.role_teacher_desc">Ovladej hru, zobraz otazky na projektoru.</div>
+        </a>
+        <a href="/admin" class="role-card">
+          <div class="role-icon">&#x2699;&#xFE0F;</div>
+          <div class="role-title" data-i18n="landing.role_admin">Sprava</div>
+          <div class="role-desc" data-i18n="landing.role_admin_desc">Nastaveni, banky otazek, historie her.</div>
+        </a>
+      </div>
+      <div style="margin-top:28px;">
+        <a href="/profile" class="btn secondary" style="font-size:1rem;" data-i18n="landing.profile_link">Muj profil / Prihlaseni</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function checkSetup() {
+      try {
+        const resp = await fetch('/api/setup-status');
+        const data = await resp.json();
+        if (data.setup_needed) {
+          document.getElementById('setupCard').classList.remove('hidden');
+        } else {
+          document.getElementById('roleSelection').classList.remove('hidden');
+        }
+      } catch (_) {
+        // On error, show role selection as fallback
+        document.getElementById('roleSelection').classList.remove('hidden');
+      }
+    }
+
+    async function doSetup() {
+      const nickname = document.getElementById('setupNickname').value.trim();
+      const password = document.getElementById('setupPassword').value;
+      const password2 = document.getElementById('setupPassword2').value;
+      const errorEl = document.getElementById('setupError');
+      const btn = document.getElementById('setupBtn');
+
+      errorEl.style.display = 'none';
+
+      if (!nickname) {
+        errorEl.textContent = i18n.t('landing.setup_err_nickname');
+        errorEl.style.display = 'block';
+        return;
+      }
+      if (password.length < 4) {
+        errorEl.textContent = i18n.t('landing.setup_err_password');
+        errorEl.style.display = 'block';
+        return;
+      }
+      if (password !== password2) {
+        errorEl.textContent = i18n.t('landing.setup_err_mismatch');
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const resp = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname, password, role: 'teacher' })
+        });
+        const data = await resp.json();
+        if (data.ok && data.token) {
+          localStorage.setItem('quiz_user_token', data.token);
+          // Redirect to admin panel to get started
+          window.location.href = '/admin';
+          return;
+        }
+        errorEl.textContent = data.error || 'Chyba registrace';
+        errorEl.style.display = 'block';
+      } catch (e) {
+        errorEl.textContent = 'Chyba spojeni';
+        errorEl.style.display = 'block';
+      }
+      btn.disabled = false;
+    }
+
+    i18n.init().then(() => {
+      i18n.apply();
+      injectLangSwitcher();
+      checkSetup();
+
+      document.getElementById('setupBtn').addEventListener('click', doSetup);
+      document.getElementById('setupPassword2').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doSetup();
+      });
+    });
+  </script>
+</body>
+</html>

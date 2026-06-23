@@ -2,9 +2,11 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8" />
+  <link rel="icon" type="image/png" href="/static/favicon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Admin - Ucitelsky portal</title>
+  <title data-i18n="admin.page_title">Quiz Admin - Ucitelsky portal</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/i18n.js"></script>
   <style>
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
     .tab { padding: 12px 20px; border-radius: 12px 12px 0 0; border: 2px solid #7dd3fc; border-bottom: 0;
@@ -51,172 +53,478 @@
     .login-box { max-width: 400px; margin: 80px auto; }
     .host-token-box { margin-top: 16px; padding: 12px; background: #fef3c7; border: 2px solid #fbbf24;
       border-radius: 10px; font-family: monospace; word-break: break-all; }
+    .drag-handle { cursor: grab; color: #94a3b8; font-size: 1.2rem; padding: 0 8px 0 0;
+      user-select: none; line-height: 1; flex-shrink: 0; }
+    .drag-handle:active { cursor: grabbing; }
+    .q-editor { transition: opacity 0.15s; }
+    .q-editor.dragging { opacity: 0.4; border: 2px dashed #7dd3fc !important; }
+    .q-editor.drag-over-top { border-top: 3px solid #0284c7 !important; }
+    .q-editor.drag-over-bottom { border-bottom: 3px solid #0284c7 !important; }
+    .hw-link-box { margin-top: 12px; padding: 14px; background: #ecfdf5; border: 2px solid #34d399;
+      border-radius: 12px; font-family: monospace; word-break: break-all; font-size: 1rem; cursor: pointer; }
+    .hw-result-item { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px; margin-bottom: 6px; background: #f8fafc; flex-wrap: wrap; }
+    .hw-result-item .hw-name { font-weight: 800; font-size: 1.05rem; flex: 1; min-width: 100px; }
+    .hw-result-item .hw-score { font-weight: 800; color: #0284c7; white-space: nowrap; }
+    .hw-result-item .hw-done { color: #16a34a; font-weight: 700; font-size: 0.85rem; }
+    .hw-result-item .hw-pending { color: #f59e0b; font-weight: 700; font-size: 0.85rem; }
+    .hw-progress-bar-wrap { flex: 1; min-width: 80px; background: #e2e8f0; border-radius: 99px; height: 8px; }
+    .hw-progress-bar { height: 8px; border-radius: 99px; background: linear-gradient(90deg, #34d399, #0284c7); }
+
+    /* ---- Dashboard tab styles ---- */
+    .dash-not-logged-in { text-align: center; padding: 48px 24px; }
+    .dash-not-logged-in .dash-lock { font-size: 3.5rem; margin-bottom: 16px; }
+    .dash-not-logged-in h2 { margin: 0 0 10px; color: #0c4a6e; }
+    .dash-not-logged-in p { color: #64748b; margin: 0 0 20px; }
+
+    .dash-welcome { display: flex; align-items: center; gap: 14px; margin-bottom: 22px;
+      padding: 18px 22px; background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+      border-radius: 16px; color: #fff; }
+    .dash-welcome-avatar { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.25);
+      display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0; }
+    .dash-welcome-text h2 { margin: 0; font-size: 1.4rem; }
+    .dash-welcome-text p { margin: 4px 0 0; opacity: 0.88; font-size: 0.95rem; }
+    .dash-role-badge { display: inline-block; padding: 3px 10px; border-radius: 99px;
+      background: rgba(255,255,255,0.25); font-size: 0.8rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-top: 6px; }
+
+    .dash-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px; margin-bottom: 22px; }
+    .dash-stat { padding: 18px 16px; border-radius: 14px; background: #f0f9ff;
+      border: 2px solid #bae6fd; text-align: center; }
+    .dash-stat .stat-val { font-size: 2rem; font-weight: 900; color: #0284c7; line-height: 1; }
+    .dash-stat .stat-label { font-size: 0.85rem; color: #64748b; margin-top: 4px; font-weight: 600; }
+
+    .dash-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 22px; }
+    .dash-action-btn { padding: 20px 16px; border-radius: 14px; border: 2px solid #7dd3fc;
+      background: #f0f9ff; cursor: pointer; text-align: center; transition: all 0.15s;
+      display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .dash-action-btn:hover { background: #0284c7; border-color: #0284c7; color: #fff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(2,132,199,0.25); }
+    .dash-action-btn .dash-action-icon { font-size: 2rem; }
+    .dash-action-btn .dash-action-label { font-weight: 800; font-size: 1rem; }
+    .dash-action-btn .dash-action-sub { font-size: 0.8rem; opacity: 0.75; }
+
+    .dash-section-title { font-size: 1.05rem; font-weight: 800; color: #0c4a6e;
+      margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+    .dash-section-wrap { margin-bottom: 22px; padding: 16px; background: #f8fafc;
+      border: 2px solid #e2e8f0; border-radius: 14px; }
+
+    .dash-activity-item { display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 0; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap; }
+    .dash-activity-item:last-child { border-bottom: none; }
+    .dash-activity-bank { display: flex; align-items: center; gap: 8px; }
+    .dash-activity-bank .dash-bank-icon { font-size: 1.1rem; }
+    .dash-activity-bank strong { color: #0c4a6e; }
+    .dash-activity-bank .muted { font-size: 0.85rem; }
+
+    .dash-class-item { display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap; }
+    .dash-class-item:last-child { border-bottom: none; }
+    .dash-class-info { display: flex; flex-direction: column; gap: 2px; }
+    .dash-class-info strong { color: #0c4a6e; cursor: pointer; }
+    .dash-class-info strong:hover { text-decoration: underline; }
+    .dash-class-meta { font-size: 0.85rem; color: #64748b; }
+    .dash-class-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .dash-qr-btn { padding: 5px 12px; font-size: 0.85rem; border-radius: 8px; border: 1px solid #7dd3fc;
+      background: #f0f9ff; cursor: pointer; font-weight: 700; }
+    .dash-qr-btn:hover { background: #0284c7; color: #fff; border-color: #0284c7; }
+    .dash-class-qr-box { margin-top: 8px; text-align: center; }
+    .dash-class-qr-box img { width: min(50vw, 200px); height: auto; border: 2px solid #e2e8f0; border-radius: 10px; }
+    .dash-empty { color: #94a3b8; font-size: 0.95rem; text-align: center; padding: 12px 0; }
+
+    @media (max-width: 600px) {
+      .dash-welcome { flex-direction: column; text-align: center; }
+      .dash-stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .dash-actions-grid { grid-template-columns: repeat(2, 1fr); }
+    }
   </style>
 </head>
 <body>
   <main class="app">
     <section id="loginCard" class="card login-box hide">
-      <h1>Admin prihlaseni</h1>
-      <p class="muted">Zadejte heslo pro pristup do ucitelskeho portalu.</p>
+      <h1 data-i18n="admin.login_title">Prihlaseni ucitele</h1>
+      <p class="muted" data-i18n="admin.login_subtitle">Prihlaste se ucitelskym uctem.</p>
       <div class="form-group">
-        <label for="loginPass">Heslo</label>
-        <input id="loginPass" type="password" placeholder="Heslo..." />
+        <label for="loginNick" data-i18n="admin.login_nick_label">Prezdivka</label>
+        <input id="loginNick" type="text" data-i18n-placeholder="admin.login_nick_placeholder" placeholder="Prezdivka..." autocomplete="username" />
       </div>
-      <button class="btn good" id="btnLogin">Prihlasit se</button>
+      <div class="form-group">
+        <label for="loginPass" data-i18n="admin.login_password_label">Heslo</label>
+        <input id="loginPass" type="password" data-i18n-placeholder="admin.login_password_placeholder" placeholder="Heslo..." autocomplete="current-password" />
+      </div>
+      <button class="btn good" id="btnLogin" data-i18n="admin.login_btn">Prihlasit se</button>
       <p id="loginErr" style="color:#b91c1c;font-weight:700;margin-top:10px;"></p>
+      <p style="margin-top:12px;"><a href="/" style="color:var(--accent);" data-i18n="admin.login_back">Zpet na vyber role</a></p>
     </section>
 
     <section id="adminPanel" class="hide">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-          <h1>Ucitelsky portal</h1>
-          <div class="btn-row">
-            <a href="/host" class="btn secondary" style="text-decoration:none;">Host obrazovka</a>
-            <a id="linkPlay" href="/play" class="btn" style="text-decoration:none;">Hracska obrazovka</a>
+      <div class="card hero-card hero-card-admin">
+        <div class="hero-shell">
+          <div class="hero-copy">
+            <span class="hero-kicker" data-i18n="admin.hero_kicker">Teacher control deck</span>
+            <h1 class="hero-title" data-i18n="admin.title">Učitelský portál</h1>
+            <p class="muted hero-subtitle" data-i18n="admin.hero_subtitle">Spravuj sady otázek, AI generování, historii her i třídní režim z jednoho centrálního panelu.</p>
+            <div class="hero-badges">
+              <span class="hero-badge" data-i18n="admin.badge_question_banks">Banky otázek</span>
+              <span class="hero-badge" data-i18n="admin.tab_ai">AI generátor</span>
+              <span class="hero-badge" data-i18n="admin.badge_class_mode">Třídní režim</span>
+            </div>
+            <div class="btn-row">
+              <a href="/host" class="btn secondary" style="text-decoration:none;" data-i18n="admin.btn_host_screen">Host obrazovka</a>
+              <a id="linkPlay" href="/play" class="btn" style="text-decoration:none;" data-i18n="admin.btn_play_screen">Hracska obrazovka</a>
+              <button class="btn warn" id="btnLogout" style="margin-left:auto;" data-i18n="admin.btn_logout">Odhlasit se</button>
+            </div>
+          </div>
+          <div class="hero-art-wrap">
+            <div class="hero-art-frame">
+              <img src="/static/illustrations/admin-control.svg" alt="Ilustrace dashboardu s kartami otázek, statistikami a správou tříd." />
+            </div>
           </div>
         </div>
         <div id="playerUrlBar" class="hide" style="margin:10px 0;padding:10px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:10px;font-size:1.05rem;">
-          <strong>URL pro zaky:</strong> <span id="playerUrl" style="font-family:monospace;font-weight:800;"></span>
+          <strong data-i18n="admin.url_for_students">URL pro zaky:</strong> <span id="playerUrl" style="font-family:monospace;font-weight:800;"></span>
         </div>
 
         <div class="tabs">
-          <button class="tab active" data-tab="questions">Sady otazek</button>
-          <button class="tab" data-tab="editor">Editor otazek</button>
-          <button class="tab" data-tab="ai">AI navrh otazek</button>
-          <button class="tab" data-tab="timing">Pokrocile nastaveni</button>
-          <button class="tab" data-tab="history">Historie</button>
+          <button class="tab active" data-tab="dashboard" data-i18n="admin.tab_dashboard">Prehled</button>
+          <button class="tab" data-tab="questions" data-i18n="admin.tab_questions">Sady otázek</button>
+          <button class="tab" data-tab="editor" data-i18n="admin.tab_editor">Editor otázek</button>
+          <button class="tab" data-tab="ai" data-i18n="admin.tab_ai">AI generátor</button>
+          <button class="tab" data-tab="timing" data-i18n="admin.tab_settings">Nastavení</button>
+          <button class="tab" data-tab="history" data-i18n="admin.tab_history">Historie</button>
+          <button class="tab" data-tab="classes" data-i18n="admin.tab_classes">Třídy</button>
+          <button class="tab" data-tab="homework" data-i18n="admin.tab_homework">Domaci ukol</button>
+          <button class="tab" data-tab="users" data-i18n="admin.tab_users">Uzivatele</button>
         </div>
 
-        <div id="tab-questions" class="tab-content active">
-          <h2>Dostupne sady otazek</h2>
+        <!-- ========== DASHBOARD TAB ========== -->
+        <div id="tab-dashboard" class="tab-content active">
+
+          <!-- Not logged in state -->
+          <div id="dashNotLoggedIn" class="dash-not-logged-in hide">
+            <div class="dash-lock">🔒</div>
+            <h2 data-i18n="admin.dash_login_prompt">Prihlaste se pro personalizovany prehled</h2>
+            <p data-i18n="admin.dash_login_desc">Dashboard zobrazuje vase tridy, statistiky a posledni aktivitu. Pro pouzivani se nejdrive prihlaste do sveho ucitelskeho uctu.</p>
+            <a href="/profile" class="btn good" style="text-decoration:none;display:inline-block;" data-i18n="admin.dash_login_btn">Prihlasit se / Registrovat</a>
+          </div>
+
+          <!-- Logged in state -->
+          <div id="dashPanel" class="hide">
+
+            <!-- Welcome banner -->
+            <div class="dash-welcome">
+              <div class="dash-welcome-avatar" id="dashAvatar">👤</div>
+              <div class="dash-welcome-text">
+                <h2 id="dashWelcomeTitle" data-i18n="admin.dash_welcome">Vitejte!</h2>
+                <p id="dashWelcomeSub" data-i18n="admin.dash_welcome_sub">Ucitelsky portal ClassRally</p>
+                <span class="dash-role-badge" id="dashRoleBadge" data-i18n="admin.dash_role_teacher">ucitel</span>
+              </div>
+            </div>
+
+            <!-- Quick stats -->
+            <div class="dash-stats-grid">
+              <div class="dash-stat">
+                <div class="stat-val" id="dashStatBanks">—</div>
+                <div class="stat-label" data-i18n="admin.stat_banks">Sady otazek</div>
+              </div>
+              <div class="dash-stat">
+                <div class="stat-val" id="dashStatGames">—</div>
+                <div class="stat-label" data-i18n="admin.stat_games">Odehranych her</div>
+              </div>
+              <div class="dash-stat">
+                <div class="stat-val" id="dashStatClasses">—</div>
+                <div class="stat-label" data-i18n="admin.stat_classes">Trid</div>
+              </div>
+              <div class="dash-stat">
+                <div class="stat-val" id="dashStatStudents">—</div>
+                <div class="stat-label" data-i18n="admin.stat_students">Zaku celkem</div>
+              </div>
+            </div>
+
+            <!-- Quick actions -->
+            <div class="dash-section-title" data-i18n="admin.dash_quick_actions">Rychle akce</div>
+            <div class="dash-actions-grid">
+              <button class="dash-action-btn" id="dashActionEditor">
+                <span class="dash-action-icon">✏️</span>
+                <span class="dash-action-label" data-i18n="admin.dash_action_create_questions">Vytvorit otazky</span>
+                <span class="dash-action-sub" data-i18n="admin.dash_action_editor_sub">Editor otazek</span>
+              </button>
+              <button class="dash-action-btn" id="dashActionGame">
+                <span class="dash-action-icon">🚀</span>
+                <span class="dash-action-label" data-i18n="admin.dash_action_start_quiz">Spustit kviz</span>
+                <span class="dash-action-sub" data-i18n="admin.dash_action_host_sub">Host obrazovka</span>
+              </button>
+              <button class="dash-action-btn" id="dashActionHomework">
+                <span class="dash-action-icon">📋</span>
+                <span class="dash-action-label" data-i18n="admin.dash_action_homework">Zadat domaci ukol</span>
+                <span class="dash-action-sub" data-i18n="admin.dash_action_homework_sub">Self-paced rezim</span>
+              </button>
+              <button class="dash-action-btn" id="dashActionAi">
+                <span class="dash-action-icon">🤖</span>
+                <span class="dash-action-label" data-i18n="admin.dash_action_ai">AI generator</span>
+                <span class="dash-action-sub" data-i18n="admin.dash_action_ai_sub">Generovat s Ollama</span>
+              </button>
+            </div>
+
+            <!-- Recent activity -->
+            <div class="dash-section-wrap">
+              <div class="dash-section-title" data-i18n="admin.dash_recent_games">Posledni hry</div>
+              <div id="dashRecentGames"></div>
+            </div>
+
+            <!-- My classes overview -->
+            <div class="dash-section-wrap">
+              <div class="dash-section-title" data-i18n="admin.dash_my_classes">Moje tridy</div>
+              <div id="dashClassList"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <div id="tab-questions" class="tab-content">
+          <h2 data-i18n="admin.available_banks">Dostupne sady otazek</h2>
           <div style="margin-bottom:12px;">
-            <input id="bankSearch" class="input" placeholder="Hledat sadu..." style="font-size:1rem;padding:10px;max-width:400px;" />
+            <input id="bankSearch" class="input" data-i18n-placeholder="admin.search_bank_placeholder" placeholder="Hledat sadu..." style="font-size:1rem;padding:10px;max-width:400px;" />
           </div>
           <p id="bankCount" class="muted" style="margin:0 0 8px;font-size:0.95rem;"></p>
           <div id="bankList" class="bank-list"></div>
           <div style="margin-top: 14px;">
-            <h3>Vytvorit novou sadu</h3>
+            <h3 data-i18n="admin.create_new_bank">Vytvorit novou sadu</h3>
             <div class="inline-row">
               <div class="form-group">
-                <label for="newBankName">Nazev sady otazek</label>
-                <input id="newBankName" placeholder="moje_otazky" />
+                <label for="newBankName" data-i18n="admin.bank_name_label">Nazev sady otazek</label>
+                <input id="newBankName" data-i18n-placeholder="admin.bank_name_placeholder" placeholder="moje_otazky" />
               </div>
-              <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvorit</button>
+              <button class="btn good" id="btnCreateBank" style="height:44px;" data-i18n="admin.btn_create">Vytvorit</button>
             </div>
           </div>
         </div>
 
         <div id="tab-editor" class="tab-content">
-          <h2>Editor otazek</h2>
+          <h2 data-i18n="admin.editor_title">Editor otazek</h2>
           <div class="form-group">
-            <label for="editorBank">Sada k editaci</label>
+            <label for="editorBank" data-i18n="admin.editor_bank_label">Sada k editaci</label>
             <select id="editorBank"></select>
           </div>
           <div class="btn-row" style="margin-bottom: 14px;">
-            <button class="btn" id="btnLoadBank">Nacist</button>
-            <button class="btn good" id="btnSaveBank">Ulozit zmeny</button>
-            <button class="btn secondary" id="btnAddQuestion">Pridat otazku</button>
+            <button class="btn" id="btnLoadBank" data-i18n="admin.btn_load">Nacist</button>
+            <button class="btn good" id="btnSaveBank" data-i18n="admin.btn_save_changes">Ulozit zmeny</button>
+            <button class="btn secondary" id="btnAddQuestion" data-i18n="admin.btn_add_question">Pridat otazku</button>
+            <button class="btn secondary" id="btnExportJson" data-i18n="admin.btn_export_json">Export JSON</button>
+            <button class="btn secondary" id="btnExportCsv" data-i18n="admin.btn_export_csv">Export CSV</button>
+            <button class="btn secondary" id="btnImportJson" data-i18n="admin.btn_import_json">Import JSON</button>
+            <button class="btn secondary" id="btnImportCsv" data-i18n="admin.btn_import_csv">Import CSV</button>
+            <input id="importFileInput" type="file" accept=".json,.csv" style="display:none;" />
           </div>
           <div id="questionEditor"></div>
         </div>
 
         <div id="tab-ai" class="tab-content">
-          <h2>AI navrh otazek (Ollama)</h2>
+          <h2 data-i18n="admin.ai_title">AI navrh otazek</h2>
           <div class="form-group">
-            <label for="aiTopic">Tema otazek</label>
-            <input id="aiTopic" placeholder="napr. Linuxove prikazy, Docker kontejnery, sitove protokoly..." />
+            <label for="aiTopic" data-i18n="admin.ai_topic_label">Tema otazek</label>
+            <input id="aiTopic" data-i18n-placeholder="admin.ai_topic_placeholder" placeholder="napr. Linuxove prikazy, Docker kontejnery, sitove protokoly..." />
           </div>
           <div class="inline-row">
             <div class="form-group">
-              <label for="aiCount">Pocet otazek</label>
+              <label for="aiCount" data-i18n="admin.ai_count_label">Pocet otazek</label>
               <input id="aiCount" type="number" value="5" min="1" max="20" />
             </div>
             <div class="form-group">
-              <label for="aiModel">AI model</label>
+              <label for="aiModel" data-i18n="admin.ai_model_label">AI model</label>
               <input id="aiModel" />
             </div>
             <div class="form-group">
-              <label for="aiHost">AI server (adresa)</label>
-              <input id="aiHost" />
+              <label for="aiBaseUrl" data-i18n="admin.ai_base_url">AI Server URL</label>
+              <input id="aiBaseUrl" placeholder="http://localhost:11434" />
             </div>
             <div class="form-group">
-              <label for="aiPort">AI server (port)</label>
-              <input id="aiPort" type="number" />
+              <label for="aiApiKey" data-i18n="admin.ai_api_key">API klíč</label>
+              <input id="aiApiKey" type="password" data-i18n-placeholder="admin.ai_api_key_placeholder" placeholder="volitelné, pro placené služby" />
             </div>
           </div>
           <div class="inline-row">
             <div class="form-group">
-              <label for="aiLang">Jazyk</label>
+              <label for="aiLang" data-i18n="admin.ai_lang_label">Jazyk</label>
               <select id="aiLang">
-                <option value="cs">Cestina</option>
-                <option value="en">English</option>
-                <option value="sk">Slovenstina</option>
-                <option value="de">Deutsch</option>
+                <option value="cs" data-i18n="admin.lang_cs">Cestina</option>
+                <option value="en" data-i18n="admin.lang_en">English</option>
+                <option value="sk" data-i18n="admin.lang_sk">Slovenstina</option>
+                <option value="de" data-i18n="admin.lang_de">Deutsch</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="aiSaveAs">Ulozit do sady</label>
-              <input id="aiSaveAs" placeholder="ai_otazky" />
+              <label for="aiSaveAs" data-i18n="admin.ai_save_as_label">Ulozit do sady</label>
+              <select id="aiSaveAs">
+                <option value="__new__" data-i18n="admin.ai_create_new_bank">-- Vytvořit novou sadu --</option>
+              </select>
+              <input id="aiSaveAsNew" data-i18n-placeholder="admin.ai_save_as_placeholder" placeholder="ai_otazky" style="margin-top:6px;" />
             </div>
           </div>
           <div class="btn-row">
-            <button class="btn good" id="btnAiGenerate">Generovat otazky</button>
-            <button class="btn secondary" id="btnAiListModels">Zobrazit modely</button>
+            <button class="btn good" id="btnAiGenerate" data-i18n="admin.btn_ai_generate">Generovat otazky</button>
+            <button class="btn secondary" id="btnAiListModels" data-i18n="admin.btn_ai_list_models">Zobrazit modely</button>
           </div>
           <div id="aiStatus" class="hide"></div>
           <div id="aiPreview"></div>
         </div>
 
         <div id="tab-timing" class="tab-content">
-          <h2>Nastaveni kvizu</h2>
+          <h2 data-i18n="admin.settings_title">Nastaveni kvizu</h2>
           <div class="timing-grid">
             <div class="form-group">
-              <label for="timingQuestion">Cas na otazku (sekundy)</label>
+              <label for="timingQuestion" data-i18n="admin.timing_question_label">Cas na otazku (sekundy)</label>
               <input id="timingQuestion" type="number" min="5" max="120" />
             </div>
             <div class="form-group">
-              <label for="timingReveal">Cas na vyhodnoceni (sekundy)</label>
+              <label for="timingReveal" data-i18n="admin.timing_reveal_label">Cas na vyhodnoceni (sekundy)</label>
               <input id="timingReveal" type="number" min="2" max="30" />
             </div>
           </div>
-          <button class="btn good" id="btnSaveTiming">Ulozit nastaveni</button>
-          <p class="muted" style="margin-top:10px;">Zmeny se projevi od dalsi otazky.</p>
+          <button class="btn good" id="btnSaveTiming" data-i18n="admin.btn_save_settings">Ulozit nastaveni</button>
+          <p class="muted" style="margin-top:10px;" data-i18n="admin.timing_hint">Zmeny se projevi od dalsi otazky.</p>
 
-          <h3 style="margin-top: 24px;">Ollama konfigurace</h3>
+          <h3 style="margin-top: 24px;" data-i18n="admin.team_mode_title">Tymovy rezim</h3>
+          <p class="muted" data-i18n="admin.team_mode_desc">Hraci jsou automaticky rozdeleni do tymu (round-robin). Tymy soutezi o celkove skore.</p>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <label style="font-weight:700;">
+              <input type="checkbox" id="teamModeEnabled" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" />
+              <span data-i18n="admin.team_mode_enable">Povolit tymovy rezim</span>
+            </label>
+          </div>
+          <div id="teamModeOptions" class="hide">
+            <div class="form-group" style="max-width:200px;">
+              <label for="teamModeCount" data-i18n="admin.team_count_label">Pocet tymu (2-6)</label>
+              <input id="teamModeCount" type="number" min="2" max="6" value="2" />
+            </div>
+            <div class="form-group">
+              <label data-i18n="admin.team_names_label">Nazvy tymu (volitelne)</label>
+              <div id="teamNameInputs" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+            </div>
+          </div>
+          <button class="btn good" id="btnSaveTeamMode" data-i18n="admin.btn_save_team_mode">Ulozit tymovy rezim</button>
+          <p id="teamModeStatus" class="muted" style="margin-top:8px;"></p>
+
+          <h3 style="margin-top: 24px;" data-i18n="admin.ollama_config_title">AI konfigurace</h3>
           <div class="inline-row">
             <div class="form-group">
-              <label for="cfgOllamaHost">AI server (adresa)</label>
-              <input id="cfgOllamaHost" />
+              <label for="cfgAiBaseUrl" data-i18n="admin.cfg_ai_base_url">AI Server URL</label>
+              <input id="cfgAiBaseUrl" placeholder="http://localhost:11434" />
             </div>
             <div class="form-group">
-              <label for="cfgOllamaPort">AI server (port)</label>
-              <input id="cfgOllamaPort" type="number" />
+              <label for="cfgAiApiKey" data-i18n="admin.cfg_ai_api_key">API klíč</label>
+              <input id="cfgAiApiKey" type="password" data-i18n-placeholder="admin.ai_api_key_placeholder" placeholder="volitelné, pro placené služby" />
             </div>
             <div class="form-group">
-              <label for="cfgOllamaModel">AI model</label>
+              <label for="cfgOllamaModel" data-i18n="admin.cfg_ollama_model">AI model</label>
               <input id="cfgOllamaModel" />
             </div>
           </div>
-          <button class="btn" id="btnSaveOllama">Ulozit Ollama config</button>
+          <button class="btn" id="btnSaveOllama" data-i18n="admin.btn_save_ollama">Ulozit AI config</button>
 
-          <h3 style="margin-top: 24px;">Pristupovy klic pro ovladani hry</h3>
-          <p class="muted">Klic pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
-          <div id="hostTokenBox" class="host-token-box" style="cursor:pointer;">Nacitam...</div>
+          <h3 style="margin-top: 24px;" data-i18n="admin.host_token_title">Pristupovy klic pro ovladani hry</h3>
+          <p class="muted" data-i18n="admin.host_token_desc">Klic pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
+          <div id="hostTokenBox" class="host-token-box" style="cursor:pointer;" data-i18n="admin.loading">Nacitam...</div>
         </div>
 
         <div id="tab-history" class="tab-content">
-          <h2>Historie her</h2>
+          <h2 data-i18n="admin.history_title">Historie her</h2>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <button class="btn" id="btnRefreshHistory">Obnovit</button>
+            <button class="btn" id="btnRefreshHistory" data-i18n="admin.btn_refresh">Obnovit</button>
             <span id="historyCount" class="muted" style="font-size:0.95rem;"></span>
           </div>
           <div id="historyList" style="margin-top: 14px;"></div>
         </div>
+
+        <div id="tab-classes" class="tab-content">
+          <h2 data-i18n="admin.classes_title">Sprava trid</h2>
+          <p class="muted" data-i18n="admin.classes_subtitle">Pro spravu trid se musite prihlasit jako ucitel v profilu.</p>
+
+          <div id="classesLoggedOut">
+            <p data-i18n="admin.classes_logged_out">Pro spravu trid je potreba ucitelsky ucet.</p>
+          </div>
+
+          <div id="classesPanel" class="hide">
+            <!-- Create class form -->
+            <div style="margin-bottom:20px;">
+              <h3 data-i18n="admin.create_new_class">Vytvorit novou tridu</h3>
+              <div class="inline-row">
+                <div class="form-group">
+                  <label for="newClassName" data-i18n="admin.class_name_label">Nazev tridy</label>
+                  <input id="newClassName" data-i18n-placeholder="admin.class_name_placeholder" placeholder="napr. 3.B Informatika" />
+                </div>
+                <button class="btn good" id="btnCreateClass" style="height:44px;" data-i18n="admin.btn_create">Vytvorit</button>
+              </div>
+            </div>
+
+            <!-- Class list -->
+            <h3 data-i18n="admin.my_classes">Moje tridy</h3>
+            <div id="classList" class="bank-list"></div>
+
+            <!-- Class detail (members) -->
+            <div id="classDetail" class="hide" style="margin-top:20px;">
+              <h3 id="classDetailTitle" data-i18n="admin.class_members_title">Clenove tridy</h3>
+              <div id="classMemberList" class="bank-list"></div>
+              <button class="btn secondary" id="btnCloseClassDetail" style="margin-top:10px;" data-i18n="admin.btn_close">Zavrit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- HOMEWORK / SELF-PACED TAB -->
+        <div id="tab-homework" class="tab-content">
+          <h2 data-i18n="admin.homework_title">Domaci ukol (Self-paced)</h2>
+          <p class="muted" data-i18n="admin.homework_subtitle">Vytvor odkaz pro zaky, kteri mohou resit kviz vlastnim tempem — bez ucitele u projektoru.</p>
+
+          <div style="margin-bottom:20px;padding:16px;border:2px solid #7dd3fc;border-radius:12px;background:#f0f9ff;">
+            <h3 style="margin:0 0 12px;" data-i18n="admin.hw_create_title">Vytvorit novou domaci ulohu</h3>
+            <div class="inline-row">
+              <div class="form-group">
+                <label for="hwBankSelect" data-i18n="admin.hw_bank_label">Sada otazek</label>
+                <select id="hwBankSelect"></select>
+              </div>
+              <button class="btn good" id="btnCreateHomework" style="height:44px;" data-i18n="admin.btn_create_homework">Vytvorit ulohu</button>
+            </div>
+            <div id="hwCreatedBox" class="hide">
+              <p style="margin:10px 0 4px;font-weight:700;color:#166534;" data-i18n="admin.hw_created_msg">Uloha vytvorena! Sdilej tento odkaz se zaky:</p>
+              <div id="hwLinkBox" class="hw-link-box" data-i18n-title="admin.hw_click_to_copy" title="Klikni pro kopirovani"></div>
+              <p class="muted" style="font-size:0.85rem;margin:6px 0 0;" data-i18n="admin.hw_link_validity">Odkaz je platny 7 dni. Zaci kliknou na odkaz, zadaji jmeno a hned zacnou resit.</p>
+              <div style="margin-top:8px;">
+                <button class="btn secondary" id="btnCopyHwLink" style="font-size:0.9rem;" data-i18n="admin.btn_copy_link">Kopirovat odkaz</button>
+                <button class="btn secondary" id="btnShowHwQr" style="font-size:0.9rem;margin-left:6px;" data-i18n="admin.btn_show_qr">QR kod</button>
+              </div>
+              <div id="hwQrBox" class="hide" style="margin-top:10px;text-align:center;">
+                <img id="hwQrImg" src="" alt="QR kod" style="width:min(60vw,300px);height:auto;border:3px solid #e2e8f0;border-radius:12px;" />
+              </div>
+            </div>
+          </div>
+
+          <div id="hwResultsSection" class="hide">
+            <h3 data-i18n="admin.hw_results_title">Vysledky</h3>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+              <button class="btn" id="btnRefreshHwResults" data-i18n="admin.btn_refresh">Obnovit</button>
+              <span id="hwResultsCount" class="muted" style="font-size:0.95rem;"></span>
+            </div>
+            <div id="hwResultsList"></div>
+          </div>
+        </div>
+
+      </div>
+
+        <!-- USERS TAB -->
+        <div id="tab-users" class="tab-content">
+          <h2 data-i18n="admin.users_title">Sprava uzivatelu</h2>
+          <p class="muted" data-i18n="admin.users_subtitle">Vsichni registrovani uzivatele. Muzete menit role, resetovat hesla a mazat ucty.</p>
+          <div id="usersListAdmin" style="margin-top:16px;"></div>
+        </div>
+
       </div>
     </section>
   </main>
 
   <script>
+    let userToken = localStorage.getItem('quiz_user_token') || '';
+    // Legacy admin token — kept for backward compat with old admin password system
     let adminToken = localStorage.getItem('quiz_admin_token') || '';
     const abc = ['A','B','C','D','E','F'];
     let editorQuestions = [];
@@ -224,14 +532,16 @@
 
     async function api(path, method='GET', body=null) {
       const headers = { 'Content-Type': 'application/json' };
-      if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+      // Prefer UserToken (teacher account); fall back to legacy Bearer admin token
+      if (userToken) headers['Authorization'] = `UserToken ${userToken}`;
+      else if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
       const cfg = { method, headers };
       if (body) cfg.body = JSON.stringify(body);
       const res = await fetch(path, cfg);
       const data = await res.json();
       if (res.status === 401 && data.needs_auth) {
         showLogin();
-        throw new Error('Nutne prihlaseni');
+        throw new Error(i18n.t('admin.auth_required'));
       }
       if (!res.ok) throw new Error(data.error || 'Request failed');
       return data;
@@ -244,6 +554,7 @@
     function showLogin() {
       document.getElementById('loginCard').classList.remove('hide');
       document.getElementById('adminPanel').classList.add('hide');
+      i18n.apply();
     }
 
     function showAdmin() {
@@ -252,34 +563,54 @@
       loadBanks();
       loadOllamaConfig();
       loadTimingConfig();
+      loadTeamModeConfig();
       loadHostToken();
       loadNetworkInfo();
+      loadDashboard();
+      i18n.apply();
     }
 
     // --- Auth ---
     async function checkAuth() {
       try {
+        // Try to access an admin endpoint to verify auth
         const s = await api('/api/admin/auth-status');
-        if (!s.auth_required) { showAdmin(); return; }
-        if (s.authenticated) { showAdmin(); return; }
+        // If we got here without 401, we're authorized
+        if (!s.auth_required || s.authenticated) { showAdmin(); return; }
+        // Also check if UserToken gives us teacher access
+        if (userToken) {
+          const profile = await fetch('/api/auth/profile', {
+            headers: { 'Authorization': `UserToken ${userToken}` }
+          });
+          if (profile.ok) {
+            const u = await profile.json();
+            if (u.role === 'teacher') { showAdmin(); return; }
+          }
+        }
         showLogin();
       } catch { showLogin(); }
     }
 
     document.getElementById('btnLogin').addEventListener('click', async () => {
+      const nick = document.getElementById('loginNick').value.trim();
       const pass = document.getElementById('loginPass').value;
       const err = document.getElementById('loginErr');
       err.textContent = '';
+      if (!nick || !pass) { err.textContent = i18n.t('admin.login_fill_fields'); return; }
       try {
-        const r = await fetch('/api/admin/login', {
+        const r = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pass }),
+          body: JSON.stringify({ nickname: nick, password: pass }),
         });
         const d = await r.json();
-        if (!r.ok) { err.textContent = d.error || 'Chyba'; return; }
-        adminToken = d.token;
-        localStorage.setItem('quiz_admin_token', adminToken);
+        if (!r.ok) { err.textContent = d.error || i18n.t('admin.error'); return; }
+        if (d.user && d.user.role !== 'teacher') {
+          err.textContent = i18n.t('admin.login_not_teacher');
+          return;
+        }
+        userToken = d.token;
+        localStorage.setItem('quiz_user_token', userToken);
         showAdmin();
       } catch (e) { err.textContent = e.message; }
     });
@@ -296,8 +627,11 @@
         tab.classList.add('active');
         document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
         // Auto-load data when switching tabs
+        if (tab.dataset.tab === 'dashboard') loadDashboard();
         if (tab.dataset.tab === 'history') loadHistory();
         if (tab.dataset.tab === 'questions') loadBanks();
+        if (tab.dataset.tab === 'classes') loadClasses();
+        if (tab.dataset.tab === 'homework') loadHomeworkTab();
       });
     });
 
@@ -310,14 +644,14 @@
         // Also save to localStorage for host page
         localStorage.setItem('quiz_host_token', data.host_token);
       } catch {
-        document.getElementById('hostTokenBox').textContent = 'Nelze nacist (chybi opravneni)';
+        document.getElementById('hostTokenBox').textContent = i18n.t('admin.token_load_error');
       }
     }
 
     document.getElementById('hostTokenBox').addEventListener('click', () => {
       const text = document.getElementById('hostTokenBox').textContent;
       if (text && navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => alert('Token zkopirovan!'));
+        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.token_copied')));
       }
     });
 
@@ -347,6 +681,7 @@
         activeBankName = state.active_bank || '';
         renderBanks();
         updateEditorSelect();
+        updateAiBankSelect();
       } catch (e) { console.error(e); }
     }
 
@@ -360,8 +695,8 @@
         : allBanks;
 
       document.getElementById('bankCount').textContent = search
-        ? `${filtered.length} z ${allBanks.length} sad`
-        : `${allBanks.length} sad celkem`;
+        ? i18n.t('admin.bank_count_filtered', filtered.length, allBanks.length)
+        : i18n.t('admin.bank_count_total', allBanks.length);
 
       filtered.forEach(b => {
         const div = document.createElement('div');
@@ -373,12 +708,12 @@
         infoDiv.appendChild(nameStrong);
         const detailSpan = document.createElement('span');
         detailSpan.className = 'muted';
-        detailSpan.textContent = ` (${b.filename}) — ${b.question_count} otazek`;
+        detailSpan.textContent = ` (${b.filename}) — ${b.question_count} ${i18n.t('admin.questions_suffix')}`;
         infoDiv.appendChild(detailSpan);
         if (b.filename === activeBankName) {
           const activeSpan = document.createElement('span');
           activeSpan.style.cssText = 'color:#16a34a;font-weight:900;margin-left:6px;';
-          activeSpan.textContent = 'AKTIVNI';
+          activeSpan.textContent = i18n.t('admin.active_label');
           infoDiv.appendChild(activeSpan);
         }
         div.appendChild(infoDiv);
@@ -387,11 +722,11 @@
         actionsDiv.className = 'bank-actions';
         const activateBtn = document.createElement('button');
         activateBtn.className = 'btn';
-        activateBtn.textContent = 'Aktivovat';
+        activateBtn.textContent = i18n.t('admin.btn_activate');
         activateBtn.addEventListener('click', () => activateBank(b.filename));
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn warn';
-        deleteBtn.textContent = 'Smazat';
+        deleteBtn.textContent = i18n.t('admin.btn_delete');
         deleteBtn.addEventListener('click', () => deleteBank(b.filename));
         actionsDiv.appendChild(activateBtn);
         actionsDiv.appendChild(deleteBtn);
@@ -412,18 +747,41 @@
       });
     }
 
+    function updateAiBankSelect() {
+      const sel = document.getElementById('aiSaveAs');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      const newOpt = document.createElement('option');
+      newOpt.value = '__new__';
+      newOpt.textContent = i18n.t('admin.ai_create_new_bank');
+      sel.appendChild(newOpt);
+      allBanks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.filename;
+        opt.textContent = `${b.name} (${b.question_count})`;
+        sel.appendChild(opt);
+      });
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+      document.getElementById('aiSaveAsNew').style.display = sel.value === '__new__' ? '' : 'none';
+    }
+
+    document.getElementById('aiSaveAs').addEventListener('change', () => {
+      document.getElementById('aiSaveAsNew').style.display =
+        document.getElementById('aiSaveAs').value === '__new__' ? '' : 'none';
+    });
+
     document.getElementById('bankSearch').addEventListener('input', renderBanks);
 
     async function activateBank(filename) {
       try {
         await api('/api/admin/bank/activate', 'POST', { filename });
-        alert('Sada aktivovana! Hra resetovana.');
+        alert(i18n.t('admin.bank_activated'));
         loadBanks();
       } catch (e) { alert(e.message); }
     }
 
     async function deleteBank(filename) {
-      if (!confirm(`Opravdu smazat ${filename}?`)) return;
+      if (!confirm(i18n.t('admin.confirm_delete_bank', filename))) return;
       try {
         await api('/api/admin/bank/delete', 'POST', { filename });
         loadBanks();
@@ -432,7 +790,7 @@
 
     document.getElementById('btnCreateBank').addEventListener('click', async () => {
       const name = document.getElementById('newBankName').value.trim();
-      if (!name) { alert('Zadejte nazev'); return; }
+      if (!name) { alert(i18n.t('admin.enter_name')); return; }
       const filename = name.replace(/\s+/g, '_').toLowerCase() + '.json';
       try {
         await api('/api/admin/bank/save', 'POST', { filename, questions: [] });
@@ -445,7 +803,7 @@
     document.getElementById('btnLoadBank').addEventListener('click', async () => {
       const sel = document.getElementById('editorBank');
       editorFilename = sel.value;
-      if (!editorFilename) { alert('Vyberte sadu'); return; }
+      if (!editorFilename) { alert(i18n.t('admin.select_bank')); return; }
       try {
         const data = await api(`/api/admin/bank?filename=${encodeURIComponent(editorFilename)}`);
         editorQuestions = data.questions || [];
@@ -454,19 +812,132 @@
     });
 
     document.getElementById('btnSaveBank').addEventListener('click', async () => {
-      if (!editorFilename) { alert('Nejdrive nactete sadu'); return; }
+      if (!editorFilename) { alert(i18n.t('admin.load_bank_first')); return; }
       collectEditorData();
       try {
         await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
-        alert('Ulozeno!');
+        alert(i18n.t('admin.saved'));
         loadBanks();
       } catch (e) { alert(e.message); }
     });
 
     document.getElementById('btnAddQuestion').addEventListener('click', () => {
       const id = `q${Date.now()}`;
-      editorQuestions.push({ id, prompt: '', options: ['', '', '', ''], correct_index: 0, explanation: '' });
+      editorQuestions.push({ id, type: 'choice', prompt: '', options: ['', '', '', ''], correct_index: 0, explanation: '' });
       renderEditor();
+    });
+
+    // --- Export / Import ---
+
+    function triggerDownload(content, filename, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById('btnExportJson').addEventListener('click', async () => {
+      const sel = document.getElementById('editorBank');
+      const filename = sel.value || editorFilename;
+      if (!filename) { alert(i18n.t('admin.select_or_load_bank')); return; }
+      try {
+        const authHeader = adminToken ? `Bearer ${adminToken}` : '';
+        const res = await fetch(`/api/admin/bank/export/json?filename=${encodeURIComponent(filename)}`, {
+          headers: { 'Authorization': authHeader }
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Export failed'); }
+        const text = await res.text();
+        const stem = filename.replace(/\.json$/, '');
+        triggerDownload(text, `${stem}.json`, 'application/json');
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnExportCsv').addEventListener('click', async () => {
+      const sel = document.getElementById('editorBank');
+      const filename = sel.value || editorFilename;
+      if (!filename) { alert(i18n.t('admin.select_or_load_bank')); return; }
+      try {
+        const authHeader = adminToken ? `Bearer ${adminToken}` : '';
+        const res = await fetch(`/api/admin/bank/export/csv?filename=${encodeURIComponent(filename)}`, {
+          headers: { 'Authorization': authHeader }
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Export failed'); }
+        const text = await res.text();
+        const stem = filename.replace(/\.json$/, '');
+        triggerDownload(text, `${stem}.csv`, 'text/csv');
+      } catch (e) { alert(e.message); }
+    });
+
+    // Shared file-input handler: picks whether to do JSON or CSV import
+    let _importMode = 'json';
+
+    document.getElementById('btnImportJson').addEventListener('click', () => {
+      _importMode = 'json';
+      const input = document.getElementById('importFileInput');
+      input.accept = '.json';
+      input.value = '';
+      input.click();
+    });
+
+    document.getElementById('btnImportCsv').addEventListener('click', () => {
+      _importMode = 'csv';
+      const input = document.getElementById('importFileInput');
+      input.accept = '.csv';
+      input.value = '';
+      input.click();
+    });
+
+    document.getElementById('importFileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const sel = document.getElementById('editorBank');
+      // Suggest target filename from the uploaded file's stem + .json
+      const stem = file.name.replace(/\.(json|csv)$/i, '');
+      const suggestedName = stem + '.json';
+      const targetFilename = prompt(
+        i18n.t('admin.import_save_as_prompt'),
+        suggestedName
+      );
+      if (!targetFilename) return;
+      const finalFilename = targetFilename.endsWith('.json') ? targetFilename : targetFilename + '.json';
+
+      const text = await file.text();
+
+      try {
+        if (_importMode === 'json') {
+          // Parse locally and POST via existing bank/save endpoint
+          let questions;
+          try {
+            questions = JSON.parse(text);
+          } catch {
+            alert(i18n.t('admin.invalid_json'));
+            return;
+          }
+          if (!Array.isArray(questions)) {
+            alert(i18n.t('admin.json_must_be_array'));
+            return;
+          }
+          await api('/api/admin/bank/save', 'POST', { filename: finalFilename, questions });
+          alert(i18n.t('admin.imported_questions', questions.length, finalFilename));
+        } else {
+          // CSV import — POST raw CSV to dedicated endpoint
+          const result = await api('/api/admin/bank/import/csv', 'POST', {
+            filename: finalFilename,
+            csv: text,
+          });
+          alert(i18n.t('admin.imported_questions', result.count, finalFilename));
+        }
+        loadBanks();
+        // Auto-select in editor dropdown
+        setTimeout(() => {
+          const sel2 = document.getElementById('editorBank');
+          sel2.value = finalFilename;
+        }, 200);
+      } catch (err) {
+        alert(i18n.t('admin.import_error') + ': ' + err.message);
+      }
     });
 
     function collectEditorData() {
@@ -475,11 +946,56 @@
         if (idx >= editorQuestions.length) return;
         const q = editorQuestions[idx];
         q.prompt = ed.querySelector('.q-prompt').value;
-        q.explanation = ed.querySelector('.q-explanation').value;
-        q.options = Array.from(ed.querySelectorAll('.q-option')).map(o => o.value);
-        ed.querySelectorAll('.q-correct').forEach((r, ri) => { if (r.checked) q.correct_index = ri; });
+        q.explanation = ed.querySelector('.q-explanation')?.value || '';
+        const imgInput = ed.querySelector('.q-image-url');
+        if (imgInput) {
+          const imgVal = imgInput.value.trim();
+          if (imgVal) q.image_url = imgVal;
+          else delete q.image_url;
+        }
+        const qType = q.type || 'choice';
+
+        if (qType === 'choice' || qType === 'truefalse' || qType === 'multiselect') {
+          q.options = Array.from(ed.querySelectorAll('.q-option')).map(o => o.value);
+        }
+        if (qType === 'choice' || qType === 'truefalse') {
+          ed.querySelectorAll('.q-correct').forEach((r, ri) => { if (r.checked) q.correct_index = ri; });
+        }
+        if (qType === 'multiselect') {
+          q.correct_indices = [];
+          ed.querySelectorAll('.q-correct-ms').forEach((cb, ci) => { if (cb.checked) q.correct_indices.push(ci); });
+        }
+        if (qType === 'ordering') {
+          q.items = Array.from(ed.querySelectorAll('.q-ord-item')).map(o => o.value);
+        }
+        if (qType === 'openended') {
+          q.accepted_answers = Array.from(ed.querySelectorAll('.q-accepted')).map(o => o.value).filter(v => v.trim());
+        }
+        if (qType === 'poll') {
+          q.options = Array.from(ed.querySelectorAll('.q-option')).map(o => o.value);
+        }
+        if (qType === 'slide') {
+          const bodyEl = ed.querySelector('.q-slide-body');
+          if (bodyEl) q.body = bodyEl.value;
+        }
       });
     }
+
+    function getQTypes() {
+      return [
+        { value: 'choice', label: i18n.t('admin.qtype_choice') },
+        { value: 'truefalse', label: i18n.t('admin.qtype_truefalse') },
+        { value: 'multiselect', label: i18n.t('admin.qtype_multiselect') },
+        { value: 'ordering', label: i18n.t('admin.qtype_ordering') },
+        { value: 'openended', label: i18n.t('admin.qtype_openended') },
+        { value: 'poll', label: i18n.t('admin.qtype_poll') },
+        { value: 'wordcloud', label: i18n.t('admin.qtype_wordcloud') },
+        { value: 'slide', label: i18n.t('admin.qtype_slide') },
+      ];
+    }
+
+    // --- Drag & drop state ---
+    let dragSrcIdx = null;
 
     function renderEditor() {
       const container = document.getElementById('questionEditor');
@@ -487,17 +1003,117 @@
       editorQuestions.forEach((q, idx) => {
         const div = document.createElement('div');
         div.className = 'q-editor';
+        div.draggable = true;
+        div.dataset.idx = idx;
+        const qType = q.type || 'choice';
 
-        // Header
+        // Drag & drop handlers
+        div.addEventListener('dragstart', (e) => {
+          collectEditorData();
+          dragSrcIdx = idx;
+          div.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', idx);
+        });
+        div.addEventListener('dragend', () => {
+          dragSrcIdx = null;
+          div.classList.remove('dragging');
+          container.querySelectorAll('.q-editor').forEach(el => {
+            el.classList.remove('drag-over-top', 'drag-over-bottom');
+          });
+        });
+        div.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const target = e.currentTarget;
+          const targetIdx = parseInt(target.dataset.idx, 10);
+          if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
+          container.querySelectorAll('.q-editor').forEach(el => {
+            el.classList.remove('drag-over-top', 'drag-over-bottom');
+          });
+          const rect = target.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          if (e.clientY < midY) {
+            target.classList.add('drag-over-top');
+          } else {
+            target.classList.add('drag-over-bottom');
+          }
+        });
+        div.addEventListener('dragleave', (e) => {
+          if (!div.contains(e.relatedTarget)) {
+            div.classList.remove('drag-over-top', 'drag-over-bottom');
+          }
+        });
+        div.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const targetIdx = parseInt(div.dataset.idx, 10);
+          if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
+          const rect = div.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const insertAfter = e.clientY >= midY;
+          const [removed] = editorQuestions.splice(dragSrcIdx, 1);
+          let dest = targetIdx > dragSrcIdx ? targetIdx - 1 : targetIdx;
+          if (insertAfter) dest += 1;
+          editorQuestions.splice(dest, 0, removed);
+          renderEditor();
+        });
+
+        // Header with type selector
         const header = document.createElement('div');
         header.className = 'q-header';
+
+        // Drag handle
+        const handle = document.createElement('span');
+        handle.className = 'drag-handle';
+        handle.textContent = '⠿';
+        handle.title = i18n.t('admin.drag_to_reorder');
+        header.appendChild(handle);
+
         const h4 = document.createElement('h4');
-        h4.textContent = `Otazka ${idx + 1} (${q.id})`;
+        h4.textContent = i18n.t('admin.question_n', idx + 1);
         header.appendChild(h4);
+
+        const typeSelect = document.createElement('select');
+        typeSelect.style.cssText = 'padding:4px 8px;border-radius:6px;border:1px solid #cbd5e1;font-size:0.9rem;';
+        getQTypes().forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.value;
+          opt.textContent = t.label;
+          if (t.value === qType) opt.selected = true;
+          typeSelect.appendChild(opt);
+        });
+        typeSelect.addEventListener('change', () => {
+          collectEditorData();
+          const newType = typeSelect.value;
+          q.type = newType;
+          // Set defaults for new type
+          if (newType === 'truefalse') {
+            q.options = [i18n.t('admin.true_val'), i18n.t('admin.false_val')]; q.correct_index = 0;
+          } else if (newType === 'choice') {
+            if (!q.options || q.options.length < 2) q.options = ['', '', '', ''];
+            q.correct_index = q.correct_index || 0;
+          } else if (newType === 'multiselect') {
+            if (!q.options || q.options.length < 2) q.options = ['', '', '', ''];
+            if (!q.correct_indices) q.correct_indices = [];
+          } else if (newType === 'ordering') {
+            if (!q.items || q.items.length < 2) q.items = ['', '', ''];
+          } else if (newType === 'openended') {
+            if (!q.accepted_answers || q.accepted_answers.length < 1) q.accepted_answers = [''];
+          } else if (newType === 'poll') {
+            if (!q.options || q.options.length < 2) q.options = ['', '', '', ''];
+          } else if (newType === 'wordcloud') {
+            // no extra fields needed
+          } else if (newType === 'slide') {
+            if (!q.body) q.body = '';
+          }
+          renderEditor();
+        });
+        header.appendChild(typeSelect);
+
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn warn';
         removeBtn.style.cssText = 'padding:6px 12px;font-size:0.9rem;';
-        removeBtn.textContent = 'Odstranit';
+        removeBtn.textContent = i18n.t('admin.btn_remove');
         removeBtn.addEventListener('click', () => {
           collectEditorData();
           editorQuestions.splice(idx, 1);
@@ -510,72 +1126,371 @@
         const promptGroup = document.createElement('div');
         promptGroup.className = 'form-group';
         const promptLabel = document.createElement('label');
-        promptLabel.textContent = 'Zneni otazky';
+        promptLabel.textContent = i18n.t('admin.question_text_label');
         const promptInput = document.createElement('input');
         promptInput.type = 'text';
         promptInput.className = 'q-prompt';
         promptInput.value = q.prompt;
-        promptInput.placeholder = 'Text otazky...';
+        promptInput.placeholder = i18n.t('admin.question_text_placeholder');
         promptGroup.appendChild(promptLabel);
         promptGroup.appendChild(promptInput);
         div.appendChild(promptGroup);
 
-        // Options
-        const optGroup = document.createElement('div');
-        optGroup.className = 'form-group';
-        const optLabel = document.createElement('label');
-        optLabel.textContent = 'Moznosti (vyberte spravnou)';
-        optGroup.appendChild(optLabel);
-        (q.options || []).forEach((opt, oi) => {
-          const row = document.createElement('div');
-          row.className = 'option-row';
-          const radio = document.createElement('input');
-          radio.type = 'radio';
-          radio.name = `correct_${idx}`;
-          radio.className = 'q-correct';
-          radio.value = oi;
-          if (oi === q.correct_index) radio.checked = true;
-          const label = document.createElement('span');
-          label.textContent = `${abc[oi]})`;
-          const textInput = document.createElement('input');
-          textInput.type = 'text';
-          textInput.className = 'q-option';
-          textInput.value = opt;
-          textInput.placeholder = `Moznost ${abc[oi]}`;
-          row.appendChild(radio);
-          row.appendChild(label);
-          row.appendChild(textInput);
-          optGroup.appendChild(row);
-        });
-        div.appendChild(optGroup);
+        // Image URL field
+        const imgGroup = document.createElement('div');
+        imgGroup.className = 'form-group';
+        const imgLabel = document.createElement('label');
+        imgLabel.textContent = i18n.t('admin.image_url');
+        imgGroup.appendChild(imgLabel);
 
-        // Explanation
-        const expGroup = document.createElement('div');
-        expGroup.className = 'form-group';
-        const expLabel = document.createElement('label');
-        expLabel.textContent = 'Vysvetleni';
-        const expInput = document.createElement('input');
-        expInput.type = 'text';
-        expInput.className = 'q-explanation';
-        expInput.value = q.explanation || '';
-        expInput.placeholder = 'Proc je tato odpoved spravna...';
-        expGroup.appendChild(expLabel);
-        expGroup.appendChild(expInput);
-        div.appendChild(expGroup);
+        const imgRow = document.createElement('div');
+        imgRow.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+
+        const imgInput = document.createElement('input');
+        imgInput.type = 'text';
+        imgInput.className = 'q-image-url';
+        imgInput.value = q.image_url || '';
+        imgInput.placeholder = i18n.t('admin.image_url_placeholder');
+        imgInput.style.flex = '1';
+        imgInput.style.minWidth = '200px';
+        imgRow.appendChild(imgInput);
+
+        const imgFileInput = document.createElement('input');
+        imgFileInput.type = 'file';
+        imgFileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+        imgFileInput.style.display = 'none';
+        imgRow.appendChild(imgFileInput);
+
+        const imgUploadBtn = document.createElement('button');
+        imgUploadBtn.type = 'button';
+        imgUploadBtn.className = 'btn secondary';
+        imgUploadBtn.style.cssText = 'padding:8px 14px;font-size:0.85rem;white-space:nowrap;';
+        imgUploadBtn.textContent = i18n.t('admin.image_upload');
+        imgUploadBtn.addEventListener('click', () => imgFileInput.click());
+        imgRow.appendChild(imgUploadBtn);
+
+        const imgRemoveBtn = document.createElement('button');
+        imgRemoveBtn.type = 'button';
+        imgRemoveBtn.className = 'btn warn';
+        imgRemoveBtn.style.cssText = 'padding:8px 12px;font-size:0.85rem;white-space:nowrap;';
+        imgRemoveBtn.textContent = i18n.t('admin.image_remove');
+        imgRemoveBtn.addEventListener('click', () => {
+          imgInput.value = '';
+          imgPreview.style.display = 'none';
+          imgPreview.src = '';
+        });
+        imgRow.appendChild(imgRemoveBtn);
+
+        imgGroup.appendChild(imgRow);
+
+        const imgPreview = document.createElement('img');
+        imgPreview.style.cssText = 'max-width:120px;max-height:80px;border-radius:8px;margin-top:8px;border:2px solid #e2e8f0;display:none;';
+        if (q.image_url) {
+          imgPreview.src = q.image_url;
+          imgPreview.style.display = 'block';
+        }
+        imgGroup.appendChild(imgPreview);
+
+        imgInput.addEventListener('input', () => {
+          const val = imgInput.value.trim();
+          if (val) {
+            imgPreview.src = val;
+            imgPreview.style.display = 'block';
+          } else {
+            imgPreview.style.display = 'none';
+            imgPreview.src = '';
+          }
+        });
+
+        imgFileInput.addEventListener('change', async () => {
+          const file = imgFileInput.files[0];
+          if (!file) return;
+          if (file.size > 2 * 1024 * 1024) {
+            alert(i18n.t('admin.image_too_large'));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const resp = await api('/api/admin/upload-image', 'POST', {
+                image: reader.result,
+                filename: file.name,
+              });
+              imgInput.value = resp.url;
+              imgPreview.src = resp.url;
+              imgPreview.style.display = 'block';
+            } catch (e) {
+              alert(e.message || 'Upload failed');
+            }
+          };
+          reader.readAsDataURL(file);
+        });
+
+        div.appendChild(imgGroup);
+
+        // Type-specific fields
+        if (qType === 'choice' || qType === 'truefalse') {
+          renderChoiceEditor(div, q, idx, qType);
+        } else if (qType === 'multiselect') {
+          renderMultiselectEditor(div, q, idx);
+        } else if (qType === 'ordering') {
+          renderOrderingEditor(div, q, idx);
+        } else if (qType === 'openended') {
+          renderOpenEndedEditor(div, q, idx);
+        } else if (qType === 'poll') {
+          renderPollEditor(div, q, idx);
+        } else if (qType === 'wordcloud') {
+          renderWordcloudEditor(div, q, idx);
+        } else if (qType === 'slide') {
+          renderSlideEditor(div, q, idx);
+        }
+
+        // Explanation (only for question types that score)
+        if (qType !== 'slide' && qType !== 'wordcloud' && qType !== 'poll') {
+          const expGroup = document.createElement('div');
+          expGroup.className = 'form-group';
+          const expLabel = document.createElement('label');
+          expLabel.textContent = i18n.t('admin.explanation_label');
+          const expInput = document.createElement('input');
+          expInput.type = 'text';
+          expInput.className = 'q-explanation';
+          expInput.value = q.explanation || '';
+          expInput.placeholder = i18n.t('admin.explanation_placeholder');
+          expGroup.appendChild(expLabel);
+          expGroup.appendChild(expInput);
+          div.appendChild(expGroup);
+        }
 
         container.appendChild(div);
       });
+    }
+
+    function renderChoiceEditor(div, q, idx, qType) {
+      const optGroup = document.createElement('div');
+      optGroup.className = 'form-group';
+      const optLabel = document.createElement('label');
+      optLabel.textContent = i18n.t('admin.options_select_correct');
+      optGroup.appendChild(optLabel);
+      (q.options || []).forEach((opt, oi) => {
+        const row = document.createElement('div');
+        row.className = 'option-row';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = `correct_${idx}`;
+        radio.className = 'q-correct';
+        radio.value = oi;
+        if (oi === q.correct_index) radio.checked = true;
+        const label = document.createElement('span');
+        label.textContent = `${abc[oi]})`;
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'q-option';
+        textInput.value = opt;
+        textInput.placeholder = i18n.t('admin.option_placeholder', abc[oi]);
+        if (qType === 'truefalse') textInput.disabled = true;
+        row.appendChild(radio);
+        row.appendChild(label);
+        row.appendChild(textInput);
+        optGroup.appendChild(row);
+      });
+      if (qType === 'choice') {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn secondary';
+        addBtn.style.cssText = 'padding:4px 10px;font-size:0.85rem;margin-top:4px;';
+        addBtn.textContent = i18n.t('admin.btn_add_option');
+        addBtn.addEventListener('click', () => {
+          collectEditorData();
+          q.options.push('');
+          renderEditor();
+        });
+        optGroup.appendChild(addBtn);
+      }
+      div.appendChild(optGroup);
+    }
+
+    function renderMultiselectEditor(div, q, idx) {
+      const optGroup = document.createElement('div');
+      optGroup.className = 'form-group';
+      const optLabel = document.createElement('label');
+      optLabel.textContent = i18n.t('admin.options_check_correct');
+      optGroup.appendChild(optLabel);
+      const correctSet = new Set(q.correct_indices || []);
+      (q.options || []).forEach((opt, oi) => {
+        const row = document.createElement('div');
+        row.className = 'option-row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'q-correct-ms';
+        if (correctSet.has(oi)) cb.checked = true;
+        const label = document.createElement('span');
+        label.textContent = `${abc[oi]})`;
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'q-option';
+        textInput.value = opt;
+        textInput.placeholder = i18n.t('admin.option_placeholder', abc[oi]);
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(textInput);
+        optGroup.appendChild(row);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn secondary';
+      addBtn.style.cssText = 'padding:4px 10px;font-size:0.85rem;margin-top:4px;';
+      addBtn.textContent = i18n.t('admin.btn_add_option');
+      addBtn.addEventListener('click', () => {
+        collectEditorData();
+        q.options.push('');
+        renderEditor();
+      });
+      optGroup.appendChild(addBtn);
+      div.appendChild(optGroup);
+    }
+
+    function renderOrderingEditor(div, q, idx) {
+      const optGroup = document.createElement('div');
+      optGroup.className = 'form-group';
+      const optLabel = document.createElement('label');
+      optLabel.textContent = i18n.t('admin.ordering_label');
+      optGroup.appendChild(optLabel);
+      (q.items || []).forEach((item, oi) => {
+        const row = document.createElement('div');
+        row.className = 'option-row';
+        const label = document.createElement('span');
+        label.textContent = `${oi + 1}.`;
+        label.style.fontWeight = '700';
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'q-ord-item';
+        textInput.value = item;
+        textInput.placeholder = i18n.t('admin.item_placeholder', oi + 1);
+        row.appendChild(label);
+        row.appendChild(textInput);
+        optGroup.appendChild(row);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn secondary';
+      addBtn.style.cssText = 'padding:4px 10px;font-size:0.85rem;margin-top:4px;';
+      addBtn.textContent = i18n.t('admin.btn_add_item');
+      addBtn.addEventListener('click', () => {
+        collectEditorData();
+        q.items.push('');
+        renderEditor();
+      });
+      optGroup.appendChild(addBtn);
+      div.appendChild(optGroup);
+    }
+
+    function renderOpenEndedEditor(div, q, idx) {
+      const optGroup = document.createElement('div');
+      optGroup.className = 'form-group';
+      const optLabel = document.createElement('label');
+      optLabel.textContent = i18n.t('admin.accepted_answers_label');
+      optGroup.appendChild(optLabel);
+      (q.accepted_answers || ['']).forEach((ans, ai) => {
+        const row = document.createElement('div');
+        row.className = 'option-row';
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'q-accepted';
+        textInput.value = ans;
+        textInput.placeholder = i18n.t('admin.answer_placeholder', ai + 1);
+        row.appendChild(textInput);
+        optGroup.appendChild(row);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn secondary';
+      addBtn.style.cssText = 'padding:4px 10px;font-size:0.85rem;margin-top:4px;';
+      addBtn.textContent = i18n.t('admin.btn_add_answer');
+      addBtn.addEventListener('click', () => {
+        collectEditorData();
+        if (!q.accepted_answers) q.accepted_answers = [];
+        q.accepted_answers.push('');
+        renderEditor();
+      });
+      optGroup.appendChild(addBtn);
+      div.appendChild(optGroup);
+    }
+
+    function renderPollEditor(div, q, idx) {
+      const optGroup = document.createElement('div');
+      optGroup.className = 'form-group';
+      const optLabel = document.createElement('label');
+      optLabel.textContent = i18n.t('admin.poll_options_label');
+      optGroup.appendChild(optLabel);
+      (q.options || []).forEach((opt, oi) => {
+        const row = document.createElement('div');
+        row.className = 'option-row';
+        const label = document.createElement('span');
+        label.textContent = `${abc[oi]})`;
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'q-option';
+        textInput.value = opt;
+        textInput.placeholder = i18n.t('admin.option_placeholder', abc[oi]);
+        row.appendChild(label);
+        row.appendChild(textInput);
+        optGroup.appendChild(row);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn secondary';
+      addBtn.style.cssText = 'padding:4px 10px;font-size:0.85rem;margin-top:4px;';
+      addBtn.textContent = i18n.t('admin.btn_add_option');
+      addBtn.addEventListener('click', () => {
+        collectEditorData();
+        if (!q.options) q.options = [];
+        q.options.push('');
+        renderEditor();
+      });
+      optGroup.appendChild(addBtn);
+      div.appendChild(optGroup);
+    }
+
+    function renderWordcloudEditor(div, q, idx) {
+      const group = document.createElement('div');
+      group.className = 'form-group';
+      const label = document.createElement('label');
+      label.textContent = i18n.t('admin.wordcloud_label');
+      const hint = document.createElement('p');
+      hint.className = 'muted';
+      hint.style.fontSize = '0.9rem';
+      hint.textContent = i18n.t('admin.wordcloud_hint');
+      group.appendChild(label);
+      group.appendChild(hint);
+      div.appendChild(group);
+    }
+
+    function renderSlideEditor(div, q, idx) {
+      const group = document.createElement('div');
+      group.className = 'form-group';
+      const label = document.createElement('label');
+      label.textContent = i18n.t('admin.slide_body_label');
+      const textarea = document.createElement('textarea');
+      textarea.className = 'q-slide-body';
+      textarea.style.minHeight = '100px';
+      textarea.value = q.body || '';
+      textarea.placeholder = i18n.t('admin.slide_body_placeholder');
+      group.appendChild(label);
+      group.appendChild(textarea);
+      div.appendChild(group);
+      const hint = document.createElement('p');
+      hint.className = 'muted';
+      hint.style.fontSize = '0.9rem';
+      hint.textContent = i18n.t('admin.slide_hint');
+      div.appendChild(hint);
     }
 
     // --- AI Generator ---
     async function loadOllamaConfig() {
       try {
         const cfg = await api('/api/admin/ollama/config');
+        const baseUrl = cfg.base_url || (cfg.host ? `http://${cfg.host}:${cfg.port || 11434}` : 'http://localhost:11434');
+        const apiKey = cfg.api_key || '';
         document.getElementById('aiModel').value = cfg.model || 'gpt-oss:20b';
-        document.getElementById('aiHost').value = cfg.host || 'localhost';
-        document.getElementById('aiPort').value = cfg.port || 11434;
-        document.getElementById('cfgOllamaHost').value = cfg.host || 'localhost';
-        document.getElementById('cfgOllamaPort').value = cfg.port || 11434;
+        document.getElementById('aiBaseUrl').value = baseUrl;
+        document.getElementById('aiApiKey').value = apiKey;
+        document.getElementById('cfgAiBaseUrl').value = baseUrl;
+        document.getElementById('cfgAiApiKey').value = apiKey;
         document.getElementById('cfgOllamaModel').value = cfg.model || 'gpt-oss:20b';
       } catch {}
     }
@@ -590,29 +1505,29 @@
 
     document.getElementById('btnAiGenerate').addEventListener('click', async () => {
       const topic = document.getElementById('aiTopic').value.trim();
-      if (!topic) { alert('Zadejte tema'); return; }
+      if (!topic) { alert(i18n.t('admin.enter_topic')); return; }
       const status = document.getElementById('aiStatus');
       status.className = 'ai-status loading';
       status.classList.remove('hide');
-      status.textContent = 'Generuji otazky pomoci AI... (muze trvat 30-120 sekund)';
+      status.textContent = i18n.t('admin.ai_generating');
 
       try {
         const result = await api('/api/admin/ai/generate', 'POST', {
           topic,
           count: parseInt(document.getElementById('aiCount').value) || 5,
           model: document.getElementById('aiModel').value,
-          host: document.getElementById('aiHost').value,
-          port: parseInt(document.getElementById('aiPort').value),
+          base_url: document.getElementById('aiBaseUrl').value,
+          api_key: document.getElementById('aiApiKey').value,
           language: document.getElementById('aiLang').value,
         });
         status.className = 'ai-status success';
-        status.textContent = `Vygenerovano ${result.questions.length} otazek!`;
+        status.textContent = i18n.t('admin.ai_generated', result.questions.length);
 
         const preview = document.getElementById('aiPreview');
         preview.innerHTML = '';
         const heading = document.createElement('h3');
         heading.style.marginTop = '14px';
-        heading.textContent = 'Nahled vygenerovanych otazek:';
+        heading.textContent = i18n.t('admin.ai_preview_heading');
         preview.appendChild(heading);
 
         result.questions.forEach((q, i) => {
@@ -628,7 +1543,7 @@
               optDiv.style.color = '#16a34a';
               optDiv.style.fontWeight = '900';
             }
-            optDiv.textContent = `${abc[oi]}) ${o}${oi === q.correct_index ? ' (spravne)' : ''}`;
+            optDiv.textContent = `${abc[oi]}) ${o}${oi === q.correct_index ? ' (' + i18n.t('admin.correct') + ')' : ''}`;
             div.appendChild(optDiv);
           });
           const expP = document.createElement('p');
@@ -641,13 +1556,19 @@
         const saveBtn = document.createElement('button');
         saveBtn.className = 'btn good';
         saveBtn.style.marginTop = '10px';
-        saveBtn.textContent = 'Ulozit do sady';
+        saveBtn.textContent = i18n.t('admin.btn_save_to_bank');
         saveBtn.addEventListener('click', async () => {
-          let saveName = document.getElementById('aiSaveAs').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
-          if (!saveName.endsWith('.json')) saveName += '.json';
+          const sel = document.getElementById('aiSaveAs');
+          let saveName;
+          if (sel.value === '__new__') {
+            saveName = document.getElementById('aiSaveAsNew').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
+            if (!saveName.endsWith('.json')) saveName += '.json';
+          } else {
+            saveName = sel.value;
+          }
           try {
             await api('/api/admin/bank/save', 'POST', { filename: saveName, questions: result.questions });
-            alert(`Ulozeno jako ${saveName}!`);
+            alert(i18n.t('admin.saved_as', saveName));
             loadBanks();
           } catch (e) { alert(e.message); }
         });
@@ -656,15 +1577,15 @@
         const appendBtn = document.createElement('button');
         appendBtn.className = 'btn secondary';
         appendBtn.style.cssText = 'margin-top:10px;margin-left:10px;';
-        appendBtn.textContent = 'Pridat do stavajici sady';
+        appendBtn.textContent = i18n.t('admin.btn_append_to_bank');
         appendBtn.addEventListener('click', async () => {
           const sel = document.getElementById('editorBank');
-          if (!sel.value) { alert('Vyberte sadu v Editoru'); return; }
+          if (!sel.value) { alert(i18n.t('admin.select_bank_in_editor')); return; }
           try {
             const existing = await api(`/api/admin/bank?filename=${encodeURIComponent(sel.value)}`);
             const merged = [...(existing.questions || []), ...result.questions];
             await api('/api/admin/bank/save', 'POST', { filename: sel.value, questions: merged });
-            alert(`Pridano ${result.questions.length} otazek do ${sel.value}!`);
+            alert(i18n.t('admin.appended_questions', result.questions.length, sel.value));
             loadBanks();
           } catch (e) { alert(e.message); }
         });
@@ -672,7 +1593,7 @@
 
       } catch (e) {
         status.className = 'ai-status error';
-        status.textContent = `Chyba: ${e.message}`;
+        status.textContent = i18n.t('admin.error') + ': ' + e.message;
       }
     });
 
@@ -684,12 +1605,12 @@
         if (!data.models || data.models.length === 0) {
           const p = document.createElement('p');
           p.className = 'muted';
-          p.textContent = 'Zadne modely nenalezeny. Zkontrolujte ze Ollama bezi.';
+          p.textContent = i18n.t('admin.no_models_found');
           preview.appendChild(p);
           return;
         }
         const h3 = document.createElement('h3');
-        h3.textContent = 'Dostupne modely:';
+        h3.textContent = i18n.t('admin.available_models');
         preview.appendChild(h3);
         data.models.forEach(m => {
           const item = document.createElement('div');
@@ -712,6 +1633,65 @@
       }
     });
 
+    // --- Team Mode ---
+    function getTeamNamesDefault() {
+      return [i18n.t('admin.team_blue'), i18n.t('admin.team_red'), i18n.t('admin.team_green'), i18n.t('admin.team_yellow'), i18n.t('admin.team_purple'), i18n.t('admin.team_orange')];
+    }
+    const TEAM_COLORS_ADMIN = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#ea580c'];
+
+    function renderTeamNameInputs(count, existingNames) {
+      const container = document.getElementById('teamNameInputs');
+      container.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'input';
+        inp.style.cssText = 'width:120px;padding:8px;border:2px solid ' + TEAM_COLORS_ADMIN[i] + ';border-radius:8px;font-weight:700;';
+        inp.value = (existingNames && existingNames[i]) ? existingNames[i] : (getTeamNamesDefault()[i] || 'Tym' + (i+1));
+        inp.dataset.teamIdx = i;
+        container.appendChild(inp);
+      }
+    }
+
+    async function loadTeamModeConfig() {
+      try {
+        const state = await api('/api/state?host=1');
+        const enabled = !!state.team_mode;
+        const numTeams = state.team_names ? state.team_names.length : 2;
+        document.getElementById('teamModeEnabled').checked = enabled;
+        document.getElementById('teamModeCount').value = numTeams;
+        renderTeamNameInputs(numTeams, state.team_names);
+        document.getElementById('teamModeOptions').classList.toggle('hide', !enabled);
+      } catch {}
+    }
+
+    document.getElementById('teamModeEnabled').addEventListener('change', function() {
+      document.getElementById('teamModeOptions').classList.toggle('hide', !this.checked);
+    });
+
+    document.getElementById('teamModeCount').addEventListener('input', function() {
+      const count = Math.max(2, Math.min(6, parseInt(this.value) || 2));
+      const existingNames = Array.from(document.querySelectorAll('#teamNameInputs input')).map(i => i.value);
+      renderTeamNameInputs(count, existingNames);
+    });
+
+    document.getElementById('btnSaveTeamMode').addEventListener('click', async () => {
+      const enabled = document.getElementById('teamModeEnabled').checked;
+      const numTeams = Math.max(2, Math.min(6, parseInt(document.getElementById('teamModeCount').value) || 2));
+      const teamNames = Array.from(document.querySelectorAll('#teamNameInputs input')).map(i => i.value.trim()).filter(Boolean);
+      const statusEl = document.getElementById('teamModeStatus');
+      try {
+        const result = await api('/api/admin/team-mode', 'POST', {
+          enabled,
+          num_teams: numTeams,
+          team_names: teamNames.length >= numTeams ? teamNames : null,
+        });
+        statusEl.textContent = enabled
+          ? i18n.t('admin.team_mode_on') + ': ' + (result.team_names || []).join(', ')
+          : i18n.t('admin.team_mode_off');
+      } catch (e) { statusEl.textContent = i18n.t('admin.error') + ': ' + e.message; }
+    });
+
     // --- Timing ---
     document.getElementById('btnSaveTiming').addEventListener('click', async () => {
       try {
@@ -719,18 +1699,18 @@
           question_duration_sec: parseInt(document.getElementById('timingQuestion').value),
           reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
         });
-        alert('Nastaveni ulozeno!');
+        alert(i18n.t('admin.settings_saved'));
       } catch (e) { alert(e.message); }
     });
 
     document.getElementById('btnSaveOllama').addEventListener('click', async () => {
       try {
         await api('/api/admin/ollama/config', 'POST', {
-          host: document.getElementById('cfgOllamaHost').value,
-          port: parseInt(document.getElementById('cfgOllamaPort').value),
+          base_url: document.getElementById('cfgAiBaseUrl').value,
+          api_key: document.getElementById('cfgAiApiKey').value,
           model: document.getElementById('cfgOllamaModel').value,
         });
-        alert('Ollama konfigurace ulozena!');
+        alert(i18n.t('admin.ollama_config_saved'));
         loadOllamaConfig();
       } catch (e) { alert(e.message); }
     });
@@ -744,12 +1724,12 @@
         const list = document.getElementById('historyList');
         list.innerHTML = '';
         document.getElementById('historyCount').textContent = history.length
-          ? `${history.length} zaznamu`
+          ? i18n.t('admin.history_count', history.length)
           : '';
         if (!history.length) {
           const p = document.createElement('p');
           p.className = 'muted';
-          p.textContent = 'Zadna historie.';
+          p.textContent = i18n.t('admin.no_history');
           list.appendChild(p);
           return;
         }
@@ -761,14 +1741,37 @@
           headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
           const h4 = document.createElement('h4');
           const date = new Date(h.timestamp);
-          h4.textContent = `${date.toLocaleString('cs-CZ')} - ${h.player_count} hracu, ${h.total_questions} otazek`;
+          h4.textContent = `${date.toLocaleString()} — ${h.player_count} ${i18n.t('admin.players_suffix')}, ${h.total_questions} ${i18n.t('admin.questions_suffix')}`;
           headerDiv.appendChild(h4);
+          const exportBtn = document.createElement('button');
+          exportBtn.className = 'btn secondary';
+          exportBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
+          exportBtn.textContent = i18n.t('admin.btn_export_csv');
+          exportBtn.addEventListener('click', () => {
+            const authHeader = adminToken ? `Bearer ${adminToken}` : '';
+            const url = `/api/admin/history/export?game_id=${encodeURIComponent(h.id)}`;
+            // Fetch with auth header then trigger download
+            fetch(url, { headers: { 'Authorization': authHeader } })
+              .then(res => {
+                if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Export failed'); });
+                return res.blob();
+              })
+              .then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `game_${h.id}_results.csv`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+              })
+              .catch(e => alert(e.message));
+          });
+          headerDiv.appendChild(exportBtn);
           const delBtn = document.createElement('button');
           delBtn.className = 'btn warn';
           delBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
-          delBtn.textContent = 'Smazat';
+          delBtn.textContent = i18n.t('admin.btn_delete');
           delBtn.addEventListener('click', async () => {
-            if (!confirm('Smazat zaznam?')) return;
+            if (!confirm(i18n.t('admin.confirm_delete_record'))) return;
             try {
               await api('/api/admin/history/delete', 'POST', { game_id: h.id });
               loadHistory();
@@ -782,7 +1785,7 @@
           (h.players || []).forEach((p, i) => {
             const pDiv = document.createElement('div');
             pDiv.className = 'history-player' + (i === 0 ? ' gold' : i === 1 ? ' silver' : i === 2 ? ' bronze' : '');
-            pDiv.textContent = `${p.rank}. ${p.name} - ${p.score} bodu`;
+            pDiv.textContent = `${p.rank}. ${p.name} — ${p.score} ${i18n.t('admin.points_suffix')}`;
             playersDiv.appendChild(pDiv);
           });
           div.appendChild(playersDiv);
@@ -791,6 +1794,639 @@
         });
       } catch (e) { console.error(e); }
     }
+
+    // --- Classes ---
+    function getUserToken() {
+      return localStorage.getItem('quiz_user_token') || '';
+    }
+
+    function classesApi(path, method='GET', body=null) {
+      const token = getUserToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `UserToken ${token}`;
+      const cfg = { method, headers };
+      if (body) cfg.body = JSON.stringify(body);
+      return fetch(path, cfg).then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      });
+    }
+
+    async function loadClasses() {
+      const token = getUserToken();
+      const loggedOut = document.getElementById('classesLoggedOut');
+      const panel = document.getElementById('classesPanel');
+      if (!token) {
+        loggedOut.classList.remove('hide');
+        panel.classList.add('hide');
+        return;
+      }
+      loggedOut.classList.add('hide');
+      panel.classList.remove('hide');
+
+      try {
+        const data = await classesApi('/api/classes');
+        const list = document.getElementById('classList');
+        list.innerHTML = '';
+        const classes = data.classes || data || [];
+        if (!classes.length) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = i18n.t('admin.no_classes');
+          list.appendChild(p);
+          return;
+        }
+        classes.forEach(cls => {
+          const div = document.createElement('div');
+          div.className = 'bank-item';
+
+          const infoDiv = document.createElement('div');
+          infoDiv.style.flex = '1';
+          const nameEl = document.createElement('strong');
+          nameEl.textContent = cls.name;
+          infoDiv.appendChild(nameEl);
+
+          if (cls.join_code) {
+            const codeBox = document.createElement('span');
+            codeBox.style.cssText = 'margin-left:12px;padding:4px 10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-family:monospace;font-weight:800;cursor:pointer;';
+            codeBox.textContent = cls.join_code;
+            codeBox.title = i18n.t('admin.click_to_copy_code');
+            codeBox.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(cls.join_code).then(() => alert(i18n.t('admin.code_copied')));
+              }
+            });
+            infoDiv.appendChild(codeBox);
+          }
+
+          if (cls.member_count !== undefined) {
+            const countSpan = document.createElement('span');
+            countSpan.className = 'muted';
+            countSpan.style.marginLeft = '12px';
+            countSpan.textContent = `${cls.member_count} ${i18n.t('admin.members_suffix')}`;
+            infoDiv.appendChild(countSpan);
+          }
+
+          div.appendChild(infoDiv);
+
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'bank-actions';
+
+          const detailBtn = document.createElement('button');
+          detailBtn.className = 'btn';
+          detailBtn.textContent = i18n.t('admin.btn_members');
+          detailBtn.addEventListener('click', () => showClassMembers(cls.id, cls.name));
+          actionsDiv.appendChild(detailBtn);
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn warn';
+          delBtn.textContent = i18n.t('admin.btn_delete');
+          delBtn.addEventListener('click', async () => {
+            if (!confirm(i18n.t('admin.confirm_delete_class', cls.name))) return;
+            try {
+              await classesApi(`/api/classes/${cls.id}/delete`, 'POST');
+              loadClasses();
+            } catch (e) { alert(e.message); }
+          });
+          actionsDiv.appendChild(delBtn);
+
+          div.appendChild(actionsDiv);
+          list.appendChild(div);
+        });
+      } catch (e) {
+        console.error('loadClasses error:', e);
+        const list = document.getElementById('classList');
+        list.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = i18n.t('admin.classes_load_error') + ': ' + e.message;
+        list.appendChild(p);
+      }
+    }
+
+    async function showClassMembers(classId, className) {
+      const detail = document.getElementById('classDetail');
+      const title = document.getElementById('classDetailTitle');
+      const memberList = document.getElementById('classMemberList');
+      detail.classList.remove('hide');
+      title.textContent = i18n.t('admin.class_members_of', className);
+      memberList.innerHTML = `<p class="muted">${i18n.t('admin.loading')}...</p>`;
+
+      try {
+        const data = await classesApi(`/api/classes/${classId}/members`);
+        memberList.innerHTML = '';
+        const members = data.members || data || [];
+        if (!members.length) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = i18n.t('admin.no_members');
+          memberList.appendChild(p);
+          return;
+        }
+        members.forEach(m => {
+          const div = document.createElement('div');
+          div.className = 'bank-item';
+          div.style.flexWrap = 'wrap';
+
+          const info = document.createElement('div');
+          info.style.flex = '1';
+          const nameEl = document.createElement('strong');
+          nameEl.textContent = m.nickname || m.name || i18n.t('admin.unknown');
+          info.appendChild(nameEl);
+          if (m.total_score !== undefined) {
+            const scoreSpan = document.createElement('span');
+            scoreSpan.className = 'muted';
+            scoreSpan.style.marginLeft = '10px';
+            scoreSpan.textContent = `${i18n.t('admin.member_score')}: ${m.total_score}`;
+            info.appendChild(scoreSpan);
+          }
+          div.appendChild(info);
+
+          // Action buttons
+          const actions = document.createElement('div');
+          actions.className = 'bank-actions';
+
+          // Reset password
+          const resetBtn = document.createElement('button');
+          resetBtn.className = 'btn secondary';
+          resetBtn.style.cssText = 'padding:6px 10px;font-size:0.85rem;';
+          resetBtn.textContent = i18n.t('admin.btn_reset_password');
+          resetBtn.addEventListener('click', async () => {
+            const newPass = prompt(i18n.t('admin.prompt_new_password', m.nickname || m.name));
+            if (!newPass) return;
+            try {
+              await classesApi(`/api/classes/${classId}/members/${m.id}/reset-password`, 'POST', { new_password: newPass });
+              alert(i18n.t('admin.password_reset_ok'));
+            } catch (e) { alert(e.message); }
+          });
+          actions.appendChild(resetBtn);
+
+          // Kick from class
+          const kickBtn = document.createElement('button');
+          kickBtn.className = 'btn warn';
+          kickBtn.style.cssText = 'padding:6px 10px;font-size:0.85rem;';
+          kickBtn.textContent = i18n.t('admin.btn_kick');
+          kickBtn.addEventListener('click', async () => {
+            if (!confirm(i18n.t('admin.confirm_kick', m.nickname || m.name))) return;
+            try {
+              await classesApi(`/api/classes/${classId}/members/${m.id}/kick`, 'POST');
+              showClassMembers(classId, className);
+            } catch (e) { alert(e.message); }
+          });
+          actions.appendChild(kickBtn);
+
+          div.appendChild(actions);
+          memberList.appendChild(div);
+        });
+      } catch (e) {
+        memberList.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = i18n.t('admin.error') + ': ' + e.message;
+        memberList.appendChild(p);
+      }
+    }
+
+    document.getElementById('btnCloseClassDetail').addEventListener('click', () => {
+      document.getElementById('classDetail').classList.add('hide');
+    });
+
+    document.getElementById('btnCreateClass').addEventListener('click', async () => {
+      const nameInput = document.getElementById('newClassName');
+      const name = nameInput.value.trim();
+      if (!name) { alert(i18n.t('admin.enter_class_name')); return; }
+      try {
+        await classesApi('/api/classes/create', 'POST', { name });
+        nameInput.value = '';
+        loadClasses();
+      } catch (e) { alert(e.message); }
+    });
+
+    // --- Homework / Self-Paced ---
+    let _hwSessionId = null;
+    let _hwResultsInterval = null;
+
+    function loadHomeworkTab() {
+      // Populate bank select
+      const sel = document.getElementById('hwBankSelect');
+      sel.innerHTML = '';
+      allBanks.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.filename;
+        opt.textContent = `${b.name} (${b.question_count} ${i18n.t('admin.questions_suffix')})`;
+        sel.appendChild(opt);
+      });
+      if (!allBanks.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = i18n.t('admin.no_banks');
+        sel.appendChild(opt);
+      }
+    }
+
+    document.getElementById('btnCreateHomework').addEventListener('click', async () => {
+      const filename = document.getElementById('hwBankSelect').value;
+      if (!filename) { alert(i18n.t('admin.select_bank')); return; }
+      try {
+        const data = await api('/api/selfpaced/start', 'POST', { filename });
+        _hwSessionId = data.session_id;
+
+        // Build the shareable URL
+        const hwUrl = `${location.origin}/play?hw=${encodeURIComponent(_hwSessionId)}`;
+        const linkBox = document.getElementById('hwLinkBox');
+        linkBox.textContent = hwUrl;
+        document.getElementById('hwCreatedBox').classList.remove('hide');
+        document.getElementById('hwResultsSection').classList.remove('hide');
+        document.getElementById('hwQrBox').classList.add('hide');
+
+        // Start polling results
+        if (_hwResultsInterval) clearInterval(_hwResultsInterval);
+        loadHwResults();
+        _hwResultsInterval = setInterval(loadHwResults, 5000);
+      } catch (e) { alert(i18n.t('admin.error') + ': ' + e.message); }
+    });
+
+    document.getElementById('btnCopyHwLink').addEventListener('click', () => {
+      const text = document.getElementById('hwLinkBox').textContent;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.link_copied')));
+      }
+    });
+
+    document.getElementById('hwLinkBox').addEventListener('click', () => {
+      document.getElementById('btnCopyHwLink').click();
+    });
+
+    document.getElementById('btnShowHwQr').addEventListener('click', () => {
+      const qrBox = document.getElementById('hwQrBox');
+      if (!qrBox.classList.contains('hide')) {
+        qrBox.classList.add('hide');
+        return;
+      }
+      const hwUrl = document.getElementById('hwLinkBox').textContent;
+      if (!hwUrl) return;
+      const img = document.getElementById('hwQrImg');
+      img.src = `/api/qr?url=${encodeURIComponent(hwUrl)}`;
+      qrBox.classList.remove('hide');
+    });
+
+    document.getElementById('btnRefreshHwResults').addEventListener('click', loadHwResults);
+
+    async function loadHwResults() {
+      if (!_hwSessionId) return;
+      try {
+        const data = await api(`/api/selfpaced/results?session_id=${encodeURIComponent(_hwSessionId)}`);
+        renderHwResults(data);
+      } catch (e) { console.error('hw results error:', e); }
+    }
+
+    function renderHwResults(data) {
+      const list = document.getElementById('hwResultsList');
+      const countEl = document.getElementById('hwResultsCount');
+      const results = data.results || [];
+      const total = data.total_questions || 1;
+      const done = results.filter(r => r.finished_at !== null).length;
+      countEl.textContent = i18n.t('admin.hw_done_count', done, results.length);
+
+      list.innerHTML = '';
+      if (!results.length) {
+        list.innerHTML = `<p class="muted">${i18n.t('admin.hw_nobody_started')}</p>`;
+        return;
+      }
+      results.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'hw-result-item';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'hw-name';
+        nameEl.textContent = r.player_name;
+        item.appendChild(nameEl);
+
+        // Progress bar placeholder (we only have score, not per-question in list)
+        const scoreEl = document.createElement('span');
+        scoreEl.className = 'hw-score';
+        scoreEl.textContent = `${r.score} b`;
+        item.appendChild(scoreEl);
+
+        const maxScore = total * 600;
+        const pct = maxScore > 0 ? Math.round(r.score / maxScore * 100) : 0;
+        const barWrap = document.createElement('div');
+        barWrap.className = 'hw-progress-bar-wrap';
+        const bar = document.createElement('div');
+        bar.className = 'hw-progress-bar';
+        bar.style.width = pct + '%';
+        barWrap.appendChild(bar);
+        item.appendChild(barWrap);
+
+        const statusEl = document.createElement('span');
+        if (r.finished_at !== null) {
+          statusEl.className = 'hw-done';
+          statusEl.textContent = i18n.t('admin.hw_done');
+        } else {
+          statusEl.className = 'hw-pending';
+          statusEl.textContent = i18n.t('admin.hw_in_progress');
+        }
+        item.appendChild(statusEl);
+
+        list.appendChild(item);
+      });
+    }
+
+    // ===== USERS =====
+
+    async function loadUsersTab() {
+      const container = document.getElementById('usersListAdmin');
+      try {
+        const data = await api('/api/users');
+        const users = data.users || [];
+        if (users.length === 0) {
+          container.innerHTML = '<p class="muted">' + i18n.t('admin.no_users') + '</p>';
+          return;
+        }
+        let html = '<table class="data-table" style="width:100%;"><thead><tr>' +
+          '<th>' + i18n.t('admin.col_avatar') + '</th>' +
+          '<th>' + i18n.t('admin.col_nickname') + '</th>' +
+          '<th>' + i18n.t('admin.col_role') + '</th>' +
+          '<th>' + i18n.t('admin.col_score') + '</th>' +
+          '<th>' + i18n.t('admin.col_games') + '</th>' +
+          '<th>' + i18n.t('admin.col_actions') + '</th>' +
+          '</tr></thead><tbody>';
+        users.forEach(u => {
+          const isTeacher = u.role === 'teacher';
+          const roleBadge = isTeacher
+            ? '<span class="role-badge teacher">' + i18n.t('admin.role_teacher') + '</span>'
+            : '<span class="role-badge student">' + i18n.t('admin.role_student') + '</span>';
+          const toggleRoleBtn = '<button class="btn secondary btn-sm" onclick="userSetRole(' + u.id + ',\'' +
+            (isTeacher ? 'student' : 'teacher') + '\')">' +
+            (isTeacher ? i18n.t('admin.btn_demote') : i18n.t('admin.btn_promote')) + '</button>';
+          const resetBtn = '<button class="btn secondary btn-sm" onclick="userResetPw(' + u.id + ',\'' +
+            u.nickname.replace(/'/g, "\\'") + '\')">' + i18n.t('admin.btn_reset_password') + '</button>';
+          const deleteBtn = '<button class="btn warn btn-sm" onclick="userDelete(' + u.id + ',\'' +
+            u.nickname.replace(/'/g, "\\'") + '\')">' + i18n.t('admin.btn_delete_user') + '</button>';
+
+          html += '<tr>' +
+            '<td><div class="avatar-circle small" style="background-image:url(/static/illustrations/avatar' + (u.avatar_id || 1) + '.webp);"></div></td>' +
+            '<td><strong>' + (u.nickname || '-') + '</strong></td>' +
+            '<td>' + roleBadge + '</td>' +
+            '<td>' + (u.total_score || 0) + '</td>' +
+            '<td>' + (u.games_played || 0) + '</td>' +
+            '<td style="display:flex;gap:6px;flex-wrap:wrap;">' + toggleRoleBtn + resetBtn + deleteBtn + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = '<p class="error-msg">' + (e.message || 'Chyba') + '</p>';
+      }
+    }
+
+    async function userSetRole(uid, newRole) {
+      const action = newRole === 'teacher' ? i18n.t('admin.confirm_promote') : i18n.t('admin.confirm_demote');
+      if (!confirm(action)) return;
+      try {
+        await api('/api/users/' + uid + '/set-role', 'POST', { role: newRole });
+        loadUsersTab();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function userResetPw(uid, nickname) {
+      const newPw = prompt(i18n.t('admin.prompt_new_password') + ' (' + nickname + ')');
+      if (!newPw) return;
+      try {
+        await api('/api/users/' + uid + '/reset-password', 'POST', { new_password: newPw });
+        alert(i18n.t('admin.password_reset_ok'));
+      } catch (e) { alert(e.message); }
+    }
+
+    async function userDelete(uid, nickname) {
+      if (!confirm(i18n.t('admin.confirm_delete_user') + ' ' + nickname + '?')) return;
+      try {
+        await api('/api/users/' + uid + '/delete', 'POST');
+        loadUsersTab();
+      } catch (e) { alert(e.message); }
+    }
+
+    // ===== DASHBOARD =====
+
+    // Quick action buttons — switch to appropriate tab
+    document.getElementById('dashActionEditor').addEventListener('click', () => switchTab('editor'));
+    document.getElementById('dashActionGame').addEventListener('click', () => { window.open('/host', '_blank'); });
+    document.getElementById('dashActionHomework').addEventListener('click', () => switchTab('homework'));
+    document.getElementById('dashActionAi').addEventListener('click', () => switchTab('ai'));
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+      const content = document.getElementById(`tab-${name}`);
+      if (tab) tab.classList.add('active');
+      if (content) content.classList.add('active');
+      if (name === 'homework') loadHomeworkTab();
+      if (name === 'users') loadUsersTab();
+    }
+
+    async function loadDashboard() {
+      const token = getUserToken();
+      const notLoggedIn = document.getElementById('dashNotLoggedIn');
+      const panel = document.getElementById('dashPanel');
+
+      if (!token) {
+        notLoggedIn.classList.remove('hide');
+        panel.classList.add('hide');
+        return;
+      }
+
+      notLoggedIn.classList.add('hide');
+      panel.classList.remove('hide');
+
+      // Fetch all data in parallel
+      const [profileResult, banksResult, historyResult, classesResult] = await Promise.allSettled([
+        classesApi('/api/auth/profile'),
+        api('/api/admin/banks').catch(() => []),
+        api('/api/admin/history').catch(() => []),
+        classesApi('/api/classes').catch(() => []),
+      ]);
+
+      const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
+      const banks = banksResult.status === 'fulfilled' ? banksResult.value : [];
+      const history = historyResult.status === 'fulfilled' ? historyResult.value : [];
+      const classesData = classesResult.status === 'fulfilled' ? classesResult.value : [];
+      const classes = Array.isArray(classesData) ? classesData : (classesData.classes || []);
+
+      // --- Welcome banner ---
+      if (profile) {
+        const name = profile.nickname || i18n.t('admin.teacher_fallback');
+        document.getElementById('dashWelcomeTitle').textContent = i18n.t('admin.dash_welcome_name', name);
+        document.getElementById('dashWelcomeSub').textContent =
+          i18n.t('admin.dash_welcome_sub');
+        document.getElementById('dashAvatar').textContent =
+          profile.role === 'teacher' ? '👩‍🏫' : '👤';
+        const roleBadge = document.getElementById('dashRoleBadge');
+        roleBadge.textContent = profile.role === 'teacher' ? i18n.t('admin.dash_role_teacher') : profile.role || 'student';
+        roleBadge.style.background = profile.role === 'teacher'
+          ? 'rgba(255,255,255,0.28)' : 'rgba(255,200,0,0.35)';
+      }
+
+      // --- Stats ---
+      const totalStudents = classes.reduce((s, c) => s + (c.member_count || 0), 0);
+      document.getElementById('dashStatBanks').textContent = banks.length;
+      document.getElementById('dashStatGames').textContent =
+        profile ? (profile.games_played !== undefined ? profile.games_played : history.length) : history.length;
+      document.getElementById('dashStatClasses').textContent = classes.length;
+      document.getElementById('dashStatStudents').textContent = totalStudents;
+
+      // --- Recent games ---
+      renderDashRecentGames(history.slice(0, 5));
+
+      // --- Classes overview ---
+      renderDashClasses(classes);
+    }
+
+    function renderDashRecentGames(games) {
+      const container = document.getElementById('dashRecentGames');
+      container.innerHTML = '';
+      if (!games.length) {
+        container.innerHTML = `<p class="dash-empty">${i18n.t('admin.dash_no_games')}</p>`;
+        return;
+      }
+      games.forEach(g => {
+        const item = document.createElement('div');
+        item.className = 'dash-activity-item';
+
+        const left = document.createElement('div');
+        left.className = 'dash-activity-bank';
+        const icon = document.createElement('span');
+        icon.className = 'dash-bank-icon';
+        icon.textContent = '🎮';
+        const info = document.createElement('div');
+        const bankName = document.createElement('strong');
+        bankName.textContent = g.bank_name ? g.bank_name.replace('.json', '').replace(/_/g, ' ') : i18n.t('admin.game');
+        const meta = document.createElement('span');
+        meta.className = 'muted';
+        const date = g.timestamp ? new Date(g.timestamp).toLocaleDateString('cs-CZ') : '';
+        meta.textContent = ` · ${g.player_count || 0} ${i18n.t('admin.players_suffix')} · ${g.total_questions || 0} ${i18n.t('admin.questions_suffix')}${date ? ' · ' + date : ''}`;
+        info.appendChild(bankName);
+        info.appendChild(meta);
+        left.appendChild(icon);
+        left.appendChild(info);
+        item.appendChild(left);
+
+        // Top 3 players
+        if (g.players && g.players.length) {
+          const playersWrap = document.createElement('div');
+          playersWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+          g.players.slice(0, 3).forEach((p, pi) => {
+            const badge = document.createElement('span');
+            badge.style.cssText = 'padding:3px 8px;border-radius:8px;font-size:0.82rem;font-weight:700;';
+            badge.style.background = pi === 0 ? '#fef3c7' : pi === 1 ? '#e2e8f0' : '#fed7aa';
+            badge.textContent = `${pi === 0 ? '🥇' : pi === 1 ? '🥈' : '🥉'} ${p.name} ${p.score}b`;
+            playersWrap.appendChild(badge);
+          });
+          item.appendChild(playersWrap);
+        }
+
+        container.appendChild(item);
+      });
+    }
+
+    // Track which QR is currently open per class
+    const _dashOpenQr = {};
+
+    function renderDashClasses(classes) {
+      const container = document.getElementById('dashClassList');
+      container.innerHTML = '';
+      if (!classes.length) {
+        container.innerHTML = `<p class="dash-empty">${i18n.t('admin.dash_no_classes')}</p>`;
+        return;
+      }
+      classes.forEach(cls => {
+        const wrapper = document.createElement('div');
+
+        const item = document.createElement('div');
+        item.className = 'dash-class-item';
+
+        const infoWrap = document.createElement('div');
+        infoWrap.className = 'dash-class-info';
+        const nameEl = document.createElement('strong');
+        nameEl.textContent = cls.name;
+        nameEl.title = i18n.t('admin.click_to_show_members');
+        nameEl.addEventListener('click', () => {
+          // Switch to classes tab and show members there
+          switchTab('classes');
+          setTimeout(() => showClassMembers(cls.id, cls.name), 100);
+        });
+        const meta = document.createElement('span');
+        meta.className = 'dash-class-meta';
+        meta.textContent = `${cls.member_count || 0} ${i18n.t('admin.students_suffix')} · ${i18n.t('admin.code_label')}: ${cls.join_code || '—'}`;
+        infoWrap.appendChild(nameEl);
+        infoWrap.appendChild(meta);
+        item.appendChild(infoWrap);
+
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'dash-class-actions';
+
+        // QR button
+        const qrBtn = document.createElement('button');
+        qrBtn.className = 'dash-qr-btn';
+        qrBtn.textContent = i18n.t('admin.btn_show_qr');
+        qrBtn.title = i18n.t('admin.qr_class_title');
+        const qrBox = document.createElement('div');
+        qrBox.className = 'dash-class-qr-box hide';
+        qrBtn.addEventListener('click', () => {
+          const isOpen = !qrBox.classList.contains('hide');
+          if (isOpen) {
+            qrBox.classList.add('hide');
+            qrBtn.textContent = i18n.t('admin.btn_show_qr');
+            return;
+          }
+          // Build join URL for class (using join code)
+          const joinUrl = `${location.origin}/profile?join=${encodeURIComponent(cls.join_code || '')}`;
+          qrBox.innerHTML = '';
+          const img = document.createElement('img');
+          img.src = `/api/qr?url=${encodeURIComponent(joinUrl)}`;
+          img.alt = i18n.t('admin.qr_class_alt');
+          const caption = document.createElement('p');
+          caption.className = 'muted';
+          caption.style.fontSize = '0.8rem';
+          caption.textContent = `${i18n.t('admin.class_code')}: ${cls.join_code}`;
+          qrBox.appendChild(img);
+          qrBox.appendChild(caption);
+          qrBox.classList.remove('hide');
+          qrBtn.textContent = i18n.t('admin.btn_hide_qr');
+        });
+
+        actionsWrap.appendChild(qrBtn);
+        item.appendChild(actionsWrap);
+        wrapper.appendChild(item);
+        wrapper.appendChild(qrBox);
+        container.appendChild(wrapper);
+      });
+    }
+
+    // i18n init + language switcher
+    i18n.init().then(() => {
+      injectLangSwitcher();
+      i18n.apply();
+    });
+
+    // Logout
+    document.getElementById('btnLogout').addEventListener('click', async () => {
+      try {
+        if (userToken) {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `UserToken ${userToken}` }
+          });
+        }
+      } catch (_) {}
+      userToken = '';
+      adminToken = '';
+      localStorage.removeItem('quiz_user_token');
+      localStorage.removeItem('quiz_admin_token');
+      window.location.href = '/';
+    });
 
     // Init
     checkAuth();

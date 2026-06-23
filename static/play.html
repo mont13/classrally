@@ -2,9 +2,13 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8" />
+  <link rel="icon" type="image/png" href="/static/favicon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz - Hraj!</title>
+  <title data-i18n="play.page_title">ClassRally - Hraj!</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <script src="/static/i18n.js"></script>
+  <meta name="theme-color" content="#0284c7" />
   <style>
     .countdown-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 8px 0; }
     .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
@@ -54,50 +58,229 @@
     .podium-rank { font-size: 2.5rem; font-weight: 900; }
     .podium-name { font-size: 1.3rem; font-weight: 800; margin-top: 6px; }
     .podium-score { font-size: 1.1rem; color: #475569; }
+    .logged-in-badge { display: inline-block; background: #dcfce7; color: #166534; font-size: 0.75rem;
+      font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
+    /* True/False big buttons */
+    .tf-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .tf-btn { border: none; border-radius: 14px; padding: 30px 18px; text-align: center;
+      font-size: 1.8rem; font-weight: 900; cursor: pointer; color: #fff;
+      transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18); min-height: 100px; }
+    .tf-btn.tf-true { background: linear-gradient(135deg, #16a34a, #22c55e); }
+    .tf-btn.tf-false { background: linear-gradient(135deg, #dc2626, #ef4444); }
+    .tf-btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.02); }
+    .tf-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+    .tf-btn.selected { outline: 4px solid #fff; outline-offset: -4px; }
+    .tf-btn.correct-answer { outline: 4px solid #16a34a; outline-offset: -4px; opacity: 1 !important; }
+    .tf-btn.wrong-answer { opacity: 0.35 !important; }
+    /* Multiselect checkboxes */
+    .ms-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .ms-options { grid-template-columns: 1fr; } }
+    .ms-btn { border: 3px solid #cbd5e1; border-radius: 14px; padding: 18px; text-align: center;
+      font-size: clamp(1.1rem, 2vw, 1.6rem); font-weight: 800; cursor: pointer; color: #1e293b;
+      background: #fff; transition: all 150ms ease; min-height: 70px;
+      display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .ms-btn:hover:not(:disabled) { border-color: #3b82f6; background: #eff6ff; }
+    .ms-btn.ms-checked { border-color: #3b82f6; background: #dbeafe; color: #1e40af; }
+    .ms-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+    .ms-btn.correct-answer { border-color: #16a34a; background: #dcfce7; opacity: 1 !important; }
+    .ms-btn.wrong-answer { opacity: 0.35 !important; }
+    .ms-confirm { margin-top: 12px; }
+    /* Ordering */
+    .ord-list { list-style: none; padding: 0; margin: 0; }
+    .ord-item { display: flex; align-items: center; gap: 10px; padding: 14px; margin: 6px 0;
+      background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 1.1rem; font-weight: 700; }
+    .ord-item .ord-num { width: 30px; height: 30px; border-radius: 50%; background: #3b82f6; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 900; flex-shrink: 0; }
+    .ord-item .ord-arrows { display: flex; flex-direction: column; gap: 2px; margin-left: auto; }
+    .ord-arrow { border: none; background: #e2e8f0; border-radius: 6px; width: 32px; height: 28px;
+      cursor: pointer; font-size: 1rem; font-weight: 900; }
+    .ord-arrow:hover { background: #3b82f6; color: #fff; }
+    .ord-item.correct-pos { border-color: #16a34a; background: #dcfce7; }
+    .ord-item.wrong-pos { border-color: #dc2626; background: #fee2e2; }
+    /* Open-ended */
+    .oe-input { width: 100%; padding: 16px; font-size: 1.3rem; border: 3px solid #cbd5e1;
+      border-radius: 14px; box-sizing: border-box; font-weight: 700; }
+    .oe-input:focus { outline: none; border-color: #3b82f6; }
+    .oe-submit { margin-top: 12px; }
+    /* Streak indicator */
+    .streak-badge { display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #ff4500, #ff8c00);
+      color: #fff; font-size: 0.85rem; font-weight: 800; padding: 3px 10px; border-radius: 99px; margin-left: 8px; }
+    .streak-badge.hot { animation: streakPulse 0.6s ease-in-out infinite; }
+    @keyframes streakPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+    .team-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.9rem;
+      font-weight: 800; padding: 4px 12px; border-radius: 99px; margin-left: 8px; color: #fff; }
+    .team-announce { padding: 14px 18px; border-radius: 14px; font-size: 1.2rem; font-weight: 800;
+      margin: 10px 0; text-align: center; color: #fff; }
+    .team-score-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700;
+      padding: 6px 0; color: #475569; }
+    /* Random nick button spin */
+    @keyframes spinOnce { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spin-once { animation: spinOnce 0.4s ease-out; }
+    /* Self-paced / Homework mode */
+    .sp-progress-wrap { width: 100%; background: #e2e8f0; border-radius: 99px; height: 10px; margin: 10px 0; }
+    .sp-progress-bar { height: 10px; border-radius: 99px; background: linear-gradient(90deg, #34d399, #0284c7); transition: width 0.4s ease; }
+    .sp-feedback { padding: 20px; border-radius: 14px; margin: 14px 0; font-size: 1.5rem; font-weight: 900; text-align: center; }
+    .sp-feedback.correct { background: linear-gradient(135deg, #dcfce7, #bbf7d0); color: #166534; border: 3px solid #16a34a; }
+    .sp-feedback.wrong { background: linear-gradient(135deg, #fee2e2, #fecaca); color: #991b1b; border: 3px solid #dc2626; }
+    .sp-explanation { padding: 12px 16px; background: #f0f9ff; border-left: 4px solid #0284c7; border-radius: 0 10px 10px 0; margin: 10px 0; font-size: 1rem; }
+    .sp-next-btn { margin-top: 16px; width: 100%; padding: 18px; font-size: 1.3rem; }
+    .sp-summary { padding: 20px 0; }
+    .sp-summary-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
+      border: 2px solid #e2e8f0; border-radius: 10px; margin-bottom: 6px; font-size: 1rem; flex-wrap: wrap; gap: 6px; }
+    .sp-summary-row.sp-correct { border-color: #16a34a; background: #f0fdf4; }
+    .sp-summary-row.sp-wrong { border-color: #dc2626; background: #fef2f2; }
+    .sp-summary-icon { font-size: 1.3rem; margin-right: 8px; flex-shrink: 0; }
+    .sp-summary-q { flex: 1; font-weight: 700; min-width: 120px; }
+    .sp-summary-pts { font-weight: 800; color: #0284c7; white-space: nowrap; }
+    .sp-score-circle { width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #0284c7, #34d399);
+      display: flex; align-items: center; justify-content: center; flex-direction: column; margin: 0 auto 20px;
+      color: #fff; font-weight: 900; font-size: 2rem; box-shadow: 0 8px 24px rgba(2,132,199,0.3); }
+    .sp-score-circle .sp-score-pct { font-size: 1rem; font-weight: 700; opacity: 0.9; }
   </style>
 </head>
 <body>
   <main class="app">
-    <section id="joinCard" class="card">
-      <h1>Pripoj se do kvizu!</h1>
-      <p class="muted">Zadej prezdivku (max. 24 znaku) a klikni na Vstoupit.</p>
-      <input id="nameInput" class="input" placeholder="napr. Tereza" maxlength="24" autofocus />
-      <div class="btn-row" style="margin-top:10px;">
-        <button id="joinBtn" class="btn good">Vstoupit</button>
+    <section id="joinCard" class="card hero-card hero-card-play">
+      <div class="hero-shell">
+        <div class="hero-copy">
+          <span class="hero-kicker" data-i18n="play.hero_kicker">Fast mobile join</span>
+          <h1 class="hero-title" data-i18n="play.title">Připoj se do kvízu!</h1>
+          <p class="muted hero-subtitle" data-i18n="play.subtitle">Zadej přezdívku, klepni na vstup a hned uvidíš barevné odpovědi.</p>
+          <div class="hero-badges">
+            <span class="hero-badge" data-i18n="common.hero_badge_mobile">Mobil-first</span>
+            <span class="hero-badge" data-i18n="common.hero_badge_colors">Barevné volby</span>
+            <span class="hero-badge" data-i18n="common.hero_badge_score">Okamžité skóre</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="nameInput" class="input" data-i18n-placeholder="play.name_placeholder" placeholder="např. Tereza" maxlength="24" autofocus style="flex:1;" />
+            <button id="randomNickBtn" class="btn ghost" data-i18n-title="play.random_nick_title" title="Náhodná přezdívka" style="padding:10px 14px;font-size:1.3rem;flex-shrink:0;" data-i18n-aria="play.random_nick_aria" aria-label="Vygeneruj náhodnou přezdívku">&#x1F3B2;</button>
+          </div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button id="joinBtn" class="btn good" data-i18n="play.join_btn">Vstoupit</button>
+          </div>
+          <p id="joinErr" style="color:#b91c1c;font-weight:700;"></p>
+        </div>
+        <div class="hero-art-wrap">
+          <div class="hero-art-frame">
+            <img src="/static/illustrations/player-join.svg" alt="" />
+          </div>
+        </div>
       </div>
-      <p id="joinErr" style="color:#b91c1c;font-weight:700;"></p>
+      <div style="margin-top:14px;text-align:center;font-size:0.95rem;">
+        <span class="muted" data-i18n="play.has_account">Máš účet?</span> <a href="/profile" style="font-weight:600;" data-i18n="play.login_link">Přihlásit se</a>
+        <p class="muted" style="margin:4px 0 0 0;font-size:0.85rem;" data-i18n="play.no_account_needed">Účet není povinný — můžeš hrát i bez něj.</p>
+      </div>
       <div id="qrJoin" style="text-align:center;margin:30px 0 10px 0;">
-        <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;">Nebo vyfot QR kod z projektoru:</p>
+        <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;" data-i18n="play.qr_hint">Nebo vyfot QR kód z projektoru:</p>
         <img id="qrImg" src="/api/qr" alt="QR kod" style="width:min(80vw,400px);height:auto;border:3px solid #e2e8f0;border-radius:12px;" />
       </div>
     </section>
 
     <section id="gameCard" class="card hide">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;">Ahoj, <span id="playerName">-</span></h2>
+        <h2 style="margin:0;"><span id="playerAvatarEmoji"></span><span data-i18n="play.greeting">Ahoj, </span><span id="playerName">-</span><span id="loggedInBadge" class="logged-in-badge hide" data-i18n="play.logged_in_badge">Přihlášen</span><span id="streakBadge" class="streak-badge hide"></span><span id="teamBadge" class="team-badge hide"></span></h2>
         <span id="phasePill" class="status-pill lobby">lobby</span>
       </div>
+      <div id="teamAnnounce" class="team-announce hide"></div>
 
       <div class="kpi" style="margin:12px 0;">
-        <div class="item"><div class="label">Skore</div><div class="value" id="myScore">0</div></div>
-        <div class="item"><div class="label">Otazka</div><div class="value" id="qNo">-</div></div>
-        <div class="item"><div class="label">Odpovedelo</div><div class="value" id="answered">0</div></div>
-        <div class="item"><div class="label">Hraci</div><div class="value" id="players">0</div></div>
-        <div class="item timer"><div class="label">Odpocet</div><div class="value" id="timer">-</div></div>
+        <div class="item"><div class="label" data-i18n="play.label_score">Skóre</div><div class="value" id="myScore">0</div></div>
+        <div class="item"><div class="label" data-i18n="play.label_question">Otázka</div><div class="value" id="qNo">-</div></div>
+        <div class="item"><div class="label" data-i18n="play.label_answered">Odpovědělo</div><div class="value" id="answered">0</div></div>
+        <div class="item"><div class="label" data-i18n="play.label_players">Hráči</div><div class="value" id="players">0</div></div>
+        <div class="item team-score-item hide"><div class="label" data-i18n="play.label_team">Tým</div><div class="value" id="teamScore">0</div></div>
+        <div class="item timer"><div class="label" data-i18n="play.label_countdown">Odpočet</div><div class="value" id="timer">-</div></div>
       </div>
 
       <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
 
-      <div id="mainMessage" class="question">Cekej na start od ucitele.</div>
+      <div id="mainMessage" class="question" data-i18n="play.wait_for_teacher">Čekej na start od učitele.</div>
+      <img id="questionImage" class="hide" style="max-width:100%;max-height:200px;display:block;margin:10px auto;border-radius:10px;" />
       <div id="resultBanner" class="hide"></div>
       <p id="explanation" class="muted"></p>
       <div id="options" class="kahoot-options"></div>
       <div id="podium" class="hide"></div>
-      <p class="help">Odpoved je po odeslani finalni.</p>
+      <p class="help" data-i18n="play.answer_final">Odpověď je po odeslání finální.</p>
+    </section>
+
+    <!-- ======= SELF-PACED / HOMEWORK CARD ======= -->
+    <section id="spCard" class="card hide">
+      <!-- Join screen -->
+      <div id="spJoinPane">
+        <h2 style="margin-bottom:4px;" data-i18n="play.sp_title">Domácí úkol</h2>
+        <p id="spBankName" class="muted" style="margin-bottom:14px;"></p>
+        <div class="form-group">
+          <label for="spNameInput" style="font-weight:700;font-size:1.1rem;" data-i18n="play.sp_name_label">Tvoje jméno</label>
+          <input id="spNameInput" class="input" data-i18n-placeholder="play.sp_name_placeholder" placeholder="např. Tereza" maxlength="24" autofocus />
+        </div>
+        <button id="spJoinBtn" class="btn good" style="width:100%;padding:16px;font-size:1.2rem;" data-i18n="play.sp_start_btn">Začít kvíz</button>
+        <p id="spJoinErr" style="color:#b91c1c;font-weight:700;margin-top:8px;"></p>
+      </div>
+
+      <!-- Question screen -->
+      <div id="spQuestionPane" class="hide">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span id="spProgressLabel" style="font-weight:700;color:#475569;font-size:0.95rem;"></span>
+          <span id="spScoreLabel" style="font-weight:800;color:#0284c7;font-size:1rem;"></span>
+        </div>
+        <div class="sp-progress-wrap"><div class="sp-progress-bar" id="spProgressBar" style="width:0%"></div></div>
+        <div id="spQuestion" class="question" style="margin:14px 0;"></div>
+        <div id="spOptions"></div>
+        <div id="spFeedbackPane" class="hide">
+          <div id="spFeedback" class="sp-feedback"></div>
+          <div id="spExplanation" class="sp-explanation hide"></div>
+          <button id="spNextBtn" class="btn good sp-next-btn" data-i18n="play.sp_next_question">Další otázka &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Summary screen -->
+      <div id="spSummaryPane" class="hide">
+        <div style="text-align:center;margin-bottom:20px;">
+          <h2 style="margin-bottom:6px;" data-i18n="play.sp_done">Hotovo!</h2>
+          <p id="spSummaryName" class="muted" style="font-size:1rem;margin:0;"></p>
+        </div>
+        <div id="spScoreCircle" class="sp-score-circle">
+          <span id="spTotalScore">0</span>
+          <span class="sp-score-pct" id="spScorePct">0%</span>
+        </div>
+        <div id="spSummaryList" class="sp-summary"></div>
+        <button class="btn secondary" id="spRestartBtn" style="margin-top:16px;width:100%;" data-i18n="play.sp_restart">Zahrát znovu</button>
+      </div>
     </section>
   </main>
 
   <script>
+    const AVATARS = [
+      { id: 1,  emoji: '\uD83E\uDD8A', color: '#f97316' },
+      { id: 2,  emoji: '\uD83D\uDC31', color: '#8b5cf6' },
+      { id: 3,  emoji: '\uD83D\uDC36', color: '#3b82f6' },
+      { id: 4,  emoji: '\uD83E\uDD81', color: '#eab308' },
+      { id: 5,  emoji: '\uD83D\uDC38', color: '#22c55e' },
+      { id: 6,  emoji: '\uD83D\uDC27', color: '#0ea5e9' },
+      { id: 7,  emoji: '\uD83E\uDD8B', color: '#ec4899' },
+      { id: 8,  emoji: '\uD83D\uDC1D', color: '#f59e0b' },
+      { id: 9,  emoji: '\uD83E\uDD84', color: '#a855f7' },
+      { id: 10, emoji: '\uD83D\uDC3C', color: '#6b7280' },
+      { id: 11, emoji: '\uD83D\uDC28', color: '#78716c' },
+      { id: 12, emoji: '\uD83D\uDC2F', color: '#ea580c' },
+      { id: 13, emoji: '\uD83E\uDD89', color: '#7c3aed' },
+      { id: 14, emoji: '\uD83D\uDC19', color: '#dc2626' },
+      { id: 15, emoji: '\uD83E\uDD88', color: '#1d4ed8' },
+      { id: 16, emoji: '\uD83D\uDC2C', color: '#0891b2' },
+      { id: 17, emoji: '\uD83D\uDC22', color: '#16a34a' },
+      { id: 18, emoji: '\uD83E\uDD8E', color: '#65a30d' },
+      { id: 19, emoji: '\uD83E\uDDA9', color: '#e11d48' },
+      { id: 20, emoji: '\uD83D\uDC3A', color: '#475569' }
+    ];
+    function getAvatar(id) {
+      return AVATARS.find(function(a) { return a.id === id; }) || AVATARS[0];
+    }
+    function getAvatarEmoji(id) {
+      if (!id || id < 1 || id > 20) return AVATARS[Math.floor(Math.random() * AVATARS.length)].emoji;
+      return getAvatar(id).emoji;
+    }
+
     const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
     const shapes = ['\u25B2', '\u25C6', '\u25CF', '\u25A0'];
     const KEY = 'quiz_player_id';
@@ -107,10 +290,10 @@
     let lastQuestionIndex = -1;
 
     function phaseLabel(phase) {
-      if (phase === 'question') return 'Otazka';
-      if (phase === 'reveal') return 'Vyhodnoceni';
-      if (phase === 'finished') return 'Konec';
-      return 'Ceka se na start';
+      if (phase === 'question') return i18n.t('play.phase_question');
+      if (phase === 'reveal') return i18n.t('play.phase_reveal');
+      if (phase === 'finished') return i18n.t('play.phase_finished');
+      return i18n.t('play.phase_lobby');
     }
 
     function formatSecondsLeft(value) {
@@ -123,7 +306,7 @@
       if (body) cfg.body = JSON.stringify(body);
       const res = await fetch(path, cfg);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Request failed');
+      if (!res.ok) throw new Error(data.error || i18n.t('play.request_failed'));
       return data;
     }
 
@@ -136,27 +319,69 @@
       setTimeout(() => el.remove(), 1600);
     }
 
+    // --- Multiselect state ---
+    let msSelected = new Set();
+    let ordOrder = [];
+
+    async function submitChoice(playerId, choice) {
+      const secret = localStorage.getItem(SECRET_KEY) || '';
+      await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice });
+      await refresh();
+    }
+
     function renderOptions(state, playerId) {
       const box = document.getElementById('options');
       box.innerHTML = '';
-      if (!state.question || !state.question.options) return;
+      if (!state.question) return;
 
+      const qType = state.question.type || 'choice';
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+
+      if (qType === 'choice' || qType === 'truefalse') {
+        renderChoiceOptions(box, state, playerId, qType);
+      } else if (qType === 'multiselect') {
+        renderMultiselectOptions(box, state, playerId);
+      } else if (qType === 'ordering') {
+        renderOrderingOptions(box, state, playerId);
+      } else if (qType === 'openended') {
+        renderOpenEndedOptions(box, state, playerId);
+      } else if (qType === 'poll') {
+        renderPollOptions(box, state, playerId);
+      } else if (qType === 'wordcloud') {
+        renderWordcloudOptions(box, state, playerId);
+      } else if (qType === 'slide') {
+        renderSlide(box, state);
+      }
+    }
+
+    function renderChoiceOptions(box, state, playerId, qType) {
+      if (!state.question.options) return;
       const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const isTF = qType === 'truefalse';
+      const containerClass = isTF ? 'tf-options' : 'kahoot-options';
+      const wrap = document.createElement('div');
+      wrap.className = containerClass;
 
       state.question.options.forEach((opt, i) => {
         const btn = document.createElement('button');
-        btn.className = `kahoot-btn c${i}`;
-        const shapeSpan = document.createElement('span');
-        shapeSpan.className = 'shape';
-        shapeSpan.textContent = shapes[i] || '';
-        const textSpan = document.createElement('span');
-        textSpan.textContent = `${abc[i]}) ${opt}`;
-        btn.appendChild(shapeSpan);
-        btn.appendChild(textSpan);
+        if (isTF) {
+          btn.className = `tf-btn ${i === 0 ? 'tf-true' : 'tf-false'}`;
+          btn.textContent = opt;
+        } else {
+          btn.className = `kahoot-btn c${i}`;
+          const shapeSpan = document.createElement('span');
+          shapeSpan.className = 'shape';
+          shapeSpan.textContent = shapes[i] || '';
+          const textSpan = document.createElement('span');
+          textSpan.textContent = `${abc[i]}) ${opt}`;
+          btn.appendChild(shapeSpan);
+          btn.appendChild(textSpan);
+        }
 
         if (myChoice === i) btn.classList.add('selected');
 
-        if (state.phase === 'reveal' || state.phase === 'finished') {
+        if (isReveal) {
           btn.disabled = true;
           if (i === state.question.correct_index) {
             btn.classList.add('correct-answer');
@@ -167,18 +392,318 @@
           btn.disabled = myChoice !== undefined;
           btn.addEventListener('click', async () => {
             btn.classList.add('selected');
-            document.querySelectorAll('.kahoot-btn').forEach(b => { b.disabled = true; });
-            try {
-              const secret = localStorage.getItem(SECRET_KEY) || '';
-              await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice: i });
-              await refresh();
-            } catch (e) {
-              alert(e.message);
-            }
+            wrap.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            try { await submitChoice(playerId, i); } catch (e) { alert(e.message); }
           });
         }
-        box.appendChild(btn);
+        wrap.appendChild(btn);
       });
+      box.appendChild(wrap);
+    }
+
+    function renderMultiselectOptions(box, state, playerId) {
+      if (!state.question.options) return;
+      const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const submitted = myChoice !== undefined;
+
+      // Reset selection on new question
+      if (!submitted && !isReveal && state.current_index !== lastQuestionIndex) {
+        msSelected = new Set();
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'ms-options';
+      const correctSet = new Set(state.question.correct_indices || []);
+
+      state.question.options.forEach((opt, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'ms-btn';
+        btn.textContent = `${abc[i]}) ${opt}`;
+
+        if (submitted && Array.isArray(myChoice) && myChoice.includes(i)) btn.classList.add('ms-checked');
+        if (!submitted && msSelected.has(i)) btn.classList.add('ms-checked');
+
+        if (isReveal) {
+          btn.disabled = true;
+          if (correctSet.has(i)) btn.classList.add('correct-answer');
+          else btn.classList.add('wrong-answer');
+        } else if (submitted) {
+          btn.disabled = true;
+        } else {
+          btn.addEventListener('click', () => {
+            if (msSelected.has(i)) msSelected.delete(i); else msSelected.add(i);
+            btn.classList.toggle('ms-checked');
+          });
+        }
+        wrap.appendChild(btn);
+      });
+      box.appendChild(wrap);
+
+      if (!isReveal && !submitted) {
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'btn good ms-confirm';
+        confirmBtn.textContent = i18n.t('play.confirm_selection');
+        confirmBtn.addEventListener('click', async () => {
+          confirmBtn.disabled = true;
+          try { await submitChoice(playerId, [...msSelected].sort((a,b) => a-b)); }
+          catch (e) { alert(e.message); confirmBtn.disabled = false; }
+        });
+        box.appendChild(confirmBtn);
+      }
+    }
+
+    function renderOrderingOptions(box, state, playerId) {
+      if (!state.question.items) return;
+      const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const submitted = myChoice !== undefined;
+      const items = state.question.items;
+
+      // Init order on new question
+      if (!submitted && !isReveal && state.current_index !== lastQuestionIndex) {
+        ordOrder = items.map((_, i) => i);
+      }
+      if (ordOrder.length !== items.length) ordOrder = items.map((_, i) => i);
+
+      const displayOrder = submitted && Array.isArray(myChoice) ? myChoice : ordOrder;
+      const correctOrder = state.question.correct_order;
+
+      const list = document.createElement('ol');
+      list.className = 'ord-list';
+
+      displayOrder.forEach((itemIdx, pos) => {
+        const li = document.createElement('li');
+        li.className = 'ord-item';
+
+        if (isReveal && correctOrder) {
+          if (correctOrder[pos] === itemIdx) li.classList.add('correct-pos');
+          else li.classList.add('wrong-pos');
+        }
+
+        const num = document.createElement('span');
+        num.className = 'ord-num';
+        num.textContent = pos + 1;
+        li.appendChild(num);
+
+        const text = document.createElement('span');
+        text.textContent = items[itemIdx];
+        text.style.flex = '1';
+        li.appendChild(text);
+
+        if (!isReveal && !submitted) {
+          const arrows = document.createElement('span');
+          arrows.className = 'ord-arrows';
+          const up = document.createElement('button');
+          up.className = 'ord-arrow';
+          up.textContent = '\u25B2';
+          up.disabled = pos === 0;
+          up.addEventListener('click', () => {
+            [ordOrder[pos - 1], ordOrder[pos]] = [ordOrder[pos], ordOrder[pos - 1]];
+            renderOrderingOptions(box, state, playerId);
+          });
+          const down = document.createElement('button');
+          down.className = 'ord-arrow';
+          down.textContent = '\u25BC';
+          down.disabled = pos === displayOrder.length - 1;
+          down.addEventListener('click', () => {
+            [ordOrder[pos], ordOrder[pos + 1]] = [ordOrder[pos + 1], ordOrder[pos]];
+            renderOrderingOptions(box, state, playerId);
+          });
+          arrows.appendChild(up);
+          arrows.appendChild(down);
+          li.appendChild(arrows);
+        }
+        list.appendChild(li);
+      });
+      box.innerHTML = '';
+      box.appendChild(list);
+
+      if (isReveal && correctOrder) {
+        const correctLabel = document.createElement('p');
+        correctLabel.className = 'muted';
+        correctLabel.style.marginTop = '8px';
+        correctLabel.textContent = i18n.t('play.correct_order') + correctOrder.map(i => items[i]).join(' \u2192 ');
+        box.appendChild(correctLabel);
+      }
+
+      if (!isReveal && !submitted) {
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'btn good ms-confirm';
+        confirmBtn.textContent = i18n.t('play.confirm_order');
+        confirmBtn.addEventListener('click', async () => {
+          confirmBtn.disabled = true;
+          try { await submitChoice(playerId, [...ordOrder]); }
+          catch (e) { alert(e.message); confirmBtn.disabled = false; }
+        });
+        box.appendChild(confirmBtn);
+      }
+    }
+
+    function renderOpenEndedOptions(box, state, playerId) {
+      const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const submitted = myChoice !== undefined;
+
+      if (isReveal) {
+        if (submitted) {
+          const p = document.createElement('p');
+          p.style.fontSize = '1.2rem';
+          p.style.fontWeight = '700';
+          p.textContent = i18n.t('play.your_answer') + myChoice;
+          box.appendChild(p);
+        }
+        if (state.question.accepted_answers) {
+          const ans = document.createElement('p');
+          ans.className = 'muted';
+          ans.textContent = i18n.t('play.accepted_answers') + state.question.accepted_answers.join(', ');
+          box.appendChild(ans);
+        }
+        return;
+      }
+
+      if (submitted) {
+        const p = document.createElement('p');
+        p.style.fontSize = '1.2rem';
+        p.style.fontWeight = '700';
+        p.textContent = i18n.t('play.answer_sent_prefix') + myChoice;
+        box.appendChild(p);
+        return;
+      }
+
+      const input = document.createElement('input');
+      input.className = 'oe-input';
+      input.type = 'text';
+      input.placeholder = i18n.t('play.answer_placeholder');
+      input.maxLength = state.question.max_length || 200;
+      box.appendChild(input);
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn good oe-submit';
+      confirmBtn.textContent = i18n.t('play.submit_answer');
+      confirmBtn.addEventListener('click', async () => {
+        const val = input.value.trim();
+        if (!val) { alert(i18n.t('play.enter_answer_alert')); return; }
+        confirmBtn.disabled = true;
+        input.disabled = true;
+        try { await submitChoice(playerId, val); }
+        catch (e) { alert(e.message); confirmBtn.disabled = false; input.disabled = false; }
+      });
+      box.appendChild(confirmBtn);
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') confirmBtn.click();
+      });
+    }
+
+
+    // --- Poll: choice buttons with live percentages ---
+    function renderPollOptions(box, state, playerId) {
+      if (!state.question.options) return;
+      const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const submitted = myChoice !== undefined;
+      const votes = state.question.vote_counts || [];
+      const totalVotes = votes.reduce((a, b) => a + b, 0) || 1;
+      const wrap = document.createElement('div');
+      wrap.className = 'kahoot-options';
+      state.question.options.forEach((opt, i) => {
+        const btn = document.createElement('button');
+        btn.className = `kahoot-btn c${i}`;
+        const textSpan = document.createElement('span');
+        textSpan.textContent = `${abc[i]}) ${opt}`;
+        btn.appendChild(textSpan);
+        if (submitted || isReveal) {
+          const count = votes[i] || 0;
+          const pct = Math.round(count / totalVotes * 100);
+          const pctSpan = document.createElement('span');
+          pctSpan.style.cssText = 'display:block;font-size:0.75em;font-weight:700;opacity:0.9;';
+          pctSpan.textContent = `${pct}% (${count})`;
+          btn.appendChild(pctSpan);
+        }
+        if (myChoice === i) btn.classList.add('selected');
+        if (submitted || isReveal) {
+          btn.disabled = true;
+        } else {
+          btn.addEventListener('click', async () => {
+            btn.classList.add('selected');
+            wrap.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            try { await submitChoice(playerId, i); } catch (e) { alert(e.message); }
+          });
+        }
+        wrap.appendChild(btn);
+      });
+      box.appendChild(wrap);
+      if (!submitted && !isReveal) {
+        const hint = document.createElement('p');
+        hint.className = 'muted';
+        hint.style.marginTop = '8px';
+        hint.textContent = i18n.t('play.poll_hint');
+        box.appendChild(hint);
+      }
+    }
+
+    // --- Word Cloud: text input, shows cloud on reveal ---
+    function renderWordcloudOptions(box, state, playerId) {
+      const myChoice = state.my_choice;
+      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
+      const submitted = myChoice !== undefined;
+      if (submitted) {
+        const p = document.createElement('p');
+        p.style.cssText = 'font-size:1.2rem;font-weight:700;';
+        p.textContent = i18n.t('play.wordcloud_sent', myChoice);
+        box.appendChild(p);
+      }
+      if (isReveal) {
+        const wordCounts = state.question.word_counts || {};
+        const entries = Object.entries(wordCounts);
+        if (entries.length > 0) {
+          const cloud = document.createElement('div');
+          cloud.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:10px;';
+          const maxCount = Math.max(...entries.map(([,c]) => c), 1);
+          const colors = ['#0284c7','#16a34a','#dc2626','#d89e00','#7c3aed'];
+          entries.sort((a, b) => b[1] - a[1]);
+          entries.forEach(([word, count], i) => {
+            const span = document.createElement('span');
+            const ratio = count / maxCount;
+            const size = (0.9 + ratio * 1.8).toFixed(1);
+            span.style.cssText = `font-size:${size}rem;font-weight:900;color:${colors[i % colors.length]};`;
+            span.textContent = word;
+            cloud.appendChild(span);
+          });
+          box.appendChild(cloud);
+        }
+        return;
+      }
+      if (submitted) return;
+      const input = document.createElement('input');
+      input.className = 'oe-input';
+      input.type = 'text';
+      input.placeholder = i18n.t('play.wordcloud_placeholder');
+      input.maxLength = 100;
+      box.appendChild(input);
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn good oe-submit';
+      confirmBtn.textContent = i18n.t('play.wordcloud_submit');
+      confirmBtn.addEventListener('click', async () => {
+        const val = input.value.trim();
+        if (!val) { alert(i18n.t('play.wordcloud_enter_alert')); return; }
+        confirmBtn.disabled = true;
+        input.disabled = true;
+        try { await submitChoice(playerId, val); }
+        catch (e) { alert(e.message); confirmBtn.disabled = false; input.disabled = false; }
+      });
+      box.appendChild(confirmBtn);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmBtn.click(); });
+    }
+
+    // --- Slide: students just see a waiting message ---
+    function renderSlide(box, state) {
+      const p = document.createElement('p');
+      p.className = 'muted waiting-pulse';
+      p.style.cssText = 'font-size:1.3rem;text-align:center;margin-top:16px;';
+      p.textContent = i18n.t('play.slide_waiting');
+      box.appendChild(p);
     }
 
     function renderPodium(players) {
@@ -195,6 +720,9 @@
       players.slice(0, 3).forEach((p, i) => {
         const place = document.createElement('div');
         place.className = `podium-place podium-${i+1}`;
+        const avatarDiv = document.createElement('div');
+        avatarDiv.style.cssText = 'font-size:2rem;margin-bottom:2px;';
+        avatarDiv.textContent = getAvatarEmoji(p.avatar_id);
         const rank = document.createElement('div');
         rank.className = 'podium-rank';
         rank.textContent = medals[i];
@@ -203,7 +731,8 @@
         name.textContent = p.name;
         const score = document.createElement('div');
         score.className = 'podium-score';
-        score.textContent = `${p.score} bodu`;
+        score.textContent = `${p.score}` + i18n.t('play.points_suffix');
+        place.appendChild(avatarDiv);
         place.appendChild(rank);
         place.appendChild(name);
         place.appendChild(score);
@@ -228,6 +757,111 @@
       }
     }
 
+    function updateStreakBadge(me) {
+      const badge = document.getElementById('streakBadge');
+      const streak = me.streak || 0;
+      if (streak >= 3) {
+        badge.classList.remove('hide');
+        badge.textContent = streak + 'x';
+        badge.classList.toggle('hot', streak >= 5);
+      } else {
+        badge.classList.add('hide');
+      }
+    }
+
+    function buildRevealBanner(state) {
+      const q = state.question;
+      const qType = q.type || 'choice';
+      const myChoice = state.my_choice;
+      const banner = document.getElementById('resultBanner');
+      banner.classList.remove('hide');
+
+      if (qType === 'choice' || qType === 'truefalse') {
+        const c = q.correct_index;
+        if (myChoice === undefined) {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.timeout_prefix') + `${abc[c]}) ${q.options[c]}`;
+        } else if (myChoice === c) {
+          banner.className = 'result-banner correct-banner';
+          banner.textContent = i18n.t('play.correct_prefix') + `${abc[c]}) ${q.options[c]}`;
+        } else {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.wrong_prefix') + `${abc[c]}) ${q.options[c]}`;
+        }
+      } else if (qType === 'multiselect') {
+        const correct = new Set(q.correct_indices || []);
+        const mine = new Set(Array.isArray(myChoice) ? myChoice : []);
+        if (myChoice === undefined) {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.timeout_prefix') + [...correct].map(i => q.options[i]).join(', ');
+        } else if (correct.size === mine.size && [...correct].every(i => mine.has(i))) {
+          banner.className = 'result-banner correct-banner';
+          banner.textContent = i18n.t('play.exact_selection');
+        } else {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.partial_correct') + [...correct].map(i => q.options[i]).join(', ');
+        }
+      } else if (qType === 'ordering') {
+        const correctOrder = q.correct_order || [];
+        if (myChoice === undefined) {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.timeout_plain');
+        } else if (Array.isArray(myChoice) && JSON.stringify(myChoice) === JSON.stringify(correctOrder)) {
+          banner.className = 'result-banner correct-banner';
+          banner.textContent = i18n.t('play.correct_order_banner');
+        } else {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.wrong_order_banner');
+        }
+      } else if (qType === 'openended') {
+        const accepted = q.accepted_answers || [];
+        if (myChoice === undefined) {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.timeout_prefix') + accepted.join(', ');
+        } else {
+          // We can't perfectly check on client — server already scored it
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.your_answer') + '"' + myChoice + '". ' + i18n.t('play.accepted_answers') + accepted.join(', ');
+        }
+      } else if (qType === 'poll') {
+        const myChoice2 = state.my_choice;
+        if (myChoice2 === undefined) {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.poll_not_voted');
+        } else {
+          banner.className = 'result-banner correct-banner';
+          banner.textContent = i18n.t('play.poll_vote_cast') + q.options[myChoice2];
+        }
+      } else if (qType === 'wordcloud') {
+        const myChoice2 = state.my_choice;
+        if (myChoice2 !== undefined) {
+          banner.className = 'result-banner correct-banner';
+          banner.textContent = i18n.t('play.wordcloud_added');
+        } else {
+          banner.className = 'result-banner wrong-banner';
+          banner.textContent = i18n.t('play.wordcloud_not_sent');
+        }
+      } else if (qType === 'slide') {
+        banner.classList.add('hide');
+      }
+    }
+
+    function updateTeamUI(me) {
+      const teamBadge = document.getElementById('teamBadge');
+      const teamScoreItem = document.querySelector('.team-score-item');
+      const teamScoreEl = document.getElementById('teamScore');
+      if (me.team) {
+        teamBadge.textContent = me.team;
+        teamBadge.style.background = me.team_color || '#64748b';
+        teamBadge.classList.remove('hide');
+        if (teamScoreItem) teamScoreItem.classList.remove('hide');
+        teamScoreEl.textContent = me.team_score ?? 0;
+      } else {
+        teamBadge.classList.add('hide');
+        if (teamScoreItem) teamScoreItem.classList.add('hide');
+      }
+    }
+
     function render(state, playerId) {
       const me = state.me || {};
       document.getElementById('playerName').textContent = me.name || '-';
@@ -242,6 +876,8 @@
       pill.className = `status-pill ${state.phase}`;
 
       updateCountdown(state);
+      updateStreakBadge(me);
+      updateTeamUI(me);
 
       const main = document.getElementById('mainMessage');
       const banner = document.getElementById('resultBanner');
@@ -254,52 +890,67 @@
       }
       lastScore = me.score || 0;
 
+      const qImg = document.getElementById('questionImage');
+
       if (!state.question) {
         if (state.phase === 'finished') {
-          main.textContent = 'Kviz skoncil!';
+          main.textContent = i18n.t('play.quiz_ended');
           renderPodium(state.players);
         } else {
           main.textContent = '';
           const pulse = document.createElement('span');
           pulse.className = 'waiting-pulse';
-          pulse.textContent = 'Jakmile ucitel spusti kviz, otazka se objevi automaticky.';
+          pulse.textContent = i18n.t('play.waiting_pulse');
           main.appendChild(pulse);
           podium.classList.add('hide');
         }
         banner.classList.add('hide');
         exp.textContent = '';
+        qImg.classList.add('hide');
+        qImg.src = '';
       } else {
         main.textContent = state.question.prompt;
+        if (state.question.image_url) {
+          qImg.src = state.question.image_url;
+          qImg.classList.remove('hide');
+          qImg.style.display = 'block';
+        } else {
+          qImg.classList.add('hide');
+          qImg.src = '';
+        }
         podium.classList.add('hide');
 
+        const qType = state.question.type || 'choice';
         if (state.phase === 'reveal' || state.phase === 'finished') {
-          const c = state.question.correct_index;
-          const myChoice = state.my_choice;
-          const isCorrect = myChoice === c;
-
-          banner.classList.remove('hide');
-          if (myChoice === undefined) {
-            banner.className = 'result-banner wrong-banner';
-            banner.textContent = `Cas vyprsel! Spravne: ${abc[c]}) ${state.question.options[c]}`;
-          } else if (isCorrect) {
-            banner.className = 'result-banner correct-banner';
-            banner.textContent = `Spravne! ${abc[c]}) ${state.question.options[c]}`;
+          buildRevealBanner(state);
+          // No explanation for engagement-only types
+          if (qType === 'poll' || qType === 'wordcloud' || qType === 'slide') {
+            exp.textContent = '';
           } else {
-            banner.className = 'result-banner wrong-banner';
-            banner.textContent = `Spatne! Spravne: ${abc[c]}) ${state.question.options[c]}`;
+            exp.textContent = state.question.explanation || '';
           }
-          exp.textContent = state.question.explanation || '';
         } else {
           banner.classList.add('hide');
-          if (state.my_choice === undefined) {
-            exp.textContent = `Vyber jednu moznost! Zbyva ${formatSecondsLeft(state.phase_time_left)}.`;
+          const timeLeft = formatSecondsLeft(state.phase_time_left);
+          if (qType === 'slide') {
+            exp.textContent = '';
+          } else if (qType === 'poll') {
+            exp.textContent = state.my_choice === undefined ? i18n.t('play.poll_pick_one') : i18n.t('play.answer_sent');
+          } else if (qType === 'wordcloud') {
+            exp.textContent = state.my_choice === undefined ? i18n.t('play.wordcloud_write_hint') : i18n.t('play.answer_sent');
+          } else if (state.my_choice === undefined) {
+            if (qType === 'openended') exp.textContent = i18n.t('play.time_left_hint_open') + timeLeft + '.';
+            else if (qType === 'multiselect') exp.textContent = i18n.t('play.time_left_hint_multi') + timeLeft + '.';
+            else if (qType === 'ordering') exp.textContent = i18n.t('play.time_left_hint_order') + timeLeft + '.';
+            else exp.textContent = i18n.t('play.time_left_hint_choice') + timeLeft + '.';
           } else {
-            exp.textContent = 'Odpoved odeslana. Pockej na vyhodnoceni.';
+            exp.textContent = i18n.t('play.answer_sent');
           }
         }
       }
 
       renderOptions(state, playerId);
+
       lastPhase = state.phase;
       lastQuestionIndex = state.current_index;
     }
@@ -320,18 +971,61 @@
       }
     }
 
+    let isLoggedIn = false;
+    let myAvatarId = 0;
+
+    (async function autoFillFromAccount() {
+      const token = localStorage.getItem('quiz_user_token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/auth/profile', {
+          headers: { 'Authorization': 'UserToken ' + token }
+        });
+        if (!res.ok) return;
+        const profile = await res.json();
+        if (profile.nickname) {
+          document.getElementById('nameInput').value = profile.nickname;
+          isLoggedIn = true;
+          myAvatarId = profile.avatar_id || 0;
+        }
+      } catch (e) {
+        console.error('Auto-fill from account failed:', e);
+      }
+    })();
+
     async function join() {
       const name = document.getElementById('nameInput').value.trim();
       const err = document.getElementById('joinErr');
       err.textContent = '';
       try {
-        const data = await api('/api/register', 'POST', { name });
+        const userToken = localStorage.getItem('quiz_user_token') || '';
+        const data = await api('/api/register', 'POST', { name, user_token: userToken });
         localStorage.setItem(KEY, data.player_id);
         localStorage.setItem(SECRET_KEY, data.player_secret);
+        if (data.team) {
+          localStorage.setItem('quiz_player_team', data.team);
+        } else {
+          localStorage.removeItem('quiz_player_team');
+        }
+        myAvatarId = data.avatar_id || myAvatarId;
         document.getElementById('joinCard').classList.add('hide');
         document.getElementById('gameCard').classList.remove('hide');
+        if (isLoggedIn) {
+          document.getElementById('loggedInBadge').classList.remove('hide');
+        }
+        // Show avatar next to player name
+        var avatarSpan = document.getElementById('playerAvatarEmoji');
+        if (avatarSpan) avatarSpan.textContent = getAvatarEmoji(myAvatarId) + ' ';
+        // Show team announcement if assigned
+        if (data.team) {
+          const ann = document.getElementById('teamAnnounce');
+          ann.textContent = i18n.t('play.team_announce', data.team);
+          ann.classList.remove('hide');
+          setTimeout(() => ann.classList.add('hide'), 5000);
+        }
         lastScore = 0;
         await refresh();
+        startRefreshLoop();
       } catch (e) {
         err.textContent = e.message;
       }
@@ -342,13 +1036,469 @@
       if (e.key === 'Enter') join();
     });
 
+    // --- Random nickname button ---
+    document.getElementById('randomNickBtn').addEventListener('click', async function() {
+      const btn = this;
+      btn.classList.remove('spin-once');
+      // Force reflow to restart animation
+      void btn.offsetWidth;
+      btn.classList.add('spin-once');
+      btn.disabled = true;
+      try {
+        const data = await api('/api/random-nickname');
+        document.getElementById('nameInput').value = data.nickname || '';
+      } catch (e) {
+        // silently ignore — the field keeps its current value
+      } finally {
+        btn.disabled = false;
+        btn.addEventListener('animationend', () => btn.classList.remove('spin-once'), { once: true });
+      }
+    });
+
+
+    // --- WebSocket with polling fallback ---
+    let ws = null;
+    let wsRetries = 0;
+    let pollingTimer = null;
+
+    function connectWS() {
+      const playerId = localStorage.getItem(KEY);
+      if (!playerId) return;
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/api/ws?player_id=${encodeURIComponent(playerId)}`);
+        ws.onmessage = (ev) => {
+          try {
+            const state = JSON.parse(ev.data);
+            if (state.me) render(state, playerId);
+          } catch {}
+        };
+        ws.onopen = () => {
+          wsRetries = 0;
+          if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+        };
+        ws.onclose = () => {
+          ws = null;
+          if (!pollingTimer) pollingTimer = setInterval(refresh, 1000);
+          if (wsRetries < 5) { wsRetries++; setTimeout(connectWS, 2000 * wsRetries); }
+        };
+        ws.onerror = () => { ws?.close(); };
+      } catch {
+        if (!pollingTimer) pollingTimer = setInterval(refresh, 1000);
+      }
+    }
+
+    function startRefreshLoop() {
+      pollingTimer = setInterval(refresh, 1000);
+      connectWS();
+    }
+
     if (localStorage.getItem(KEY)) {
       document.getElementById('joinCard').classList.add('hide');
       document.getElementById('gameCard').classList.remove('hide');
+      if (localStorage.getItem('quiz_user_token')) {
+        document.getElementById('loggedInBadge').classList.remove('hide');
+      }
       refresh();
+      startRefreshLoop();
+    } else {
+      // Start polling only after join
     }
 
-    setInterval(refresh, 1000);
+    // i18n init + language switcher
+    i18n.init().then(() => injectLangSwitcher());
+
+    // PWA service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+    }
+
+    // ===================================================================
+    // SELF-PACED / HOMEWORK MODE
+    // Activated when URL contains ?hw=<session_id>
+    // ===================================================================
+    (function initSelfPaced() {
+      const params = new URLSearchParams(location.search);
+      const hwSessionId = params.get('hw');
+      if (!hwSessionId) return;
+
+      // Hide normal join UI, show self-paced card
+      document.getElementById('joinCard').classList.add('hide');
+      document.getElementById('spCard').classList.remove('hide');
+
+      const SP_KEY = 'sp_player_id_' + hwSessionId;
+      const SP_NAME_KEY = 'sp_player_name_' + hwSessionId;
+      let spPlayerId = localStorage.getItem(SP_KEY);
+      let spPlayerName = localStorage.getItem(SP_NAME_KEY) || '';
+      let spState = null; // last fetched state
+
+      // Auto-fill name from account
+      (async function autoFillName() {
+        const token = localStorage.getItem('quiz_user_token');
+        if (!token) return;
+        try {
+          const res = await fetch('/api/auth/profile', { headers: { 'Authorization': 'UserToken ' + token } });
+          if (!res.ok) return;
+          const profile = await res.json();
+          if (profile.nickname) document.getElementById('spNameInput').value = profile.nickname;
+        } catch {}
+      })();
+
+      // If already joined, go straight to quiz
+      if (spPlayerId) {
+        document.getElementById('spJoinPane').classList.add('hide');
+        document.getElementById('spQuestionPane').classList.remove('hide');
+        loadSpState();
+      }
+
+      // Set bank name label
+      (async function fetchBankLabel() {
+        try {
+          // Use state endpoint with a dummy player_id just to get bank name
+          // Actually just show generic label until we join
+          document.getElementById('spBankName').textContent = i18n.t('play.sp_loading_task');
+          // Try fetching if already joined
+          if (spPlayerId) return; // will be set from state
+          // Without player_id we can't call /api/selfpaced/state
+          // Just clear the label
+          document.getElementById('spBankName').textContent = i18n.t('play.sp_enter_name_hint');
+        } catch {}
+      })();
+
+      document.getElementById('spJoinBtn').addEventListener('click', spJoin);
+      document.getElementById('spNameInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') spJoin();
+      });
+
+      async function spJoin() {
+        const name = document.getElementById('spNameInput').value.trim();
+        const errEl = document.getElementById('spJoinErr');
+        errEl.textContent = '';
+        if (!name) { errEl.textContent = i18n.t('play.sp_enter_name_error'); return; }
+
+        try {
+          const userToken = localStorage.getItem('quiz_user_token') || '';
+          const headers = { 'Content-Type': 'application/json' };
+          if (userToken) headers['Authorization'] = 'UserToken ' + userToken;
+          const res = await fetch('/api/selfpaced/join', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ session_id: hwSessionId, name }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || i18n.t('play.sp_error'));
+          spPlayerId = data.player_id;
+          spPlayerName = data.name;
+          localStorage.setItem(SP_KEY, spPlayerId);
+          localStorage.setItem(SP_NAME_KEY, spPlayerName);
+          document.getElementById('spBankName').textContent = data.bank_name ? data.bank_name.replace('.json','').replace(/_/g,' ') : '';
+          document.getElementById('spJoinPane').classList.add('hide');
+          document.getElementById('spQuestionPane').classList.remove('hide');
+          await loadSpState();
+        } catch (e) {
+          errEl.textContent = e.message;
+        }
+      }
+
+      async function loadSpState() {
+        if (!spPlayerId) return;
+        try {
+          const res = await fetch(`/api/selfpaced/state?session_id=${encodeURIComponent(hwSessionId)}&player_id=${encodeURIComponent(spPlayerId)}`);
+          const data = await res.json();
+          if (!res.ok) {
+            if (res.status === 404 && data.error && data.error.includes('not registered')) {
+              // Session expired or player not found — clear and show join
+              localStorage.removeItem(SP_KEY);
+              localStorage.removeItem(SP_NAME_KEY);
+              location.reload();
+              return;
+            }
+            throw new Error(data.error || i18n.t('play.sp_error'));
+          }
+          spState = data;
+          if (data.status === 'finished') {
+            renderSpSummary(data);
+          } else {
+            renderSpQuestion(data);
+          }
+        } catch (e) {
+          console.error('sp state error', e);
+        }
+      }
+
+      function renderSpQuestion(state) {
+        document.getElementById('spQuestionPane').classList.remove('hide');
+        document.getElementById('spSummaryPane').classList.add('hide');
+
+        const qi = state.question_index;
+        const total = state.total_questions;
+        document.getElementById('spProgressLabel').textContent = i18n.t('play.sp_question_progress', qi + 1, total);
+        document.getElementById('spScoreLabel').textContent = i18n.t('play.sp_score_label', state.score);
+        const pct = total > 0 ? (qi / total * 100) : 0;
+        document.getElementById('spProgressBar').style.width = pct + '%';
+
+        const q = state.question;
+        document.getElementById('spQuestion').textContent = q.prompt;
+        document.getElementById('spFeedbackPane').classList.add('hide');
+        renderSpOptions(q);
+      }
+
+      function renderSpOptions(q) {
+        const box = document.getElementById('spOptions');
+        box.innerHTML = '';
+        const qType = q.type || 'choice';
+
+        if (qType === 'choice' || qType === 'truefalse') {
+          const isTF = qType === 'truefalse';
+          const wrap = document.createElement('div');
+          wrap.className = isTF ? 'tf-options' : 'kahoot-options';
+          (q.options || []).forEach((opt, i) => {
+            const btn = document.createElement('button');
+            if (isTF) {
+              btn.className = `tf-btn ${i === 0 ? 'tf-true' : 'tf-false'}`;
+              btn.textContent = opt;
+            } else {
+              btn.className = `kahoot-btn c${i}`;
+              const shapeSpan = document.createElement('span');
+              shapeSpan.className = 'shape';
+              shapeSpan.textContent = shapes[i] || '';
+              const textSpan = document.createElement('span');
+              textSpan.textContent = `${abc[i]}) ${opt}`;
+              btn.appendChild(shapeSpan);
+              btn.appendChild(textSpan);
+            }
+            btn.addEventListener('click', () => spSubmitAnswer(i));
+            wrap.appendChild(btn);
+          });
+          box.appendChild(wrap);
+
+        } else if (qType === 'multiselect') {
+          let msSelected = new Set();
+          const wrap = document.createElement('div');
+          wrap.className = 'ms-options';
+          (q.options || []).forEach((opt, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'ms-btn';
+            btn.textContent = `${abc[i]}) ${opt}`;
+            btn.addEventListener('click', () => {
+              if (msSelected.has(i)) { msSelected.delete(i); btn.classList.remove('ms-checked'); }
+              else { msSelected.add(i); btn.classList.add('ms-checked'); }
+            });
+            wrap.appendChild(btn);
+          });
+          box.appendChild(wrap);
+          const confirmBtn = document.createElement('button');
+          confirmBtn.className = 'btn good ms-confirm';
+          confirmBtn.textContent = i18n.t('play.confirm_selection');
+          confirmBtn.addEventListener('click', () => {
+            confirmBtn.disabled = true;
+            spSubmitAnswer([...msSelected].sort((a, b) => a - b));
+          });
+          box.appendChild(confirmBtn);
+
+        } else if (qType === 'ordering') {
+          let ordOrder = (q.items || []).map((_, i) => i);
+          function buildOrdList() {
+            box.innerHTML = '';
+            const list = document.createElement('ol');
+            list.className = 'ord-list';
+            ordOrder.forEach((itemIdx, pos) => {
+              const li = document.createElement('li');
+              li.className = 'ord-item';
+              const num = document.createElement('span');
+              num.className = 'ord-num';
+              num.textContent = pos + 1;
+              li.appendChild(num);
+              const text = document.createElement('span');
+              text.textContent = q.items[itemIdx];
+              text.style.flex = '1';
+              li.appendChild(text);
+              const arrows = document.createElement('span');
+              arrows.className = 'ord-arrows';
+              const up = document.createElement('button');
+              up.className = 'ord-arrow';
+              up.textContent = '\u25B2';
+              up.disabled = pos === 0;
+              up.addEventListener('click', () => { [ordOrder[pos-1], ordOrder[pos]] = [ordOrder[pos], ordOrder[pos-1]]; buildOrdList(); });
+              const down = document.createElement('button');
+              down.className = 'ord-arrow';
+              down.textContent = '\u25BC';
+              down.disabled = pos === ordOrder.length - 1;
+              down.addEventListener('click', () => { [ordOrder[pos], ordOrder[pos+1]] = [ordOrder[pos+1], ordOrder[pos]]; buildOrdList(); });
+              arrows.appendChild(up);
+              arrows.appendChild(down);
+              li.appendChild(arrows);
+              list.appendChild(li);
+            });
+            box.appendChild(list);
+            const confirmBtn = document.createElement('button');
+            confirmBtn.className = 'btn good ms-confirm';
+            confirmBtn.textContent = i18n.t('play.confirm_order');
+            confirmBtn.addEventListener('click', () => { confirmBtn.disabled = true; spSubmitAnswer([...ordOrder]); });
+            box.appendChild(confirmBtn);
+          }
+          buildOrdList();
+
+        } else if (qType === 'openended') {
+          const input = document.createElement('input');
+          input.className = 'oe-input';
+          input.type = 'text';
+          input.placeholder = i18n.t('play.answer_placeholder');
+          input.maxLength = q.max_length || 200;
+          box.appendChild(input);
+          const confirmBtn = document.createElement('button');
+          confirmBtn.className = 'btn good oe-submit';
+          confirmBtn.textContent = i18n.t('play.submit_answer');
+          confirmBtn.addEventListener('click', () => {
+            const val = input.value.trim();
+            if (!val) { alert(i18n.t('play.enter_answer_alert')); return; }
+            confirmBtn.disabled = true;
+            input.disabled = true;
+            spSubmitAnswer(val);
+          });
+          box.appendChild(confirmBtn);
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') confirmBtn.click(); });
+        }
+      }
+
+      async function spSubmitAnswer(choice) {
+        // Disable all buttons to prevent double-submit
+        document.getElementById('spOptions').querySelectorAll('button').forEach(b => b.disabled = true);
+        try {
+          const res = await fetch('/api/selfpaced/answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: hwSessionId, player_id: spPlayerId, choice }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || i18n.t('play.sp_error'));
+          showSpFeedback(data);
+        } catch (e) {
+          alert(i18n.t('play.sp_error_prefix') + e.message);
+          // Re-enable on error
+          document.getElementById('spOptions').querySelectorAll('button').forEach(b => b.disabled = false);
+        }
+      }
+
+      function showSpFeedback(result) {
+        const pane = document.getElementById('spFeedbackPane');
+        const feedback = document.getElementById('spFeedback');
+        const expEl = document.getElementById('spExplanation');
+        const nextBtn = document.getElementById('spNextBtn');
+
+        // Update score + progress
+        const qi = result.question_index;
+        const total = result.total_questions;
+        document.getElementById('spScoreLabel').textContent = i18n.t('play.sp_score_label', result.score);
+        const pct = total > 0 ? ((qi + 1) / total * 100) : 0;
+        document.getElementById('spProgressBar').style.width = pct + '%';
+
+        // Highlight chosen answers
+        const q = result.question;
+        const qType = q.type || 'choice';
+        const box = document.getElementById('spOptions');
+        const btns = box.querySelectorAll('button');
+
+        if (qType === 'choice' || qType === 'truefalse') {
+          btns.forEach((btn, i) => {
+            btn.disabled = true;
+            if (i === q.correct_index) btn.classList.add('correct-answer');
+            else btn.classList.add('wrong-answer');
+            if (i === result.choice) btn.classList.add('selected');
+          });
+        } else if (qType === 'multiselect') {
+          const correctSet = new Set(q.correct_indices || []);
+          const chosenSet = new Set(Array.isArray(result.choice) ? result.choice : []);
+          btns.forEach((btn, i) => {
+            btn.disabled = true;
+            if (correctSet.has(i)) btn.classList.add('correct-answer');
+            else if (chosenSet.has(i)) btn.classList.add('wrong-answer');
+          });
+        }
+
+        // Feedback banner
+        if (result.correct) {
+          feedback.className = 'sp-feedback correct';
+          feedback.textContent = i18n.t('play.sp_correct', result.points);
+        } else {
+          feedback.className = 'sp-feedback wrong';
+          if (qType === 'choice' || qType === 'truefalse') {
+            feedback.textContent = i18n.t('play.sp_wrong_answer', `${abc[q.correct_index]}) ${q.options[q.correct_index]}`);
+          } else if (qType === 'openended') {
+            const acc = (q.accepted_answers || []).join(', ');
+            feedback.textContent = i18n.t('play.sp_wrong_answer', acc);
+          } else if (qType === 'multiselect') {
+            const correct = (q.correct_indices || []).map(i => q.options[i]).join(', ');
+            feedback.textContent = i18n.t('play.sp_wrong_correct', correct);
+          } else {
+            feedback.textContent = i18n.t('play.sp_wrong_plain');
+          }
+        }
+
+        // Explanation
+        if (q.explanation) {
+          expEl.textContent = q.explanation;
+          expEl.classList.remove('hide');
+        } else {
+          expEl.classList.add('hide');
+        }
+
+        pane.classList.remove('hide');
+
+        if (result.finished) {
+          nextBtn.textContent = i18n.t('play.sp_show_results');
+          nextBtn.onclick = () => loadSpState();
+        } else {
+          nextBtn.textContent = i18n.t('play.sp_next_question');
+          nextBtn.onclick = () => loadSpState();
+        }
+      }
+
+      function renderSpSummary(state) {
+        document.getElementById('spQuestionPane').classList.add('hide');
+        document.getElementById('spSummaryPane').classList.remove('hide');
+
+        document.getElementById('spSummaryName').textContent = state.player_name || spPlayerName;
+        document.getElementById('spTotalScore').textContent = state.score;
+
+        const maxScore = state.total_questions * 600;
+        const pct = maxScore > 0 ? Math.round(state.score / maxScore * 100) : 0;
+        document.getElementById('spScorePct').textContent = pct + '%';
+
+        const list = document.getElementById('spSummaryList');
+        list.innerHTML = '';
+        (state.summary || []).forEach((item, i) => {
+          const q = item.question;
+          const row = document.createElement('div');
+          row.className = 'sp-summary-row ' + (item.correct ? 'sp-correct' : 'sp-wrong');
+
+          const icon = document.createElement('span');
+          icon.className = 'sp-summary-icon';
+          icon.textContent = item.correct ? '\u2705' : '\u274C';
+          row.appendChild(icon);
+
+          const qText = document.createElement('span');
+          qText.className = 'sp-summary-q';
+          qText.textContent = `${i + 1}. ${q.prompt}`;
+          row.appendChild(qText);
+
+          const pts = document.createElement('span');
+          pts.className = 'sp-summary-pts';
+          pts.textContent = `+${item.points}`;
+          row.appendChild(pts);
+
+          list.appendChild(row);
+        });
+      }
+
+      document.getElementById('spRestartBtn').addEventListener('click', () => {
+        // Clear stored player_id so student can start fresh
+        localStorage.removeItem(SP_KEY);
+        localStorage.removeItem(SP_NAME_KEY);
+        location.reload();
+      });
+
+    })(); // end initSelfPaced
   </script>
 </body>
 </html>

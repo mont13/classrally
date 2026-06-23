@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title data-i18n="profile.page_title">ClassRally - Muj profil</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/i18n.js"></script>
+  <style>
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab { padding: 12px 20px; border-radius: 12px 12px 0 0; border: 2px solid #7dd3fc; border-bottom: 0;
+           background: #f0f9ff; font-weight: 800; font-size: 1.1rem; cursor: pointer; }
+    .tab.active { background: var(--panel); border-bottom: 2px solid var(--panel); margin-bottom: -2px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-weight: 700; margin-bottom: 4px; font-size: 1.05rem; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 10px; border: 2px solid #7dd3fc; border-radius: 10px;
+      font-size: 1.1rem; background: var(--panel-strong); }
+    .form-group input:focus, .form-group select:focus {
+      outline: 0; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.2); }
+    .login-box { max-width: 440px; margin: 60px auto; }
+    .profile-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .role-badge { display: inline-block; padding: 4px 14px; border-radius: 999px; font-weight: 800;
+      font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.4px; }
+    .role-badge.teacher { background: #fef3c7; color: #92400e; border: 2px solid #fbbf24; }
+    .role-badge.student { background: #dbeafe; color: #1e40af; border: 2px solid #60a5fa; }
+    .class-item { display: flex; justify-content: space-between; align-items: center; padding: 14px;
+      border: 2px solid #7dd3fc; border-radius: 12px; background: #f0f9ff; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+    .class-item .class-info { flex: 1; min-width: 0; }
+    .class-item .class-name { font-weight: 800; font-size: 1.15rem; color: #0c4a6e; }
+    .class-item .class-meta { font-size: 0.95rem; color: var(--muted); margin-top: 2px; }
+    .class-item .class-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+    .class-code { font-family: "Consolas", "DejaVu Sans Mono", monospace; font-weight: 800;
+      background: #e0f2fe; padding: 2px 8px; border-radius: 6px; font-size: 0.95rem; }
+    .inline-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .inline-row .form-group { flex: 1; min-width: 150px; }
+    .game-item { padding: 14px; border: 2px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px;
+      background: #f8fafc; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .game-item .game-score { font-size: 1.5rem; font-weight: 900; color: #0c4a6e; }
+    .game-item .game-meta { font-size: 0.95rem; color: var(--muted); }
+    .game-item .game-rank { font-weight: 800; }
+    .empty-state { text-align: center; padding: 30px; color: var(--muted); font-size: 1.1rem; }
+    .section-title { font-size: 1.4rem; font-weight: 800; margin: 20px 0 12px; color: #0c4a6e; }
+    .error-msg { color: #b91c1c; font-weight: 700; margin-top: 10px; }
+    .nav-links { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .nav-links a { text-decoration: none; }
+
+    /* Onboarding card */
+    .onboarding-card { background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 2px solid #60a5fa;
+      border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+    .onboarding-card h2 { margin: 0 0 6px; font-size: 1.35rem; color: #1e3a8a; }
+    .onboarding-card .onboarding-sub { font-size: 0.95rem; color: #475569; margin: 0 0 18px; }
+    .onboarding-steps { list-style: none; padding: 0; margin: 0 0 20px; }
+    .onboarding-steps li { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+    .onboarding-step-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+      background: #1d4ed8; color: #fff; font-weight: 900; font-size: 1rem;
+      display: flex; align-items: center; justify-content: center; }
+    .onboarding-step-body { flex: 1; padding-top: 4px; }
+    .onboarding-step-body strong { display: block; font-size: 1.02rem; color: #1e3a8a; margin-bottom: 2px; }
+    .onboarding-step-body span { font-size: 0.92rem; color: #475569; }
+    .onboarding-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* QR modal */
+    .qr-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2000;
+      display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .qr-overlay.hide { display: none; }
+    .qr-modal { background: #fff; border-radius: 18px; padding: 28px 24px; text-align: center;
+      max-width: 340px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .qr-modal h3 { margin: 0 0 4px; color: #0c4a6e; font-size: 1.2rem; }
+    .qr-modal .qr-class-name { font-size: 1.05rem; font-weight: 700; color: #334155; margin-bottom: 8px; }
+    .qr-modal .qr-code-display { font-family: monospace; font-size: 1.7rem; font-weight: 900;
+      background: #e0f2fe; padding: 6px 20px; border-radius: 10px; display: inline-block;
+      margin: 0 0 14px; color: #0c4a6e; letter-spacing: 3px; }
+    .qr-modal img { width: 220px; height: 220px; border-radius: 8px; border: 2px solid #e2e8f0; display: block; margin: 0 auto; }
+    .qr-modal .qr-url-hint { font-size: 0.82rem; color: #64748b; margin-top: 10px; word-break: break-all; }
+    .qr-modal-close { margin-top: 16px; }
+
+    /* Avatar picker */
+    .avatar-current { display: flex; align-items: center; gap: 14px; margin: 14px 0; }
+    .avatar-circle { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 2.2rem; border: 3px solid #e2e8f0; flex-shrink: 0; }
+    .avatar-circle.large { width: 80px; height: 80px; font-size: 2.8rem; }
+    .avatar-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 14px 0; }
+    @media (max-width: 500px) { .avatar-grid { grid-template-columns: repeat(4, 1fr); } }
+    .avatar-pick { width: 100%; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 1.8rem; cursor: pointer; border: 3px solid transparent;
+      transition: transform 150ms ease, border-color 150ms ease; }
+    .avatar-pick:hover { transform: scale(1.12); }
+    .avatar-pick.selected { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.3); }
+    .avatar-saved-msg { color: #16a34a; font-weight: 700; font-size: 0.95rem; margin-top: 6px; }
+
+    /* auto-join banner */
+    .autojoin-banner { background: #dcfce7; border: 2px solid #16a34a; border-radius: 12px;
+      padding: 14px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+    .autojoin-banner .autojoin-icon { font-size: 1.6rem; flex-shrink: 0; }
+    .autojoin-banner .autojoin-text strong { display: block; color: #166534; font-size: 1.05rem; }
+    .autojoin-banner .autojoin-text span { font-size: 0.92rem; color: #166534; }
+  </style>
+</head>
+<body>
+  <main class="app">
+
+    <!-- Login / Register -->
+    <section id="authCard" class="card login-box">
+      <h1 data-i18n="profile.title"></h1>
+      <p class="muted" data-i18n="profile.subtitle"></p>
+
+      <div id="joinBannerAuth" class="autojoin-banner hide">
+        <div class="autojoin-icon">&#128278;</div>
+        <div class="autojoin-text">
+          <strong data-i18n="profile.autojoin_title"></strong>
+          <span><span data-i18n="profile.autojoin_text_before"></span> <strong id="joinBannerCode"></strong><span data-i18n="profile.autojoin_text_after"></span></span>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-auth-tab="login" data-i18n="profile.tab_login"></button>
+        <button class="tab" data-auth-tab="register" data-i18n="profile.tab_register"></button>
+      </div>
+
+      <div id="tab-login" class="tab-content active">
+        <div class="form-group">
+          <label for="loginNick" data-i18n="profile.label_nickname"></label>
+          <input id="loginNick" type="text" data-i18n-placeholder="profile.nick_placeholder" maxlength="24" />
+        </div>
+        <div class="form-group">
+          <label for="loginPass" data-i18n="profile.label_password"></label>
+          <input id="loginPass" type="password" data-i18n-placeholder="profile.pass_placeholder" />
+        </div>
+        <button class="btn good" id="btnLogin" data-i18n="profile.login_btn"></button>
+        <p id="loginErr" class="error-msg"></p>
+        <p class="hint-text" data-i18n="profile.forgot_password_hint" style="margin-top:12px;color:var(--muted);font-size:0.85rem;"></p>
+      </div>
+
+      <div id="tab-register" class="tab-content">
+        <div class="form-group">
+          <label for="regNick" data-i18n="profile.label_nickname"></label>
+          <input id="regNick" type="text" data-i18n-placeholder="profile.reg_nick_placeholder" maxlength="24" />
+        </div>
+        <div class="form-group">
+          <label for="regPass" data-i18n="profile.label_password"></label>
+          <input id="regPass" type="password" data-i18n-placeholder="profile.reg_pass_placeholder" />
+        </div>
+        <!-- Role is always student here; teacher registers via landing page setup -->
+        <input type="hidden" id="regRole" value="student" />
+        <button class="btn good" id="btnRegister" data-i18n="profile.register_btn"></button>
+        <p id="regErr" class="error-msg"></p>
+      </div>
+    </section>
+
+    <!-- Profile -->
+    <section id="profilePanel" class="hide">
+      <div class="card">
+        <div class="profile-header">
+          <div>
+            <h1 id="profileNick">-</h1>
+            <span id="profileRole" class="role-badge student">-</span>
+          </div>
+          <button class="btn warn" id="btnLogout" data-i18n="profile.logout_btn"></button>
+        </div>
+
+        <!-- Avatar section -->
+        <div class="avatar-current">
+          <div id="profileAvatar" class="avatar-circle large"></div>
+          <div>
+            <div id="profileNickAvatar" style="font-weight:800;font-size:1.1rem;"></div>
+            <div id="avatarSavedMsg" class="avatar-saved-msg hide"></div>
+          </div>
+        </div>
+        <div>
+          <div class="section-title" data-i18n="profile.avatar_title" style="margin:10px 0 8px;font-size:1.15rem;"></div>
+          <div id="avatarGrid" class="avatar-grid"></div>
+        </div>
+
+        <div class="kpi" style="margin: 16px 0; grid-template-columns: repeat(3, 1fr);">
+          <div class="item">
+            <div class="label" data-i18n="profile.kpi_total_score"></div>
+            <div class="value" id="kpiScore">0</div>
+          </div>
+          <div class="item">
+            <div class="label" data-i18n="profile.kpi_games"></div>
+            <div class="value" id="kpiGames">0</div>
+          </div>
+          <div class="item">
+            <div class="label" data-i18n="profile.kpi_role"></div>
+            <div class="value" id="kpiRole">-</div>
+          </div>
+        </div>
+
+        <!-- Teacher onboarding card (shown only for new teachers with 0 classes and 0 games) -->
+        <div id="onboardingCard" class="onboarding-card hide"></div>
+
+        <!-- Classes -->
+        <div class="section-title" data-i18n="profile.section_classes"></div>
+        <div id="classesList"></div>
+
+        <div id="teacherClassForm" class="hide" style="margin-top: 14px;">
+          <h3 data-i18n="profile.create_class_title"></h3>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="newClassName" data-i18n="profile.class_name_label"></label>
+              <input id="newClassName" data-i18n-placeholder="profile.class_name_placeholder" />
+            </div>
+            <button class="btn good" id="btnCreateClass" style="height: 44px;" data-i18n="profile.create_class_btn"></button>
+          </div>
+        </div>
+
+        <div id="studentClassForm" class="hide" style="margin-top: 14px;">
+          <h3 data-i18n="profile.join_class_title"></h3>
+          <div class="inline-row">
+            <div class="form-group">
+              <label for="joinClassCode" data-i18n="profile.class_code_label"></label>
+              <input id="joinClassCode" data-i18n-placeholder="profile.class_code_placeholder" />
+            </div>
+            <button class="btn good" id="btnJoinClass" style="height: 44px;" data-i18n="profile.join_class_btn"></button>
+          </div>
+        </div>
+
+        <!-- Game history -->
+        <div class="section-title" style="margin-top: 24px;" data-i18n="profile.section_history"></div>
+        <div id="gamesList"></div>
+
+        <!-- Change password -->
+        <div style="margin-top:24px;">
+          <button class="btn secondary" id="btnToggleChpw" data-i18n="profile.change_password_btn" style="width:100%;"></button>
+          <div id="chpwForm" class="hide" style="margin-top:12px;">
+            <div class="form-group">
+              <label for="chpwOld" data-i18n="profile.old_password"></label>
+              <input id="chpwOld" type="password" />
+            </div>
+            <div class="form-group">
+              <label for="chpwNew" data-i18n="profile.new_password"></label>
+              <input id="chpwNew" type="password" />
+            </div>
+            <div class="form-group">
+              <label for="chpwNew2" data-i18n="profile.confirm_password"></label>
+              <input id="chpwNew2" type="password" />
+            </div>
+            <button class="btn good" id="btnChpw" data-i18n="profile.change_password_submit"></button>
+            <p id="chpwMsg" class="error-msg"></p>
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-links">
+          <a href="/" class="btn secondary" data-i18n="profile.home_link">Hlavni stranka</a>
+          <a href="/play" class="btn" data-i18n="profile.play_link"></a>
+          <a href="/admin" class="btn secondary" id="adminLinkNav" data-i18n="profile.admin_link"></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- QR modal -->
+    <div id="qrOverlay" class="qr-overlay hide" role="dialog" aria-modal="true">
+      <div class="qr-modal">
+        <h3 data-i18n="profile.qr_modal_title"></h3>
+        <div id="qrModalClassName" class="qr-class-name"></div>
+        <div id="qrModalCode" class="qr-code-display"></div>
+        <img id="qrModalImg" src="" data-i18n-aria="profile.qr_alt" alt="QR" />
+        <div id="qrModalUrl" class="qr-url-hint"></div>
+        <div class="qr-modal-close">
+          <button class="btn" id="btnQrClose" onclick="document.getElementById('qrOverlay').classList.add('hide')" data-i18n="profile.qr_close_btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const AVATARS = [
+      { id: 1,  emoji: '\uD83E\uDD8A', color: '#f97316' },
+      { id: 2,  emoji: '\uD83D\uDC31', color: '#8b5cf6' },
+      { id: 3,  emoji: '\uD83D\uDC36', color: '#3b82f6' },
+      { id: 4,  emoji: '\uD83E\uDD81', color: '#eab308' },
+      { id: 5,  emoji: '\uD83D\uDC38', color: '#22c55e' },
+      { id: 6,  emoji: '\uD83D\uDC27', color: '#0ea5e9' },
+      { id: 7,  emoji: '\uD83E\uDD8B', color: '#ec4899' },
+      { id: 8,  emoji: '\uD83D\uDC1D', color: '#f59e0b' },
+      { id: 9,  emoji: '\uD83E\uDD84', color: '#a855f7' },
+      { id: 10, emoji: '\uD83D\uDC3C', color: '#6b7280' },
+      { id: 11, emoji: '\uD83D\uDC28', color: '#78716c' },
+      { id: 12, emoji: '\uD83D\uDC2F', color: '#ea580c' },
+      { id: 13, emoji: '\uD83E\uDD89', color: '#7c3aed' },
+      { id: 14, emoji: '\uD83D\uDC19', color: '#dc2626' },
+      { id: 15, emoji: '\uD83E\uDD88', color: '#1d4ed8' },
+      { id: 16, emoji: '\uD83D\uDC2C', color: '#0891b2' },
+      { id: 17, emoji: '\uD83D\uDC22', color: '#16a34a' },
+      { id: 18, emoji: '\uD83E\uDD8E', color: '#65a30d' },
+      { id: 19, emoji: '\uD83E\uDDA9', color: '#e11d48' },
+      { id: 20, emoji: '\uD83D\uDC3A', color: '#475569' }
+    ];
+
+    function getAvatar(id) {
+      return AVATARS.find(function(a) { return a.id === id; }) || AVATARS[0];
+    }
+
+    const TOKEN_KEY = 'quiz_user_token';
+    let currentUser = null;
+
+    // Read ?join= from URL on page load
+    const urlParams = new URLSearchParams(location.search);
+    const pendingJoinCode = urlParams.get('join') || '';
+
+    async function api(path, method = 'GET', body = null) {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (token) headers['Authorization'] = 'UserToken ' + token;
+      const cfg = { method, headers };
+      if (body) cfg.body = JSON.stringify(body);
+      const res = await fetch(path, cfg);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || i18n.t('profile.request_failed'));
+      return data;
+    }
+
+    // --- Auth tabs ---
+    document.querySelectorAll('[data-auth-tab]').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('[data-auth-tab]').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('#authCard .tab-content').forEach(function(c) { c.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.authTab).classList.add('active');
+      });
+    });
+
+    // --- Login ---
+    document.getElementById('btnLogin').addEventListener('click', doLogin);
+    document.getElementById('loginPass').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('loginNick').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    async function doLogin() {
+      var nickname = document.getElementById('loginNick').value.trim();
+      var password = document.getElementById('loginPass').value;
+      var err = document.getElementById('loginErr');
+      err.textContent = '';
+      if (!nickname || !password) { err.textContent = i18n.t('profile.fill_fields'); return; }
+      try {
+        var data = await api('/api/auth/login', 'POST', { nickname: nickname, password: password });
+        localStorage.setItem(TOKEN_KEY, data.token);
+        currentUser = data.user;
+        showProfile();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    }
+
+    // --- Register ---
+    document.getElementById('btnRegister').addEventListener('click', doRegister);
+    document.getElementById('regPass').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doRegister();
+    });
+
+    async function doRegister() {
+      var nickname = document.getElementById('regNick').value.trim();
+      var password = document.getElementById('regPass').value;
+      var role = document.getElementById('regRole').value;
+      var err = document.getElementById('regErr');
+      err.textContent = '';
+      if (!nickname || !password) { err.textContent = i18n.t('profile.fill_fields'); return; }
+      var body = { nickname: nickname, password: password, role: role };
+      try {
+        var data = await api('/api/auth/register', 'POST', body);
+        localStorage.setItem(TOKEN_KEY, data.token);
+        currentUser = data.user;
+        showProfile();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    }
+
+    // --- Logout ---
+    document.getElementById('btnLogout').addEventListener('click', async function() {
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (token) {
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': 'UserToken ' + token }
+          });
+        } catch (_) {}
+      }
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = '/';
+    });
+
+    // --- Change password ---
+    document.getElementById('btnToggleChpw').addEventListener('click', function() {
+      document.getElementById('chpwForm').classList.toggle('hide');
+    });
+    document.getElementById('btnChpw').addEventListener('click', async function() {
+      var oldPw = document.getElementById('chpwOld').value;
+      var newPw = document.getElementById('chpwNew').value;
+      var newPw2 = document.getElementById('chpwNew2').value;
+      var msg = document.getElementById('chpwMsg');
+      msg.textContent = '';
+      msg.style.color = '';
+      if (!oldPw || !newPw) { msg.textContent = i18n.t('profile.fill_fields'); return; }
+      if (newPw !== newPw2) { msg.textContent = i18n.t('profile.passwords_mismatch'); return; }
+      try {
+        await api('/api/auth/change-password', 'POST', { old_password: oldPw, new_password: newPw });
+        msg.style.color = 'var(--good)';
+        msg.textContent = i18n.t('profile.password_changed');
+        document.getElementById('chpwOld').value = '';
+        document.getElementById('chpwNew').value = '';
+        document.getElementById('chpwNew2').value = '';
+      } catch (e) {
+        msg.textContent = e.message;
+      }
+    });
+
+    // --- View switching ---
+    function showAuth() {
+      document.getElementById('authCard').classList.remove('hide');
+      document.getElementById('profilePanel').classList.add('hide');
+      // Show join banner if arriving via QR link while not logged in
+      if (pendingJoinCode) {
+        document.getElementById('joinBannerAuth').classList.remove('hide');
+        document.getElementById('joinBannerCode').textContent = pendingJoinCode;
+      }
+      i18n.apply();
+    }
+
+    function showProfile() {
+      document.getElementById('authCard').classList.add('hide');
+      document.getElementById('profilePanel').classList.remove('hide');
+      loadProfile();
+      i18n.apply();
+    }
+
+    // --- Load profile ---
+    async function loadProfile() {
+      try {
+        var data = await api('/api/auth/profile');
+        currentUser = data;
+        renderProfile(data);
+      } catch (e) {
+        // Token invalid, go back to auth
+        localStorage.removeItem(TOKEN_KEY);
+        currentUser = null;
+        showAuth();
+      }
+    }
+
+    // Auto-join from URL ?join= param after profile is loaded
+    var autoJoinDone = false;
+    async function maybeAutoJoin() {
+      if (!pendingJoinCode || autoJoinDone || !currentUser) return;
+      if (currentUser.role === 'teacher') return; // teachers don't join via QR
+      // Check if already in this class
+      var alreadyIn = (currentUser.classes || []).some(function(c) { return c.join_code === pendingJoinCode; });
+      if (alreadyIn) return;
+      autoJoinDone = true;
+      try {
+        await api('/api/classes/join', 'POST', { join_code: pendingJoinCode });
+        // Clean the ?join= param from URL
+        history.replaceState({}, '', location.pathname);
+        loadProfile();
+      } catch (e) {
+        // Pre-fill the input so the student can join manually
+        var inp = document.getElementById('joinClassCode');
+        if (inp) inp.value = pendingJoinCode;
+      }
+    }
+
+    function renderOnboardingCard() {
+      var card = document.getElementById('onboardingCard');
+      card.innerHTML = '';
+
+      var h2 = document.createElement('h2');
+      h2.innerHTML = '&#127891; ';
+      var h2text = document.createElement('span');
+      h2text.setAttribute('data-i18n', 'profile.onboarding_title');
+      h2.appendChild(h2text);
+      card.appendChild(h2);
+
+      var sub = document.createElement('p');
+      sub.className = 'onboarding-sub';
+      sub.setAttribute('data-i18n', 'profile.onboarding_subtitle');
+      card.appendChild(sub);
+
+      var ul = document.createElement('ul');
+      ul.className = 'onboarding-steps';
+
+      var steps = [
+        { num: '1', icon: '&#127979; ', titleKey: 'profile.onboarding_step1_title', descKey: 'profile.onboarding_step1_desc' },
+        { num: '2', icon: '&#9997;&#65039; ', titleKey: 'profile.onboarding_step2_title', descKey: 'profile.onboarding_step2_desc' },
+        { num: '3', icon: '&#128250; ', titleKey: 'profile.onboarding_step3_title', descKey: 'profile.onboarding_step3_desc' }
+      ];
+
+      steps.forEach(function(step) {
+        var li = document.createElement('li');
+        var numDiv = document.createElement('div');
+        numDiv.className = 'onboarding-step-num';
+        numDiv.textContent = step.num;
+        li.appendChild(numDiv);
+
+        var bodyDiv = document.createElement('div');
+        bodyDiv.className = 'onboarding-step-body';
+
+        var strong = document.createElement('strong');
+        strong.innerHTML = step.icon;
+        var strongText = document.createElement('span');
+        strongText.setAttribute('data-i18n', step.titleKey);
+        strong.appendChild(strongText);
+        bodyDiv.appendChild(strong);
+
+        var span = document.createElement('span');
+        span.setAttribute('data-i18n', step.descKey);
+        bodyDiv.appendChild(span);
+
+        li.appendChild(bodyDiv);
+        ul.appendChild(li);
+      });
+
+      card.appendChild(ul);
+
+      var actionsDiv = document.createElement('div');
+      actionsDiv.className = 'onboarding-actions';
+
+      var createBtn = document.createElement('button');
+      createBtn.className = 'btn good';
+      createBtn.id = 'btnOnboardingCreateClass';
+      createBtn.innerHTML = '&#43; ';
+      var createBtnText = document.createElement('span');
+      createBtnText.setAttribute('data-i18n', 'profile.onboarding_create_class_btn');
+      createBtn.appendChild(createBtnText);
+      createBtn.addEventListener('click', function() {
+        var input = document.getElementById('newClassName');
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function() { input.focus(); }, 300);
+      });
+      actionsDiv.appendChild(createBtn);
+
+      var portalLink = document.createElement('a');
+      portalLink.href = '/admin';
+      portalLink.className = 'btn secondary';
+      portalLink.style.textDecoration = 'none';
+      portalLink.setAttribute('data-i18n', 'profile.onboarding_portal_link');
+      actionsDiv.appendChild(portalLink);
+
+      card.appendChild(actionsDiv);
+
+      i18n.apply(card);
+    }
+
+    function renderAvatarGrid(currentAvatarId) {
+      var grid = document.getElementById('avatarGrid');
+      grid.innerHTML = '';
+      AVATARS.forEach(function(av) {
+        var el = document.createElement('div');
+        el.className = 'avatar-pick' + (av.id === currentAvatarId ? ' selected' : '');
+        el.style.background = av.color;
+        el.textContent = av.emoji;
+        el.title = av.emoji;
+        el.setAttribute('data-avatar-id', av.id);
+        el.addEventListener('click', function() { selectAvatar(av.id); });
+        grid.appendChild(el);
+      });
+    }
+
+    function updateProfileAvatar(avatarId) {
+      var av = getAvatar(avatarId);
+      var circle = document.getElementById('profileAvatar');
+      circle.textContent = av.emoji;
+      circle.style.background = av.color;
+      document.getElementById('profileNickAvatar').textContent = currentUser ? currentUser.nickname : '';
+    }
+
+    async function selectAvatar(avatarId) {
+      try {
+        await api('/api/auth/update-avatar', 'POST', { avatar_id: avatarId });
+        if (currentUser) currentUser.avatar_id = avatarId;
+        updateProfileAvatar(avatarId);
+        renderAvatarGrid(avatarId);
+        var msg = document.getElementById('avatarSavedMsg');
+        msg.textContent = i18n.t('profile.avatar_saved');
+        msg.classList.remove('hide');
+        setTimeout(function() { msg.classList.add('hide'); }, 2500);
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    function renderProfile(user) {
+      document.getElementById('profileNick').textContent = user.nickname || '-';
+
+      var roleBadge = document.getElementById('profileRole');
+      var isTeacher = user.role === 'teacher';
+      roleBadge.textContent = isTeacher ? i18n.t('profile.role_teacher') : i18n.t('profile.role_student');
+      roleBadge.className = 'role-badge ' + user.role;
+
+      // Avatar
+      var avatarId = user.avatar_id || 1;
+      updateProfileAvatar(avatarId);
+      renderAvatarGrid(avatarId);
+
+      document.getElementById('kpiScore').textContent = user.total_score != null ? user.total_score : 0;
+      document.getElementById('kpiGames').textContent = user.games_played != null ? user.games_played : 0;
+      document.getElementById('kpiRole').textContent = isTeacher ? i18n.t('profile.role_teacher') : i18n.t('profile.role_student');
+
+      // Hide admin link for students
+      var adminLink = document.getElementById('adminLinkNav');
+      if (adminLink) adminLink.style.display = isTeacher ? '' : 'none';
+
+      // Show correct class form
+      if (isTeacher) {
+        document.getElementById('teacherClassForm').classList.remove('hide');
+        document.getElementById('studentClassForm').classList.add('hide');
+      } else {
+        document.getElementById('teacherClassForm').classList.add('hide');
+        document.getElementById('studentClassForm').classList.remove('hide');
+      }
+
+      // Teacher onboarding: show only when teacher has 0 classes and 0 games played
+      var onboardingCard = document.getElementById('onboardingCard');
+      var classes = user.classes || [];
+      var gamesPlayed = user.games_played != null ? user.games_played : 0;
+      if (isTeacher && classes.length === 0 && gamesPlayed === 0) {
+        renderOnboardingCard();
+        onboardingCard.classList.remove('hide');
+      } else {
+        onboardingCard.classList.add('hide');
+      }
+
+      // Pre-fill join code for students arriving via QR link
+      if (!isTeacher && pendingJoinCode) {
+        var inp = document.getElementById('joinClassCode');
+        if (inp && !inp.value) inp.value = pendingJoinCode;
+      }
+
+      // Render classes
+      renderClasses(classes, isTeacher);
+
+      // Render games
+      renderGames(user.recent_games || []);
+
+      // Auto-join if student arrived via QR link
+      maybeAutoJoin();
+
+      i18n.apply();
+    }
+
+    function renderClasses(classes, isTeacher) {
+      var list = document.getElementById('classesList');
+      list.innerHTML = '';
+      if (classes.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = isTeacher
+          ? i18n.t('profile.empty_classes_teacher')
+          : i18n.t('profile.empty_classes_student');
+        list.appendChild(empty);
+        return;
+      }
+      classes.forEach(function(cls) {
+        var div = document.createElement('div');
+        div.className = 'class-item';
+
+        var info = document.createElement('div');
+        info.className = 'class-info';
+
+        var name = document.createElement('div');
+        name.className = 'class-name';
+        name.textContent = cls.name;
+        info.appendChild(name);
+
+        var meta = document.createElement('div');
+        meta.className = 'class-meta';
+        var parts = [];
+        if (cls.member_count !== undefined) parts.push(cls.member_count + ' ' + i18n.t('profile.class_members_suffix'));
+        if (cls.teacher_name) parts.push(i18n.t('profile.class_teacher_prefix') + cls.teacher_name);
+        meta.textContent = parts.join(' | ');
+        if (isTeacher && cls.join_code) {
+          if (parts.length > 0) meta.appendChild(document.createTextNode(' | '));
+          meta.appendChild(document.createTextNode(i18n.t('profile.class_code_prefix')));
+          var code = document.createElement('span');
+          code.className = 'class-code';
+          code.textContent = cls.join_code;
+          code.title = i18n.t('profile.click_to_copy');
+          code.style.cursor = 'pointer';
+          (function(c, joinCode) {
+            c.addEventListener('click', function() {
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(joinCode).then(function() {
+                  c.textContent = i18n.t('profile.copied');
+                  setTimeout(function() { c.textContent = joinCode; }, 1500);
+                });
+              }
+            });
+          })(code, cls.join_code);
+          meta.appendChild(code);
+        }
+        info.appendChild(meta);
+        div.appendChild(info);
+
+        // Action buttons container
+        var actions = document.createElement('div');
+        actions.className = 'class-actions';
+
+        if (isTeacher) {
+          if (cls.join_code) {
+            var qrBtn = document.createElement('button');
+            qrBtn.className = 'btn secondary';
+            qrBtn.style.cssText = 'padding: 8px 14px; font-size: 0.9rem;';
+            qrBtn.textContent = i18n.t('profile.qr_code_btn');
+            (function(c) {
+              qrBtn.addEventListener('click', function() { showQrModal(c); });
+            })(cls);
+            actions.appendChild(qrBtn);
+          }
+
+          var delBtn = document.createElement('button');
+          delBtn.className = 'btn warn';
+          delBtn.style.cssText = 'padding: 8px 14px; font-size: 0.9rem;';
+          delBtn.textContent = i18n.t('profile.delete_class_btn');
+          (function(c) {
+            delBtn.addEventListener('click', async function() {
+              if (!confirm(i18n.t('profile.confirm_delete_class', c.name))) return;
+              try {
+                await api('/api/classes/' + c.id + '/delete', 'POST');
+                loadProfile();
+              } catch (e) { alert(e.message); }
+            });
+          })(cls);
+          actions.appendChild(delBtn);
+        }
+
+        div.appendChild(actions);
+        list.appendChild(div);
+      });
+    }
+
+    function renderGames(games) {
+      var list = document.getElementById('gamesList');
+      list.innerHTML = '';
+      if (games.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = i18n.t('profile.empty_games');
+        list.appendChild(empty);
+        return;
+      }
+      games.forEach(function(game) {
+        var div = document.createElement('div');
+        div.className = 'game-item';
+
+        var left = document.createElement('div');
+        var scoreDiv = document.createElement('div');
+        scoreDiv.className = 'game-score';
+        scoreDiv.textContent = (game.score != null ? game.score : 0) + ' ' + i18n.t('profile.game_points_suffix');
+        left.appendChild(scoreDiv);
+
+        var metaDiv = document.createElement('div');
+        metaDiv.className = 'game-meta';
+        var parts = [];
+        if (game.rank) parts.push(game.rank + '. ' + i18n.t('profile.game_rank_suffix'));
+        if (game.question_count) parts.push(game.question_count + ' ' + i18n.t('profile.game_questions_suffix'));
+        metaDiv.textContent = parts.join(' | ');
+        left.appendChild(metaDiv);
+
+        div.appendChild(left);
+
+        if (game.date) {
+          var dateDiv = document.createElement('div');
+          dateDiv.className = 'game-meta';
+          var d = new Date(game.date);
+          var localeLang = i18n.getLang() === 'cs' ? 'cs-CZ' : i18n.getLang() === 'sk' ? 'sk-SK' : i18n.getLang() === 'de' ? 'de-DE' : 'en-US';
+          dateDiv.textContent = d.toLocaleString(localeLang);
+          div.appendChild(dateDiv);
+        }
+
+        list.appendChild(div);
+      });
+    }
+
+    // --- Create class (teacher) ---
+    async function doCreateClass() {
+      var name = document.getElementById('newClassName').value.trim();
+      if (!name) { alert(i18n.t('profile.enter_class_name')); return; }
+      try {
+        await api('/api/classes/create', 'POST', { name: name });
+        document.getElementById('newClassName').value = '';
+        loadProfile();
+      } catch (e) { alert(e.message); }
+    }
+
+    document.getElementById('btnCreateClass').addEventListener('click', doCreateClass);
+
+    // --- Join class (student) ---
+    document.getElementById('btnJoinClass').addEventListener('click', doJoinClass);
+    document.getElementById('joinClassCode').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doJoinClass();
+    });
+
+    async function doJoinClass() {
+      var joinCode = document.getElementById('joinClassCode').value.trim();
+      if (!joinCode) { alert(i18n.t('profile.enter_class_code')); return; }
+      try {
+        await api('/api/classes/join', 'POST', { join_code: joinCode });
+        document.getElementById('joinClassCode').value = '';
+        if (pendingJoinCode) history.replaceState({}, '', location.pathname);
+        loadProfile();
+      } catch (e) { alert(e.message); }
+    }
+
+    // --- QR modal ---
+    function showQrModal(cls) {
+      // Build join URL pointing to /profile?join=CODE so student auto-joins on scan
+      var joinUrl = location.origin + '/profile?join=' + encodeURIComponent(cls.join_code);
+      document.getElementById('qrModalClassName').textContent = cls.name;
+      document.getElementById('qrModalCode').textContent = cls.join_code;
+      document.getElementById('qrModalUrl').textContent = joinUrl;
+      var img = document.getElementById('qrModalImg');
+      img.src = '/api/qr?url=' + encodeURIComponent(joinUrl);
+      document.getElementById('qrOverlay').classList.remove('hide');
+    }
+
+    document.getElementById('btnQrClose').addEventListener('click', function() {
+      document.getElementById('qrOverlay').classList.add('hide');
+    });
+
+    document.getElementById('qrOverlay').addEventListener('click', function(e) {
+      if (e.target === document.getElementById('qrOverlay')) {
+        document.getElementById('qrOverlay').classList.add('hide');
+      }
+    });
+
+    // --- Init ---
+    i18n.init().then(function() {
+      injectLangSwitcher();
+      var titleEl = document.querySelector('title[data-i18n]');
+      if (titleEl) {
+        var translated = i18n.t(titleEl.getAttribute('data-i18n'));
+        if (translated !== titleEl.getAttribute('data-i18n')) document.title = translated;
+      }
+    });
+
+    if (localStorage.getItem(TOKEN_KEY)) {
+      showProfile();
+    } else {
+      showAuth();
+    }
+  </script>
+</body>
+</html>

@@ -6,12 +6,12 @@ LABEL description="ClassRally - Lokalni kvizova platforma pro tridu"
 WORKDIR /app
 
 # Copy application files
-COPY server.py qrgen.py ./
+COPY server.py qrgen.py db.py ws.py icongen.py ./
 COPY static/ static/
 COPY questions/ questions/
 
 # Create directories for volumes
-RUN mkdir -p history static/audio
+RUN mkdir -p history static/audio data
 
 # Ensure Python output is not buffered (visible in docker logs immediately)
 ENV PYTHONUNBUFFERED=1
@@ -26,6 +26,9 @@ ENV QUIZ_PORT="8765"
 ENV QUIZ_EXTERNAL_IP=""
 ENV QUESTION_TIME="20"
 ENV REVEAL_TIME="5"
+ENV QUIZ_TEACHER_CODE=""
+ENV QUIZ_BASE_URL=""
+ENV QUIZ_TRUSTED_PROXIES=""
 
 EXPOSE 8765
 
@@ -41,4 +44,7 @@ CMD python3 server.py \
     --ollama-port "${OLLAMA_PORT}" \
     --ollama-model "${OLLAMA_MODEL}" \
     --question-time "${QUESTION_TIME}" \
-    --reveal-time "${REVEAL_TIME}"
+    --reveal-time "${REVEAL_TIME}" \
+    --teacher-code "${QUIZ_TEACHER_CODE}" \
+    --base-url "${QUIZ_BASE_URL}" \
+    --trusted-proxies "${QUIZ_TRUSTED_PROXIES}"

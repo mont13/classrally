@@ -1,0 +1,55 @@
+# ClassRally — Caddy reverse proxy configuration
+#
+# Caddy handles TLS automatically via Let's Encrypt.
+# Replace "classrally.example.com" with your actual domain before deploying.
+#
+# Usage with the web docker-compose:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.web.yml up -d
+
+classrally.example.com {
+
+    # --- TLS (automatic via Let's Encrypt) ---
+    # Caddy obtains and renews certificates automatically.
+    # Make sure ports 80 and 443 are open and the domain points to this server.
+    tls {
+        # Optional: uncomment to use a specific ACME email for expiry notices
+        # on <your@email.com>
+    }
+
+    # --- Compression ---
+    encode gzip
+
+    # --- Static file caching ---
+    # Cache immutable assets (JS, CSS, images, audio) for one week.
+    # The browser will revalidate other responses after 1 hour.
+    @static {
+        path /static/*
+    }
+    header @static Cache-Control "public, max-age=604800, immutable"
+
+    @dynamic {
+        not path /static/*
+    }
+    header @dynamic Cache-Control "public, max-age=3600, must-revalidate"
+
+    # --- Reverse proxy to ClassRally ---
+    # "classrally" is the Docker service name; port 8765 is the app port.
+    reverse_proxy classrally:8765 {
+
+        # Forward the real client IP so the app's rate-limiter works correctly.
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        # WebSocket upgrade support — Caddy handles this automatically,
+        # but these headers make it explicit for clarity.
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+
+        # Pass health-check through quickly.
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 30s
+        }
+    }
+}

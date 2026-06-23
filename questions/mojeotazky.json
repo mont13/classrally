@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ai_1",
+    "prompt": "Jaké číslo je prvočíslem?",
+    "options": [
+      "15",
+      "17",
+      "21",
+      "25"
+    ],
+    "correct_index": 1,
+    "explanation": "Číslo 17 je prvočíslo, protože má pouze dva dělitele: 1 a 17."
+  },
+  {
+    "id": "ai_2",
+    "prompt": "Kolik je obvod kruhu s poloměrem 5 cm?",
+    "options": [
+      "15.7 cm",
+      "31.4 cm",
+      "20 cm",
+      "25.1 cm"
+    ],
+    "correct_index": 1,
+    "explanation": "Obvod kruhu se počítá jako 2πr. Pro r = 5 cm je to 2·π·5 ≈ 31.4 cm."
+  },
+  {
+    "id": "ai_3",
+    "prompt": "Vyřešte rovnici 3x − 7 = 2x + 5.",
+    "options": [
+      "x = 12",
+      "x = −12",
+      "x = 2",
+      "x = −2"
+    ],
+    "correct_index": 0,
+    "explanation": "Přesunem 2x na levou stranu dostaneme x − 7 = 5, takže x = 12."
+  },
+  {
+    "id": "ai_4",
+    "prompt": "Jaký je limit lim_{x→0} (sin x)/x?",
+    "options": [
+      "0",
+      "1",
+      "∞",
+      "−1"
+    ],
+    "correct_index": 1,
+    "explanation": "Standardní limit ∫ ∫ ∫ (sin x)/x při x → 0 je roven 1."
+  },
+  {
+    "id": "ai_5",
+    "prompt": "V průměru 10 hodnot, kde je 5 a 5, kolik je medián?",
+    "options": [
+      "5",
+      "10",
+      "0",
+      "7"
+    ],
+    "correct_index": 0,
+    "explanation": "Sestavením 10 hodnot se 5 = 5, medián je průměr 5. a 6. hodnoty, tedy 5."
+  }
+]
