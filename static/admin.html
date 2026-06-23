@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz Admin - Ucitelsky portal</title>
+  <title>ClassRally - Učitelský portál</title>
   <link rel="stylesheet" href="/static/style.css" />
   <style>
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -51,9 +51,101 @@
     .login-box { max-width: 400px; margin: 80px auto; }
     .host-token-box { margin-top: 16px; padding: 12px; background: #fef3c7; border: 2px solid #fbbf24;
       border-radius: 10px; font-family: monospace; word-break: break-all; }
+    .admin-page .card { border-radius: 8px; }
+    .admin-page .tabs {
+      gap: 8px;
+      padding: 6px;
+      background: #eef2f7;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
+      margin: 16px 0 20px;
+    }
+    .admin-page .tab {
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #475569;
+      padding: 10px 14px;
+      font-size: 0.98rem;
+      margin: 0;
+    }
+    .admin-page .tab.active {
+      background: #fff;
+      color: #111827;
+      border: 0;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+      margin: 0;
+    }
+    .admin-page .form-group label {
+      color: #334155;
+      font-size: 0.94rem;
+    }
+    .admin-page .form-group input,
+    .admin-page .form-group select,
+    .admin-page .form-group textarea {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 1rem;
+      padding: 10px 12px;
+    }
+    .admin-page .form-group input:focus,
+    .admin-page .form-group select:focus,
+    .admin-page .form-group textarea:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+    }
+    .admin-page .bank-list {
+      gap: 8px;
+    }
+    .admin-page .bank-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      background: #fff;
+      border: 1px solid #dbe3ef;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .admin-page .bank-item.active-bank {
+      border-color: #16a34a;
+      background: #f0fdf4;
+    }
+    .admin-page .bank-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .admin-page .bank-actions .btn {
+      min-height: 38px;
+      padding: 8px 12px;
+      font-size: 0.92rem;
+    }
+    .admin-page .q-editor,
+    .admin-page .history-item {
+      background: #fff;
+      border: 1px solid #dbe3ef;
+      border-radius: 8px;
+    }
+    .admin-page #playerUrlBar {
+      background: #eff6ff !important;
+      border: 1px solid #bfdbfe !important;
+      border-radius: 8px !important;
+    }
+    .admin-lead {
+      margin: 4px 0 0;
+      max-width: 780px;
+    }
+    @media (max-width: 720px) {
+      .admin-page .bank-item {
+        grid-template-columns: 1fr;
+      }
+      .admin-page .bank-actions .btn {
+        flex: 1;
+      }
+    }
   </style>
 </head>
-<body>
+<body class="admin-page">
   <main class="app">
     <section id="loginCard" class="card login-box hide">
       <h1>Admin prihlaseni</h1>
@@ -67,89 +159,98 @@
     </section>
 
     <section id="adminPanel" class="hide">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-          <h1>Ucitelsky portal</h1>
-          <div class="btn-row">
+      <div class="card admin-shell">
+        <div class="admin-hero">
+          <div class="admin-hero-copy">
+            <p class="eyebrow">Offline quiz platforma pro školy</p>
+            <h1>ClassRally</h1>
+            <p class="admin-lead">Živý kvíz, písemka pro známku a jednoduchý učitelský panel. Bez registrací, bez cloudu, zdarma k provozu ve vlastní třídě.</p>
+            <div class="hero-badges">
+              <span>Offline v lokální síti</span>
+              <span>Zdarma bez limitu</span>
+              <span>Otevřená licence</span>
+            </div>
+          </div>
+          <div class="btn-row admin-hero-actions">
             <a href="/host" class="btn secondary" style="text-decoration:none;">Host obrazovka</a>
-            <a id="linkPlay" href="/play" class="btn" style="text-decoration:none;">Hracska obrazovka</a>
+            <a id="linkPlay" href="/play" class="btn" style="text-decoration:none;">Hráčská obrazovka</a>
           </div>
         </div>
         <div id="playerUrlBar" class="hide" style="margin:10px 0;padding:10px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:10px;font-size:1.05rem;">
-          <strong>URL pro zaky:</strong> <span id="playerUrl" style="font-family:monospace;font-weight:800;"></span>
+          <strong>Odkaz pro žáky:</strong> <span id="playerUrl" style="font-family:monospace;font-weight:800;"></span>
         </div>
 
         <div class="tabs">
-          <button class="tab active" data-tab="questions">Sady otazek</button>
-          <button class="tab" data-tab="exam">Pisemka (test)</button>
-          <button class="tab" data-tab="editor">Editor otazek</button>
-          <button class="tab" data-tab="ai">AI navrh otazek</button>
-          <button class="tab" data-tab="timing">Pokrocile nastaveni</button>
+          <button class="tab active" data-tab="questions">Sady otázek</button>
+          <button class="tab" data-tab="exam">Písemka</button>
+          <button class="tab" data-tab="editor">Editor otázek</button>
+          <button class="tab" data-tab="ai">AI návrh</button>
+          <button class="tab" data-tab="timing">Nastavení</button>
           <button class="tab" data-tab="history">Historie</button>
         </div>
 
         <div id="tab-questions" class="tab-content active">
-          <h2>Dostupne sady otazek</h2>
+          <h2>Sady otázek</h2>
           <div style="margin-bottom:12px;">
             <input id="bankSearch" class="input" placeholder="Hledat sadu..." style="font-size:1rem;padding:10px;max-width:400px;" />
           </div>
           <p id="bankCount" class="muted" style="margin:0 0 8px;font-size:0.95rem;"></p>
           <div id="bankList" class="bank-list"></div>
           <div style="margin-top: 14px;">
-            <h3>Vytvorit novou sadu</h3>
+            <h3>Vytvořit novou sadu</h3>
             <div class="inline-row">
               <div class="form-group">
-                <label for="newBankName">Nazev sady otazek</label>
+                <label for="newBankName">Název sady otázek</label>
                 <input id="newBankName" placeholder="moje_otazky" />
               </div>
-              <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvorit</button>
+              <button class="btn good" id="btnCreateBank" style="height:44px;">Vytvořit</button>
             </div>
           </div>
         </div>
 
         <div id="tab-exam" class="tab-content">
-          <h2>Pisemka (test pro znamku)</h2>
-          <p class="muted">Zaci delaji test kazdy svym tempem na mobilu. Po odevzdani se automaticky znamkuje. Behem testu vidite, kdo opustil okno (dohled).</p>
+          <h2>Písemka</h2>
+          <p class="muted">Žáci dělají test každý svým tempem na mobilu. Po odevzdání se automaticky známkuje. Během testu vidíte, kdo opustil okno.</p>
 
-          <h3 style="margin-top:18px;">1. Vyber sadu a nastav pisemku</h3>
+          <h3 style="margin-top:18px;">1. Vyber sadu a nastav písemku</h3>
           <div class="inline-row">
             <div class="form-group">
-              <label for="examBank">Sada otazek</label>
+              <label for="examBank">Sada otázek</label>
               <select id="examBank"></select>
             </div>
             <div class="form-group">
-              <label for="examTime">Casovy limit (minuty)</label>
+              <label for="examTime">Časový limit (minuty)</label>
               <input id="examTime" type="number" min="1" max="240" value="30" />
             </div>
             <div class="form-group">
-              <label for="examAutoSubmit">Auto-odevzdat po N opusteni okna (0 = vyp)</label>
+              <label for="examAutoSubmit">Auto-odevzdat po N opuštění okna (0 = vyp)</label>
               <input id="examAutoSubmit" type="number" min="0" max="100" value="0" />
             </div>
           </div>
           <div class="form-group">
-            <label for="examThresholds">Hranice znamek — min. % pro 1, 2, 3, 4 (zbytek = 5)</label>
+            <label for="examThresholds">Hranice známek - min. % pro 1, 2, 3, 4 (zbytek = 5)</label>
             <input id="examThresholds" placeholder="90, 75, 60, 45" value="90, 75, 60, 45" />
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:16px;margin:8px 0 14px;">
-            <label class="check-row"><input type="checkbox" id="examShuffleQ" checked /> Zamichat poradi otazek</label>
-            <label class="check-row"><input type="checkbox" id="examShuffleO" checked /> Zamichat poradi odpovedi</label>
-            <label class="check-row"><input type="checkbox" id="examAllowBack" checked /> Povolit vracet se a menit odpovedi</label>
-            <label class="check-row"><input type="checkbox" id="examDisableCopy" checked /> Zakazat kopirovani</label>
-            <label class="check-row"><input type="checkbox" id="examShowResults" checked /> Ukazat zakovi znamku po odevzdani</label>
+            <label class="check-row"><input type="checkbox" id="examShuffleQ" checked /> Zamíchat pořadí otázek</label>
+            <label class="check-row"><input type="checkbox" id="examShuffleO" checked /> Zamíchat pořadí odpovědí</label>
+            <label class="check-row"><input type="checkbox" id="examAllowBack" checked /> Povolit vracet se a měnit odpovědi</label>
+            <label class="check-row"><input type="checkbox" id="examDisableCopy" checked /> Zakázat kopírování</label>
+            <label class="check-row"><input type="checkbox" id="examShowResults" checked /> Ukázat žákovi známku po odevzdání</label>
           </div>
-          <button class="btn good" id="btnExamPrepare">Pripravit pisemku (aktivovat sadu)</button>
+          <button class="btn good" id="btnExamPrepare">Připravit písemku</button>
 
           <h3 style="margin-top:24px;">2. Ovladani</h3>
           <div class="btn-row">
-            <button class="btn good" id="btnExamOpen">Spustit pisemku</button>
-            <button class="btn warn" id="btnExamEnd">Ukoncit pro vsechny</button>
+            <button class="btn good" id="btnExamOpen">Spustit písemku</button>
+            <button class="btn warn" id="btnExamEnd">Ukončit pro všechny</button>
             <button class="btn secondary" id="btnExamExtend">+5 minut</button>
-            <button class="btn secondary" id="btnExamExport">Stahnout vysledky (CSV)</button>
-            <button class="btn ghost" id="btnExamReset">Vymazat zaky</button>
+            <button class="btn secondary" id="btnExamExport">Stáhnout výsledky (CSV)</button>
+            <button class="btn ghost" id="btnExamReset">Vymazat žáky</button>
           </div>
           <p id="examStatusLine" class="muted" style="margin-top:10px;font-weight:800;"></p>
 
-          <h3 style="margin-top:24px;">3. Zivy prehled (dohled)</h3>
+          <h3 style="margin-top:24px;">3. Živý přehled</h3>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
             <label class="check-row"><input type="checkbox" id="examAutoRefresh" checked /> Automaticky obnovovat (kazde 3 s)</label>
             <button class="btn" id="btnExamRefresh" style="padding:6px 14px;">Obnovit ted</button>
@@ -159,28 +260,28 @@
         </div>
 
         <div id="tab-editor" class="tab-content">
-          <h2>Editor otazek</h2>
+          <h2>Editor otázek</h2>
           <div class="form-group">
             <label for="editorBank">Sada k editaci</label>
             <select id="editorBank"></select>
           </div>
           <div class="btn-row" style="margin-bottom: 14px;">
-            <button class="btn" id="btnLoadBank">Nacist</button>
-            <button class="btn good" id="btnSaveBank">Ulozit zmeny</button>
-            <button class="btn secondary" id="btnAddQuestion">Pridat otazku</button>
+            <button class="btn" id="btnLoadBank">Načíst</button>
+            <button class="btn good" id="btnSaveBank">Uložit změny</button>
+            <button class="btn secondary" id="btnAddQuestion">Přidat otázku</button>
           </div>
           <div id="questionEditor"></div>
         </div>
 
         <div id="tab-ai" class="tab-content">
-          <h2>AI navrh otazek (Ollama)</h2>
+          <h2>AI návrh otázek</h2>
           <div class="form-group">
-            <label for="aiTopic">Tema otazek</label>
+            <label for="aiTopic">Téma otázek</label>
             <input id="aiTopic" placeholder="napr. Linuxove prikazy, Docker kontejnery, sitove protokoly..." />
           </div>
           <div class="inline-row">
             <div class="form-group">
-              <label for="aiCount">Pocet otazek</label>
+              <label for="aiCount">Počet otázek</label>
               <input id="aiCount" type="number" value="5" min="1" max="20" />
             </div>
             <div class="form-group">
@@ -200,19 +301,19 @@
             <div class="form-group">
               <label for="aiLang">Jazyk</label>
               <select id="aiLang">
-                <option value="cs">Cestina</option>
+                <option value="cs">Čeština</option>
                 <option value="en">English</option>
                 <option value="sk">Slovenstina</option>
                 <option value="de">Deutsch</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="aiSaveAs">Ulozit do sady</label>
+              <label for="aiSaveAs">Uložit do sady</label>
               <input id="aiSaveAs" placeholder="ai_otazky" />
             </div>
           </div>
           <div class="btn-row">
-            <button class="btn good" id="btnAiGenerate">Generovat otazky</button>
+            <button class="btn good" id="btnAiGenerate">Generovat otázky</button>
             <button class="btn secondary" id="btnAiListModels">Zobrazit modely</button>
           </div>
           <div id="aiStatus" class="hide"></div>
@@ -220,19 +321,19 @@
         </div>
 
         <div id="tab-timing" class="tab-content">
-          <h2>Nastaveni kvizu</h2>
+          <h2>Nastavení kvízu</h2>
           <div class="timing-grid">
             <div class="form-group">
-              <label for="timingQuestion">Cas na otazku (sekundy)</label>
+              <label for="timingQuestion">Čas na otázku (sekundy)</label>
               <input id="timingQuestion" type="number" min="5" max="120" />
             </div>
             <div class="form-group">
-              <label for="timingReveal">Cas na vyhodnoceni (sekundy)</label>
+              <label for="timingReveal">Čas na vyhodnocení (sekundy)</label>
               <input id="timingReveal" type="number" min="2" max="30" />
             </div>
           </div>
-          <button class="btn good" id="btnSaveTiming">Ulozit nastaveni</button>
-          <p class="muted" style="margin-top:10px;">Zmeny se projevi od dalsi otazky.</p>
+          <button class="btn good" id="btnSaveTiming">Uložit nastavení</button>
+          <p class="muted" style="margin-top:10px;">Změny se projeví od další otázky.</p>
 
           <h3 style="margin-top: 24px;">Ollama konfigurace</h3>
           <div class="inline-row">
@@ -249,7 +350,7 @@
               <input id="cfgOllamaModel" />
             </div>
           </div>
-          <button class="btn" id="btnSaveOllama">Ulozit Ollama config</button>
+          <button class="btn" id="btnSaveOllama">Uložit Ollama config</button>
 
           <h3 style="margin-top: 24px;">Pristupovy klic pro ovladani hry</h3>
           <p class="muted">Klic pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
@@ -429,12 +530,12 @@
         infoDiv.appendChild(nameStrong);
         const detailSpan = document.createElement('span');
         detailSpan.className = 'muted';
-        detailSpan.textContent = ` (${b.filename}) — ${b.question_count} otazek`;
+        detailSpan.textContent = ` (${b.filename}) — ${b.question_count} otázek`;
         infoDiv.appendChild(detailSpan);
         if (b.filename === activeBankName) {
           const activeSpan = document.createElement('span');
           activeSpan.style.cssText = 'color:#16a34a;font-weight:900;margin-left:6px;';
-          activeSpan.textContent = 'AKTIVNI';
+          activeSpan.textContent = 'Aktivní';
           infoDiv.appendChild(activeSpan);
         }
         div.appendChild(infoDiv);
@@ -473,7 +574,7 @@
     async function activateBank(filename) {
       try {
         await api('/api/admin/bank/activate', 'POST', { filename });
-        alert('Sada aktivovana! Hra resetovana.');
+        alert('Sada aktivována. Hra je resetovaná.');
         loadBanks();
       } catch (e) { alert(e.message); }
     }
@@ -488,7 +589,7 @@
 
     document.getElementById('btnCreateBank').addEventListener('click', async () => {
       const name = document.getElementById('newBankName').value.trim();
-      if (!name) { alert('Zadejte nazev'); return; }
+      if (!name) { alert('Zadejte název'); return; }
       const filename = name.replace(/\s+/g, '_').toLowerCase() + '.json';
       try {
         await api('/api/admin/bank/save', 'POST', { filename, questions: [] });
@@ -510,11 +611,11 @@
     });
 
     document.getElementById('btnSaveBank').addEventListener('click', async () => {
-      if (!editorFilename) { alert('Nejdrive nactete sadu'); return; }
+      if (!editorFilename) { alert('Nejdříve načtěte sadu'); return; }
       collectEditorData();
       try {
         await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
-        alert('Ulozeno!');
+        alert('Uloženo.');
         loadBanks();
       } catch (e) { alert(e.message); }
     });
@@ -548,7 +649,7 @@
         const header = document.createElement('div');
         header.className = 'q-header';
         const h4 = document.createElement('h4');
-        h4.textContent = `Otazka ${idx + 1} (${q.id})`;
+        h4.textContent = `Otázka ${idx + 1} (${q.id})`;
         header.appendChild(h4);
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn warn';
@@ -566,12 +667,12 @@
         const promptGroup = document.createElement('div');
         promptGroup.className = 'form-group';
         const promptLabel = document.createElement('label');
-        promptLabel.textContent = 'Zneni otazky';
+        promptLabel.textContent = 'Znění otázky';
         const promptInput = document.createElement('input');
         promptInput.type = 'text';
         promptInput.className = 'q-prompt';
         promptInput.value = q.prompt;
-        promptInput.placeholder = 'Text otazky...';
+        promptInput.placeholder = 'Text otázky...';
         promptGroup.appendChild(promptLabel);
         promptGroup.appendChild(promptInput);
         div.appendChild(promptGroup);
@@ -580,7 +681,7 @@
         const optGroup = document.createElement('div');
         optGroup.className = 'form-group';
         const optLabel = document.createElement('label');
-        optLabel.textContent = 'Moznosti (vyberte spravnou)';
+        optLabel.textContent = 'Možnosti (vyberte správnou)';
         optGroup.appendChild(optLabel);
         (q.options || []).forEach((opt, oi) => {
           const row = document.createElement('div');
@@ -597,7 +698,7 @@
           textInput.type = 'text';
           textInput.className = 'q-option';
           textInput.value = opt;
-          textInput.placeholder = `Moznost ${abc[oi]}`;
+          textInput.placeholder = `Možnost ${abc[oi]}`;
           row.appendChild(radio);
           row.appendChild(label);
           row.appendChild(textInput);
@@ -609,12 +710,12 @@
         const expGroup = document.createElement('div');
         expGroup.className = 'form-group';
         const expLabel = document.createElement('label');
-        expLabel.textContent = 'Vysvetleni';
+        expLabel.textContent = 'Vysvětlení';
         const expInput = document.createElement('input');
         expInput.type = 'text';
         expInput.className = 'q-explanation';
         expInput.value = q.explanation || '';
-        expInput.placeholder = 'Proc je tato odpoved spravna...';
+        expInput.placeholder = 'Proč je tato odpověď správná...';
         expGroup.appendChild(expLabel);
         expGroup.appendChild(expInput);
         div.appendChild(expGroup);
@@ -650,7 +751,7 @@
       const status = document.getElementById('aiStatus');
       status.className = 'ai-status loading';
       status.classList.remove('hide');
-      status.textContent = 'Generuji otazky pomoci AI... (muze trvat 30-120 sekund)';
+      status.textContent = 'Generuji otázky pomocí AI... (může trvat 30-120 sekund)';
 
       try {
         const result = await api('/api/admin/ai/generate', 'POST', {
@@ -662,13 +763,13 @@
           language: document.getElementById('aiLang').value,
         });
         status.className = 'ai-status success';
-        status.textContent = `Vygenerovano ${result.questions.length} otazek!`;
+        status.textContent = `Vygenerováno ${result.questions.length} otázek.`;
 
         const preview = document.getElementById('aiPreview');
         preview.innerHTML = '';
         const heading = document.createElement('h3');
         heading.style.marginTop = '14px';
-        heading.textContent = 'Nahled vygenerovanych otazek:';
+        heading.textContent = 'Náhled vygenerovaných otázek:';
         preview.appendChild(heading);
 
         result.questions.forEach((q, i) => {
@@ -684,7 +785,7 @@
               optDiv.style.color = '#16a34a';
               optDiv.style.fontWeight = '900';
             }
-            optDiv.textContent = `${abc[oi]}) ${o}${oi === q.correct_index ? ' (spravne)' : ''}`;
+            optDiv.textContent = `${abc[oi]}) ${o}${oi === q.correct_index ? ' (správně)' : ''}`;
             div.appendChild(optDiv);
           });
           const expP = document.createElement('p');
@@ -697,7 +798,7 @@
         const saveBtn = document.createElement('button');
         saveBtn.className = 'btn good';
         saveBtn.style.marginTop = '10px';
-        saveBtn.textContent = 'Ulozit do sady';
+        saveBtn.textContent = 'Uložit do sady';
         saveBtn.addEventListener('click', async () => {
           let saveName = document.getElementById('aiSaveAs').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
           if (!saveName.endsWith('.json')) saveName += '.json';
@@ -712,7 +813,7 @@
         const appendBtn = document.createElement('button');
         appendBtn.className = 'btn secondary';
         appendBtn.style.cssText = 'margin-top:10px;margin-left:10px;';
-        appendBtn.textContent = 'Pridat do stavajici sady';
+        appendBtn.textContent = 'Přidat do stávající sady';
         appendBtn.addEventListener('click', async () => {
           const sel = document.getElementById('editorBank');
           if (!sel.value) { alert('Vyberte sadu v Editoru'); return; }
@@ -720,7 +821,7 @@
             const existing = await api(`/api/admin/bank?filename=${encodeURIComponent(sel.value)}`);
             const merged = [...(existing.questions || []), ...result.questions];
             await api('/api/admin/bank/save', 'POST', { filename: sel.value, questions: merged });
-            alert(`Pridano ${result.questions.length} otazek do ${sel.value}!`);
+            alert(`Přidáno ${result.questions.length} otázek do ${sel.value}.`);
             loadBanks();
           } catch (e) { alert(e.message); }
         });
@@ -740,12 +841,12 @@
         if (!data.models || data.models.length === 0) {
           const p = document.createElement('p');
           p.className = 'muted';
-          p.textContent = 'Zadne modely nenalezeny. Zkontrolujte ze Ollama bezi.';
+          p.textContent = 'Žádné modely nenalezeny. Zkontrolujte, že Ollama běží.';
           preview.appendChild(p);
           return;
         }
         const h3 = document.createElement('h3');
-        h3.textContent = 'Dostupne modely:';
+        h3.textContent = 'Dostupné modely:';
         preview.appendChild(h3);
         data.models.forEach(m => {
           const item = document.createElement('div');
@@ -775,7 +876,7 @@
           question_duration_sec: parseInt(document.getElementById('timingQuestion').value),
           reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
         });
-        alert('Nastaveni ulozeno!');
+        alert('Nastavení uloženo.');
       } catch (e) { alert(e.message); }
     });
 
@@ -786,7 +887,7 @@
           port: parseInt(document.getElementById('cfgOllamaPort').value),
           model: document.getElementById('cfgOllamaModel').value,
         });
-        alert('Ollama konfigurace ulozena!');
+        alert('Ollama konfigurace uložena.');
         loadOllamaConfig();
       } catch (e) { alert(e.message); }
     });
@@ -805,7 +906,7 @@
         if (!history.length) {
           const p = document.createElement('p');
           p.className = 'muted';
-          p.textContent = 'Zadna historie.';
+          p.textContent = 'Žádná historie.';
           list.appendChild(p);
           return;
         }
@@ -817,7 +918,7 @@
           headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
           const h4 = document.createElement('h4');
           const date = new Date(h.timestamp);
-          h4.textContent = `${date.toLocaleString('cs-CZ')} - ${h.player_count} hracu, ${h.total_questions} otazek`;
+          h4.textContent = `${date.toLocaleString('cs-CZ')} - ${h.player_count} hráčů, ${h.total_questions} otázek`;
           headerDiv.appendChild(h4);
           const delBtn = document.createElement('button');
           delBtn.className = 'btn warn';
@@ -920,11 +1021,11 @@
 
     document.getElementById('btnExamPrepare').addEventListener('click', async () => {
       const filename = document.getElementById('examBank').value;
-      if (!filename) { alert('Vyberte sadu otazek'); return; }
+      if (!filename) { alert('Vyberte sadu otázek'); return; }
       try {
         await api('/api/admin/exam/config', 'POST', collectExamConfig());
         await api('/api/admin/bank/activate', 'POST', { filename, mode: 'exam' });
-        alert('Pisemka pripravena. Zaci se mohou prihlasit na URL pro zaky. Az budou pripraveni, klikni "Spustit pisemku".');
+        alert('Písemka připravena. Žáci se mohou přihlásit na odkaz pro žáky. Až budou připraveni, klikni na "Spustit písemku".');
         refreshExamOverview();
       } catch (e) { alert(e.message); }
     });
@@ -934,13 +1035,13 @@
         // Save current config (time limit etc.) before opening
         await api('/api/admin/exam/config', 'POST', collectExamConfig());
         await examHostAction('open');
-        document.getElementById('examStatusLine').textContent = 'Pisemka spustena!';
+        document.getElementById('examStatusLine').textContent = 'Písemka spuštěna.';
         refreshExamOverview();
       } catch (e) { alert(e.message); }
     });
 
     document.getElementById('btnExamEnd').addEventListener('click', async () => {
-      if (!confirm('Ukoncit pisemku pro vsechny? Neodevzdane se automaticky oznamkuji.')) return;
+      if (!confirm('Ukončit písemku pro všechny? Neodevzdané testy se automaticky oznámkují.')) return;
       try { await examHostAction('end'); refreshExamOverview(); } catch (e) { alert(e.message); }
     });
 
@@ -949,7 +1050,7 @@
     });
 
     document.getElementById('btnExamReset').addEventListener('click', async () => {
-      if (!confirm('Vymazat vsechny zaky a jejich odpovedi? Pouzij pred novou pisemkou.')) return;
+      if (!confirm('Vymazat všechny žáky a jejich odpovědi? Použij před novou písemkou.')) return;
       try { await examHostAction('reset'); refreshExamOverview(); } catch (e) { alert(e.message); }
     });
 
@@ -1001,7 +1102,7 @@
         if (!ov.students.length) {
           const p = document.createElement('p');
           p.className = 'muted';
-          p.textContent = 'Zatim se neprihlasil zadny zak.';
+          p.textContent = 'Zatím se nepřihlásil žádný žák.';
           box.appendChild(p);
           document.getElementById('examOverviewSummary').textContent = '';
           return;

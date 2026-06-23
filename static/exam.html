@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ClassRally — Písemka</title>
+    <title>ClassRally - Písemka</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
         * {
@@ -14,7 +14,11 @@
 
         body {
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: #f0f2f5;
+            background:
+                linear-gradient(rgba(37, 99, 235, 0.055) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 184, 166, 0.045) 1px, transparent 1px),
+                linear-gradient(135deg, #f6f8fc, #eef8f4 58%, #f8fafc);
+            background-size: 42px 42px, 42px 42px, auto;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -25,15 +29,16 @@
 
         .container {
             width: 100%;
-            max-width: 600px;
+            max-width: 720px;
             margin: 0 auto;
         }
 
         .card {
             background: #ffffff;
-            border-radius: 1.25rem;
+            border: 1px solid rgba(148, 163, 184, 0.38);
+            border-radius: 8px;
             padding: 1.5rem;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
             margin-bottom: 1rem;
             transition: all 0.2s ease;
         }
@@ -45,39 +50,39 @@
             width: 100%;
             padding: 1rem 1.5rem;
             border: none;
-            border-radius: 4rem;
+            border-radius: 8px;
             font-size: 1.1rem;
-            font-weight: 600;
+            font-weight: 800;
             cursor: pointer;
             text-align: center;
             background: #e2e8f0;
             color: #1a202c;
             transition: all 0.2s;
             margin-top: 0.75rem;
-            letter-spacing: 0.02em;
+            letter-spacing: 0;
             touch-action: manipulation;
         }
 
         .btn.good {
-            background: #276ef1;
+            background: #2563eb;
             color: white;
-            box-shadow: 0 4px 12px rgba(39, 110, 241, 0.3);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
         }
 
         .btn.good:hover {
-            background: #1a5cd4;
+            background: #1d4ed8;
             transform: scale(1.02);
         }
 
         .btn.warn {
-            background: #f44336;
+            background: #e11d48;
             color: white;
             font-weight: 700;
-            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+            box-shadow: 0 10px 20px rgba(225, 29, 72, 0.2);
         }
 
         .btn.warn:hover {
-            background: #d32f2f;
+            background: #be123c;
             transform: scale(1.02);
         }
 
@@ -101,8 +106,8 @@
         input {
             width: 100%;
             padding: 1rem 1.25rem;
-            border-radius: 3rem;
-            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
             font-size: 1.1rem;
             margin: 0.75rem 0;
             outline: none;
@@ -111,7 +116,8 @@
         }
 
         input:focus {
-            border-color: #276ef1;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
         }
 
         .hide {
@@ -122,7 +128,7 @@
             color: #d32f2f;
             background: #ffebee;
             padding: 0.75rem 1rem;
-            border-radius: 2rem;
+            border-radius: 8px;
             font-size: 0.9rem;
             text-align: center;
             margin-top: 0.5rem;
@@ -131,7 +137,7 @@
 
         .section-title {
             font-size: 1.8rem;
-            font-weight: 700;
+            font-weight: 850;
             text-align: center;
             margin-bottom: 1rem;
             color: #1a202c;
@@ -152,8 +158,8 @@
             background: #1e293b;
             color: white;
             padding: 0.5rem 1.2rem;
-            border-radius: 3rem;
-            letter-spacing: 0.05em;
+            border-radius: 8px;
+            letter-spacing: 0;
             font-variant-numeric: tabular-nums;
         }
 
@@ -173,7 +179,7 @@
             font-size: 1.3rem;
             background: #f1f5f9;
             padding: 0.4rem 1.2rem;
-            border-radius: 2rem;
+            border-radius: 8px;
         }
 
         .navigator {
@@ -187,7 +193,7 @@
         .nav-btn {
             width: 2.8rem;
             height: 2.8rem;
-            border-radius: 0.8rem;
+            border-radius: 8px;
             border: none;
             font-weight: 700;
             font-size: 1rem;
@@ -206,10 +212,10 @@
         }
 
         .nav-btn.active {
-            background: #276ef1;
+            background: #2563eb;
             color: white;
             transform: scale(1.1);
-            box-shadow: 0 4px 10px rgba(39, 110, 241, 0.4);
+            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.24);
         }
 
         .nav-btn:disabled {
@@ -234,8 +240,8 @@
 
         .option-btn {
             background: #f8fafc;
-            border: 2px solid #e2e8f0;
-            border-radius: 1rem;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
             padding: 1rem 1.25rem;
             font-size: 1.1rem;
             text-align: left;
@@ -249,8 +255,8 @@
 
         .option-btn.selected {
             background: #ebf4ff;
-            border-color: #276ef1;
-            box-shadow: 0 0 0 2px rgba(39, 110, 241, 0.3);
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
         }
 
         .option-letter {
@@ -261,12 +267,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
+            border-radius: 8px;
             flex-shrink: 0;
         }
 
         .option-btn.selected .option-letter {
-            background: #276ef1;
+            background: #2563eb;
             color: white;
         }
 
@@ -289,7 +295,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(211, 47, 47, 0.95);
+            background: rgba(190, 18, 60, 0.96);
             z-index: 9999;
             display: flex;
             flex-direction: column;
@@ -309,7 +315,7 @@
             background: #f1f5f9;
             display: inline-block;
             padding: 0.5rem 2rem;
-            border-radius: 2rem;
+            border-radius: 8px;
             margin: 1rem 0;
         }
 
@@ -317,7 +323,10 @@
             display: block;
             margin: 1rem auto;
             max-width: 200px;
-            border-radius: 1rem;
+            border-radius: 8px;
+            border: 1px solid #dbe3ef;
+            padding: 8px;
+            background: #fff;
         }
 
         .wait-message {
@@ -326,13 +335,28 @@
             text-align: center;
             animation: pulse 2s infinite;
         }
+
+        .question-panel {
+            background: #f8fafc;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
     </style>
 </head>
-<body>
+<body class="exam-page">
     <div class="container" id="appContainer">
         <!-- Sekce JOIN -->
         <section id="joinSection" class="card">
+            <div class="join-art exam-art" aria-hidden="true"></div>
+            <p class="eyebrow">Offline písemka</p>
             <h1 class="section-title">Písemka — přihlášení</h1>
+            <div class="hero-badges compact">
+                <span>Bez účtu</span>
+                <span>Časový limit</span>
+                <span>Dohled</span>
+            </div>
             <input type="text" id="nicknameInput" placeholder="Tvoje přezdívka" maxlength="24" autocomplete="off">
             <button id="joinButton" class="btn good">Vstoupit do písemky</button>
             <div id="joinError" class="error-message hide"></div>
@@ -341,7 +365,7 @@
 
         <!-- Sekce WAIT -->
         <section id="waitSection" class="card hide">
-            <div class="wait-message">⏳ Čekej, učitel písemku za chvíli spustí.</div>
+            <div class="wait-message">Čekej, učitel písemku za chvíli spustí.</div>
         </section>
 
         <!-- Sekce TEST -->
@@ -352,7 +376,7 @@
             </div>
             <div class="navigator" id="questionNavigator"></div>
             <div class="progress-indicator" id="progressIndicator"></div>
-            <div class="card" style="box-shadow: none; border: 1px solid #e2e8f0;">
+            <div class="question-panel">
                 <div id="questionTitle" class="question-text"></div>
                 <div class="options-grid" id="optionsContainer"></div>
             </div>
@@ -360,18 +384,18 @@
                 <button id="prevButton" class="btn small">◀ Předchozí</button>
                 <button id="nextButton" class="btn small" style="margin-left: auto;">Další ▶</button>
             </div>
-            <button id="submitButton" class="btn warn">📩 Odevzdat písemku</button>
+            <button id="submitButton" class="btn warn">Odevzdat písemku</button>
         </section>
 
         <!-- Sekce RESULT -->
         <section id="resultSection" class="card hide">
-            <h2 style="text-align: center;">🏁 Písemka odevzdána</h2>
+            <h2 style="text-align: center;">Písemka odevzdána</h2>
             <div id="resultContent"></div>
         </section>
 
         <!-- Anti-cheat overlay -->
         <div id="antiCheatOverlay" class="overlay hide">
-            <div>⚠️ Opustil(a) jsi test!</div>
+            <div>Opustil(a) jsi test!</div>
             <div style="font-size: 1.2rem; margin-top: 1rem;">Učitel to vidí. Vrať se k testu.</div>
             <div style="margin-top: 1.5rem;" id="blurCounterDisplay">Opuštění okna: 0</div>
         </div>

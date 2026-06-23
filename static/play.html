@@ -3,28 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quiz - Hraj!</title>
+  <title>ClassRally - Hra</title>
   <link rel="stylesheet" href="/static/style.css" />
   <style>
-    .countdown-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 8px 0; }
+    .countdown-bar { width: 100%; height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 10px 0 16px; }
     .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
-      background: linear-gradient(90deg, #22d3ee, #0284c7); }
-    .countdown-fill.warning { background: linear-gradient(90deg, #f97316, #dc2626); }
+      background: linear-gradient(90deg, #14b8a6, #2563eb); }
+    .countdown-fill.warning { background: linear-gradient(90deg, #f59e0b, #e11d48); }
     .kahoot-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 600px) { .kahoot-options { grid-template-columns: 1fr; } }
-    .kahoot-btn { border: none; border-radius: 14px; padding: 22px 18px; text-align: center;
-      font-size: clamp(1.3rem, 2.2vw, 2rem); font-weight: 900; cursor: pointer; color: #fff;
+    .kahoot-btn { border: 0; border-radius: 8px; padding: 22px 18px; text-align: center;
+      font-size: 1.45rem; font-weight: 900; cursor: pointer; color: #fff;
       transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.18); min-height: 80px;
+      box-shadow: 0 14px 24px rgba(15,23,42,0.14); min-height: 88px;
       display: flex; align-items: center; justify-content: center; gap: 10px; }
     .kahoot-btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.02);
-      box-shadow: 0 10px 24px rgba(0,0,0,0.25); }
+      box-shadow: 0 18px 30px rgba(15,23,42,0.2); }
     .kahoot-btn:active:not(:disabled) { transform: translateY(0); }
     .kahoot-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-    .kahoot-btn.c0 { background: linear-gradient(135deg, #e21b3c, #ff3355); }
-    .kahoot-btn.c1 { background: linear-gradient(135deg, #1368ce, #2584ff); }
-    .kahoot-btn.c2 { background: linear-gradient(135deg, #d89e00, #ffa602); }
-    .kahoot-btn.c3 { background: linear-gradient(135deg, #26890c, #45b332); }
+    .kahoot-btn.c0 { background: #e11d48; }
+    .kahoot-btn.c1 { background: #2563eb; }
+    .kahoot-btn.c2 { background: #f59e0b; }
+    .kahoot-btn.c3 { background: #16a34a; }
     .kahoot-btn.selected { outline: 4px solid #fff; outline-offset: -4px;
       box-shadow: 0 0 0 6px rgba(255,255,255,0.5), 0 8px 20px rgba(0,0,0,0.3); }
     .kahoot-btn.correct-answer { outline: 4px solid #16a34a; outline-offset: -4px;
@@ -32,7 +32,7 @@
     .kahoot-btn.wrong-answer { opacity: 0.35 !important; }
     .kahoot-btn .shape { font-size: 1.4em; }
     .shapes { display: inline; }
-    .result-banner { text-align: center; padding: 20px; border-radius: 14px; margin: 14px 0;
+    .result-banner { text-align: center; padding: 20px; border-radius: 8px; margin: 14px 0;
       font-size: 1.8rem; font-weight: 900; }
     .result-banner.correct-banner { background: linear-gradient(135deg, #dcfce7, #bbf7d0);
       color: #166534; border: 3px solid #16a34a; }
@@ -54,21 +54,29 @@
     .podium-rank { font-size: 2.5rem; font-weight: 900; }
     .podium-name { font-size: 1.3rem; font-weight: 800; margin-top: 6px; }
     .podium-score { font-size: 1.1rem; color: #475569; }
+    @media (max-width: 600px) { .kahoot-btn { font-size: 1.18rem; } }
   </style>
 </head>
-<body>
+<body class="player-page">
   <main class="app">
-    <section id="joinCard" class="card">
-      <h1>Pripoj se do kvizu!</h1>
-      <p class="muted">Zadej prezdivku (max. 24 znaku) a klikni na Vstoupit.</p>
-      <input id="nameInput" class="input" placeholder="napr. Tereza" maxlength="24" autofocus />
+    <section id="joinCard" class="card join-card">
+      <div class="join-art play-art" aria-hidden="true"></div>
+      <p class="eyebrow">Classroom rally mode</p>
+      <h1>ClassRally</h1>
+      <p class="muted">Zadej přezdívku a připoj se do hry.</p>
+      <div class="hero-badges compact">
+        <span>Live</span>
+        <span>Rychlé odpovědi</span>
+        <span>Body</span>
+      </div>
+      <input id="nameInput" class="input" placeholder="např. Tereza" maxlength="24" autofocus />
       <div class="btn-row" style="margin-top:10px;">
-        <button id="joinBtn" class="btn good">Vstoupit</button>
+        <button id="joinBtn" class="btn good">Vstoupit do hry</button>
       </div>
       <p id="joinErr" style="color:#b91c1c;font-weight:700;"></p>
       <div id="qrJoin" style="text-align:center;margin:30px 0 10px 0;">
-        <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;">Nebo vyfot QR kod z projektoru:</p>
-        <img id="qrImg" src="/api/qr" alt="QR kod" style="width:min(80vw,400px);height:auto;border:3px solid #e2e8f0;border-radius:12px;" />
+        <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;">QR kód pro připojení:</p>
+        <img id="qrImg" src="/api/qr" alt="QR kód" style="width:min(80vw,400px);height:auto;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" />
       </div>
     </section>
 
@@ -79,11 +87,11 @@
       </div>
 
       <div class="kpi" style="margin:12px 0;">
-        <div class="item"><div class="label">Skore</div><div class="value" id="myScore">0</div></div>
-        <div class="item"><div class="label">Otazka</div><div class="value" id="qNo">-</div></div>
-        <div class="item"><div class="label">Odpovedelo</div><div class="value" id="answered">0</div></div>
-        <div class="item"><div class="label">Hraci</div><div class="value" id="players">0</div></div>
-        <div class="item timer"><div class="label">Odpocet</div><div class="value" id="timer">-</div></div>
+        <div class="item"><div class="label">Skóre</div><div class="value" id="myScore">0</div></div>
+        <div class="item"><div class="label">Otázka</div><div class="value" id="qNo">-</div></div>
+        <div class="item"><div class="label">Odpovědělo</div><div class="value" id="answered">0</div></div>
+        <div class="item"><div class="label">Hráči</div><div class="value" id="players">0</div></div>
+        <div class="item timer"><div class="label">Odpočet</div><div class="value" id="timer">-</div></div>
       </div>
 
       <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
@@ -93,7 +101,7 @@
       <p id="explanation" class="muted"></p>
       <div id="options" class="kahoot-options"></div>
       <div id="podium" class="hide"></div>
-      <p class="help">Odpoved je po odeslani finalni.</p>
+      <p class="help">Odpověď je po odeslání finální.</p>
     </section>
   </main>
 
@@ -112,10 +120,10 @@
     let lastQuestionIndex = -1;
 
     function phaseLabel(phase) {
-      if (phase === 'question') return 'Otazka';
-      if (phase === 'reveal') return 'Vyhodnoceni';
+      if (phase === 'question') return 'Otázka';
+      if (phase === 'reveal') return 'Vyhodnocení';
       if (phase === 'finished') return 'Konec';
-      return 'Ceka se na start';
+      return 'Čeká';
     }
 
     function formatSecondsLeft(value) {
@@ -267,7 +275,7 @@
           main.textContent = '';
           const pulse = document.createElement('span');
           pulse.className = 'waiting-pulse';
-          pulse.textContent = 'Jakmile ucitel spusti kviz, otazka se objevi automaticky.';
+          pulse.textContent = 'Jakmile učitel spustí kvíz, otázka se objeví automaticky.';
           main.appendChild(pulse);
           podium.classList.add('hide');
         }
@@ -285,21 +293,21 @@
           banner.classList.remove('hide');
           if (myChoice === undefined) {
             banner.className = 'result-banner wrong-banner';
-            banner.textContent = `Cas vyprsel! Spravne: ${abc[c]}) ${state.question.options[c]}`;
+            banner.textContent = `Čas vypršel. Správně: ${abc[c]}) ${state.question.options[c]}`;
           } else if (isCorrect) {
             banner.className = 'result-banner correct-banner';
-            banner.textContent = `Spravne! ${abc[c]}) ${state.question.options[c]}`;
+            banner.textContent = `Správně. ${abc[c]}) ${state.question.options[c]}`;
           } else {
             banner.className = 'result-banner wrong-banner';
-            banner.textContent = `Spatne! Spravne: ${abc[c]}) ${state.question.options[c]}`;
+            banner.textContent = `Špatně. Správně: ${abc[c]}) ${state.question.options[c]}`;
           }
           exp.textContent = state.question.explanation || '';
         } else {
           banner.classList.add('hide');
           if (state.my_choice === undefined) {
-            exp.textContent = `Vyber jednu moznost! Zbyva ${formatSecondsLeft(state.phase_time_left)}.`;
+            exp.textContent = `Vyber jednu možnost. Zbývá ${formatSecondsLeft(state.phase_time_left)}.`;
           } else {
-            exp.textContent = 'Odpoved odeslana. Pockej na vyhodnoceni.';
+            exp.textContent = 'Odpověď odeslána. Počkej na vyhodnocení.';
           }
         }
       }

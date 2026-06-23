@@ -3,37 +3,48 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kvíz host - VirtualBox Ubuntu Docker</title>
+  <title>ClassRally - Host</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
-<body>
+<body class="host-page">
   <main class="app">
-    <section class="card">
-      <h1>Kvíz host (učitel)</h1>
-      <p class="muted">Promitni tuto obrazovku a spust kviz.</p>
-      <div class="btn-row" style="margin-bottom:10px;">
-        <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;">Ucitelsky portal</a>
-      </div>
-      <p><strong>URL pro žáky:</strong> <span id="joinUrl" class="join-url">Načítám...</span></p>
-      <p class="muted" id="joinHint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
-      <ul id="joinExtra" class="join-extra hide"></ul>
-      <div id="qrBox" style="text-align:center;margin:12px 0;">
-        <img id="qrImg" src="/api/qr" alt="QR kod pro pripojeni" style="max-width:200px;height:auto;cursor:pointer;border:2px solid #e2e8f0;border-radius:8px;" title="Klikni pro zvetseni" />
+    <section class="card host-hero">
+      <div class="host-intro">
+        <p class="eyebrow">Live classroom mode</p>
+        <h1>ClassRally</h1>
+        <p class="muted">Herní režie pro projektor.</p>
+        <div class="hero-badges">
+          <span>Offline</span>
+          <span>Zdarma</span>
+          <span>Bez účtů</span>
+        </div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;">Učitelský portál</a>
+        </div>
+        <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url">Načítám...</span></p>
+        <p class="muted" id="joinHint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
+        <ul id="joinExtra" class="join-extra hide"></ul>
       </div>
 
-      <div class="btn-row">
+      <div class="host-qr-panel">
+        <div id="qrBox">
+          <img id="qrImg" src="/api/qr" alt="QR kód pro připojení" style="max-width:280px;height:auto;cursor:pointer;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" title="Klikni pro zvětšení" />
+        </div>
+      </div>
+
+      <div class="btn-row host-action-row">
         <button class="btn good" id="btnStart">Start</button>
-        <button class="btn secondary" id="btnReveal">Vyhodnotit</button>
+        <button class="btn secondary" id="btnReveal">Ukázat správnou</button>
         <button class="btn" id="btnNext">Další otázka</button>
-        <button class="btn warn" id="btnReset">Reset hry (smaže body!)</button>
+        <button class="btn warn" id="btnReset">Reset hry</button>
       </div>
 
       <div class="music-controls">
         <div class="btn-row">
           <button class="btn ghost" id="btnMusicStart">Hudba ON</button>
           <button class="btn secondary" id="btnMusicStop">Hudba OFF</button>
-          <button class="btn" id="btnStinger">Zvukovy efekt</button>
-          <button class="btn" id="btnRandomLoop">Zmenit hudbu</button>
+          <button class="btn" id="btnStinger">Zvukový efekt</button>
+          <button class="btn" id="btnRandomLoop">Změnit hudbu</button>
         </div>
         <label class="slider-row" for="musicVol">Hlasitost
           <input id="musicVol" type="range" min="0" max="100" value="40" />
@@ -112,7 +123,7 @@
       if (phase === 'question') return 'Otázka';
       if (phase === 'reveal') return 'Vyhodnocení';
       if (phase === 'finished') return 'Konec';
-      return 'Ceka se';
+      return 'Čeká';
     }
 
     function formatSecondsLeft(value) {
@@ -775,7 +786,7 @@
 
     // Host token: prompt user if not set
     if (!hostToken) {
-      const token = prompt('Zadej pristupovy klic (zobrazen pri startu serveru nebo v Ucitelskem portalu > Nastaveni):');
+      const token = prompt('Zadej přístupový klíč (zobrazený při startu serveru nebo v Učitelském portálu > Nastavení):');
       if (token) {
         hostToken = token.trim();
         localStorage.setItem('quiz_host_token', hostToken);

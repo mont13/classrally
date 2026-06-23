@@ -100,7 +100,7 @@ V ucitelskem portalu (`/admin`) zalozka **Pisemka (test)**:
 - **Zdarma bez limitu** — zadne omezeni poctu hracu (prakticky limit je sit a zarizeni)
 - **Data zustavaji u vas** — nic se neodesila do zadne externi sluzby
 - **Staci Python nebo Docker** — zadne dalsi zavislosti, zadny npm install
-- **Open source** — muzete upravit, rozsirit, pouzit jak chcete
+- **Open source / MIT licence** — muzete upravit, rozsirit a provozovat zdarma
 
 ### Inspirace Kahootem
 
