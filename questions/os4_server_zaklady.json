@@ -1,0 +1,122 @@
+[
+  {
+    "id": "q1",
+    "prompt": "Jaký je hlavní rozdíl mezi edicemi Windows Server Standard a Datacenter z hlediska licencování virtualizace?",
+    "options": [
+      "Standard edice neumožňuje virtualizaci vůbec.",
+      "Datacenter edice umožňuje provozovat neomezený počet virtuálních instancí Windows Serveru na licencovaném hostiteli.",
+      "Standard edice umožňuje provozovat maximálně 2 virtuální instance, Datacenter edice maximálně 10.",
+      "Virtuální instance (VM) se u Datacenter edice nelicencují samostatně, ale edice nepodporuje Hyper-V."
+    ],
+    "correct_index": 1,
+    "explanation": "Edice Datacenter je licencována na fyzická jádra hostitele a umožňuje na něm provozovat neomezený počet virtuálních instancí Windows Serveru. Standard edice typicky zahrnuje práva na 2 virtuální instance (plus hostitel pouze pro správu Hyper-V)."
+  },
+  {
+    "id": "q2",
+    "prompt": "Která z následujících vlastností je charakteristická pro možnost instalace 'Server Core' ve Windows Serveru?",
+    "options": [
+      "Plnohodnotné grafické rozhraní včetně Průzkumníka souborů.",
+      "Nepřítomnost grafického shellu, správa primárně přes příkazovou řádku (PowerShell) a vzdálené nástroje.",
+      "Automatická instalace role Hyper-V.",
+      "Podpora pouze pro roli DNS serveru."
+    ],
+    "correct_index": 1,
+    "explanation": "Server Core je minimalistická varianta instalace bez grafického shellu (Desktop Experience), což snižuje hardwarové nároky, zmenšuje plochu pro útoky a vyžaduje méně restartů. Spravuje se pomocí PowerShellu, SConfig nebo nástrojů pro vzdálenou správu."
+  },
+  {
+    "id": "q3",
+    "prompt": "Kolik paměti RAM minimálně vyžaduje Windows Server 2022 pro instalaci s grafickým prostředím (Desktop Experience)?",
+    "options": [
+      "1 GB",
+      "2 GB",
+      "4 GB",
+      "8 GB"
+    ],
+    "correct_index": 1,
+    "explanation": "Pro variantu s grafickým rozhraním (Desktop Experience) uvádí Microsoft minimum 2 GB RAM. Samotné jádro systému (Server Core) si vystačí s méně, ale s GUI je doporučené minimum 2 GB."
+  },
+  {
+    "id": "q4",
+    "prompt": "Jaký je zásadní rozdíl mezi rolí serveru (Role) a funkcí (Feature) ve Windows Serveru?",
+    "options": [
+      "Role vyžaduje restart, funkce nikdy nevyžaduje restartování serveru.",
+      "Funkce definuje primární účel serveru, role je jen podpůrná komponenta.",
+      "Role je kolekce softwarových komponent pro specifickou serverovou úlohu (např. DNS), funkce je podpůrná komponenta (např. .NET Framework).",
+      "Na Server Core lze instalovat pouze funkce, nikoli role."
+    ],
+    "correct_index": 2,
+    "explanation": "Role (např. Active Directory Domain Services, DNS Server) představuje hlavní funkci, kterou server poskytuje v síti. Funkce (např. Telnet Client, Windows Server Backup) je podpůrný software, který pomáhá nebo rozšiřuje funkcionalitu, ale nedefinuje identitu serveru."
+  },
+  {
+    "id": "q5",
+    "prompt": "Při instalaci Windows Serveru 2022 požaduje instalační program v určité fázi tzv. Product Key. Který postup je platný pro pokračování instalace bez zadání klíče s možností pozdější aktivace?",
+    "options": [
+      "Windows Server nelze nainstalovat bez platného Product Key.",
+      "Je nutné zadat generický klíč KMS klienta, jinak instalace skončí chybou.",
+      "V dialogovém okně pro zadání klíče lze zvolit možnost 'Nemám kód Product Key' a pokračovat v instalaci.",
+      "Klíč lze přeskočit pouze při instalaci edice Datacenter Server Core."
+    ],
+    "correct_index": 2,
+    "explanation": "Instalační program Windows Serveru umožňuje zvolit 'Nemám kód Product Key' a pokračovat. Systém se nainstaluje jako zkušební verze, kterou je nutné později aktivovat standardním klíčem."
+  },
+  {
+    "id": "q6",
+    "prompt": "Co je nutnou podmínkou pro úspěšné povýšení Windows Serveru na doménový řadič (Domain Controller) pomocí Průvodce konfigurací služby AD DS?",
+    "options": [
+      "Server musí být předem připojen k existující doméně jako člen.",
+      "Server musí mít nainstalovánu roli Active Directory Domain Services (AD DS).",
+      "Musí být nainstalována pouze funkce 'Správa zásad skupiny'.",
+      "Server Core nelze na doménový řadič povýšit, vyžaduje se Desktop Experience."
+    ],
+    "correct_index": 1,
+    "explanation": "Povýšení na doménový řadič se provádí po instalaci role AD DS. Samotná instalace role připraví binární soubory, ale teprve následná konfigurace (propagace) server na DC povýší. Povýšit lze i Server Core."
+  },
+  {
+    "id": "q7",
+    "prompt": "Máte server s Windows Serverem 2022 nainstalovaným v režimu Server Core. Který nástroj je dostupný přímo v lokální konzoli serveru pro základní konfiguraci (např. nastavení IP adresy, název počítače, doména)?",
+    "options": [
+      "Správce serveru (Server Manager)",
+      "Ovládací panely (Control Panel)",
+      "Nástroj SConfig (Server Configuration)",
+      "Editor registru (regedit.exe)"
+    ],
+    "correct_index": 2,
+    "explanation": "Po přihlášení k Server Core se automaticky spouští textový konfigurační nástroj SConfig, který umožňuje měnit síťová nastavení, název počítače, připojení k doméně, instalaci aktualizací a další základní úkony."
+  },
+  {
+    "id": "q8",
+    "prompt": "V Průvodci přidáním rolí a funkcí vybíráte typ instalace. Jaký je důvod pro volbu 'Instalace služby Vzdálená plocha' (Remote Desktop Services installation)?",
+    "options": [
+      "Pro povolení jedné administrátorské relace vzdálené plochy pro správu serveru.",
+      "Pro zprovoznění virtualizace Hyper-V.",
+      "Pro vytvoření farmy terminálových serverů umožňujících více uživatelům spouštět aplikace na serveru.",
+      "Pro převod Server Core na Desktop Experience."
+    ],
+    "correct_index": 2,
+    "explanation": "Standardní povolení vzdálené plochy pro správu (2 relace) se konfiguruje ve vlastnostech systému. Volba 'Instalace služby Vzdálená plocha' spouští speciální instalační režim pro nasazení celé infrastruktury RDS sloužící mnoha současně pracujícím uživatelům."
+  },
+  {
+    "id": "q9",
+    "prompt": "Který mechanismus autentizace primárně používá počítač, který je členem domény Active Directory, pro ověření svého počítačového účtu při startu a navázání důvěryhodného vztahu?",
+    "options": [
+      "Místní účet SAM.",
+      "Uživatelské jméno a heslo administrátora domény.",
+      "Sdílené tajemství (LSA secret / heslo počítačového účtu) s doménovým řadičem.",
+      "Digitální certifikát vydaný veřejnou certifikační autoritou."
+    ],
+    "correct_index": 2,
+    "explanation": "Když se počítač připojí k doméně, je vytvořen jeho účet a nastaveno heslo (tajemství) sdílené s DC, které je uloženo v lokální LSA databázi. Toto heslo se periodicky mění a používá se pro vzájemné ověření počítače a domény (např. přes Kerberos)."
+  },
+  {
+    "id": "q10",
+    "prompt": "Pomocí kterého modulu v prostředí PowerShell lze nainstalovat roli Active Directory Domain Services na Windows Server s již dokončenou instalací operačního systému?",
+    "options": [
+      "Add-Feature",
+      "Install-ADDSDomainController",
+      "Install-WindowsFeature",
+      "Enable-WindowsOptionalFeature"
+    ],
+    "correct_index": 2,
+    "explanation": "K instalaci rolí a funkcí ve Windows Serveru se v prostředí PowerShell používá rutina `Install-WindowsFeature`. Např. `Install-WindowsFeature -Name AD-Domain-Services` nainstaluje roli AD DS. `Install-ADDSDomainController` se používá až pro samotné povýšení serveru na řadič domény."
+  }
+]

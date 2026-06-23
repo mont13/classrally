@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "prompt": "Která z následujících komponent v Active Directory slouží primárně k logickému seskupování objektů za účelem delegování správy a aplikace zásad skupiny (GPO)?",
+    "options": [
+      "Doména",
+      "Strom",
+      "Les",
+      "Organizační jednotka (OU)"
+    ],
+    "correct_index": 3,
+    "explanation": "Organizační jednotka (OU) je nejmenší logický kontejner v AD, do kterého lze vkládat uživatele, skupiny a počítače a přímo na ni aplikovat GPO nebo delegovat administrativní oprávnění. Doména je bezpečnostní hranice, strom a les jsou kolekce domén."
+  },
+  {
+    "id": "q2",
+    "prompt": "Jaký typ účtu v Active Directory je určen pro ověřování operačního systému, nikoli lidského uživatele?",
+    "options": [
+      "Doménový uživatel",
+      "Počítačový účet",
+      "Distribuční skupina",
+      "Bezpečnostní skupina"
+    ],
+    "correct_index": 1,
+    "explanation": "Počítačový účet identifikuje zařízení v doméně a umožňuje mu autentizaci a autorizaci podobně jako uživatelský účet. Distribuční a bezpečnostní skupiny slouží k seskupování, nikoli autentizaci operačního systému."
+  },
+  {
+    "id": "q3",
+    "prompt": "Která skupina v AD slouží výhradně pro účely e-mailové distribuce a nelze ji použít v přístupových právech (ACL) k souborům?",
+    "options": [
+      "Bezpečnostní skupina",
+      "Distribuční skupina",
+      "Univerzální skupina",
+      "Globální skupina"
+    ],
+    "correct_index": 1,
+    "explanation": "Distribuční skupina nemá přiřazen bezpečnostní identifikátor (SID) v tokenu přístupu, proto ji nelze použít pro nastavení oprávnění na zdrojích. Ostatní jmenované typy (bezpečnostní, univerzální, globální) SID obsahují a pro přístupová práva použít lze."
+  },
+  {
+    "id": "q4",
+    "prompt": "Jaký je standardní rozsah (scope) bezpečnostní skupiny, která se používá pro správu práv v rámci jedné domény a její členové mohou pocházet i z jiných domén v lese?",
+    "options": [
+      "Místní doména (Domain Local)",
+      "Globální (Global)",
+      "Univerzální (Universal)",
+      "Místní počítač (Local)"
+    ],
+    "correct_index": 0,
+    "explanation": "Skupina s rozsahem Domain Local může obsahovat členy odkudkoli z lesa, ale oprávnění s ní lze nastavovat pouze v rámci dané domény. Globální skupina má opačné pravidlo – členové jen z vlastní domény, oprávnění kdekoliv."
+  },
+  {
+    "id": "q5",
+    "prompt": "Co je objekt GPO (Group Policy Object) v kontextu Active Directory?",
+    "options": [
+      "Fyzický soubor na systémovém disku řadiče domény",
+      "Kolekce nastavení, která se skládá z části kontejneru skupinové politiky (GPC) a šablony skupinové politiky (GPT)",
+      "Speciální typ uživatelského účtu s právy správce",
+      "Databázová tabulka v SQL Serveru pro správu oprávnění"
+    ],
+    "correct_index": 1,
+    "explanation": "GPO je logický objekt tvořený dvěma částmi: GPC (Group Policy Container) uloženým v AD databázi a GPT (Group Policy Template) uloženým ve sdílené složce SYSVOL, která obsahuje reálné soubory s nastaveními."
+  },
+  {
+    "id": "q6",
+    "prompt": "V jakém výchozím pořadí se aplikují vrstvy zásad skupiny (LSDOU), pokud je nastavení v konfliktu? (Od nejnižší priority po nejvyšší.)",
+    "options": [
+      "Site, Domain, OU, Local",
+      "Local, Site, Domain, OU",
+      "OU, Domain, Site, Local",
+      "Local, Domain, Site, OU"
+    ],
+    "correct_index": 1,
+    "explanation": "Standardní pořadí LSDOU (Local, Site, Domain, OU) znamená, že lokální politika se aplikuje první a je nejslabší, následuje Site, pak Domain a naposledy OU, která má nejvyšší prioritu a přepíše předchozí nastavení, pokud nejsou vynucena."
+  },
+  {
+    "id": "q7",
+    "prompt": "Jaký je účel nastavení 'Vynuceno' (Enforced/No Override) na odkazu GPO u kontejneru vyšší úrovně?",
+    "options": [
+      "Zablokuje veškerou dědičnost zásad do tohoto kontejneru",
+      "Zajistí, že nastavení této GPO nelze přepsat konfliktní GPO aplikovanou na OU na nižší úrovni",
+      "Zruší platnost politiky Local Group Policy",
+      "Povolí uživateli změnit nastavení zásady pomocí Editoru registru"
+    ],
+    "correct_index": 1,
+    "explanation": "Volba 'Vynuceno' znamená, že GPO z vyšší úrovně má absolutní prioritu a její nastavení zvítězí i v případě konfliktu s GPO aplikovanou na OU, která se standardně vyhodnocuje později a měla by vyšší prioritu. Blokovat dědičnost umí volba 'Blokovat dědičnost'."
+  },
+  {
+    "id": "q8",
+    "prompt": "Co provede nastavení 'Blokovat dědičnost' (Block Inheritance) na úrovni organizační jednotky?",
+    "options": [
+      "Zabrání aplikaci všech GPO z nadřazených úrovní, kromě těch, které jsou označeny jako 'Vynuceno'",
+      "Smaže všechny existující GPO v dané OU",
+      "Zakáže použití lokální politiky na klientských stanicích v dané OU",
+      "Zabrání uživatelům v dané OU přihlásit se na řadič domény"
+    ],
+    "correct_index": 0,
+    "explanation": "Blokování dědičnosti zabrání zdědění zásad z nadřazených úrovní (Site, Domain, rodičovská OU). Výjimku tvoří GPO označené jako 'Vynuceno', protože toto nastavení nelze zablokovat."
+  },
+  {
+    "id": "q9",
+    "prompt": "Jaký příkazový nástroj slouží k okamžité aktualizaci a znovu-aplikaci počítačových a uživatelských zásad skupiny na klientské stanici?",
+    "options": [
+      "gpresult",
+      "rsop.msc",
+      "gpupdate",
+      "gpedit.msc"
+    ],
+    "correct_index": 2,
+    "explanation": "Příkaz 'gpupdate' (často s přepínačem /force pro vynucenou aktualizaci) se používá pro okamžité obnovení politik ze serveru. 'gpresult' generuje report, 'rsop.msc' spouští sadu výsledných zásad pro diagnostiku a 'gpedit.msc' je editor lokální politiky."
+  },
+  {
+    "id": "q10",
+    "prompt": "Který nástroj použijete pro vygenerování HTML reportu obsahujícího detailní výpis všech aplikovaných zásad skupiny včetně důvodu, proč se konkrétní nastavení pro daného uživatele a počítač projevilo?",
+    "options": [
+      "dsa.msc",
+      "rsop.msc",
+      "gpupdate /html",
+      "gpresult /h"
+    ],
+    "correct_index": 3,
+    "explanation": "Příkaz 'gpresult /h report.html' (nebo /r pro textový souhrn) vygeneruje přehledný report aktuálně aplikovaných zásad. 'rsop.msc' zobrazuje sadu výsledných zásad v grafické konzoli MMC, nikoli přímo HTML soubor."
+  },
+  {
+    "id": "q11",
+    "prompt": "Která serverová role v operačním systému Windows Server definuje funkci doménového řadiče (Domain Controller) v Active Directory?",
+    "options": [
+      "DNS Server",
+      "DHCP Server",
+      "Active Directory Domain Services (AD DS)",
+      "Active Directory Federation Services (AD FS)"
+    ],
+    "correct_index": 2,
+    "explanation": "Doménový řadič je server, na kterém je nainstalována role AD DS (Active Directory Domain Services). Tato role ukládá databázi Active Directory a zajišťuje autentizaci a autorizaci uživatelů. AD FS zprostředkovává federovanou identitu."
+  },
+  {
+    "id": "q12",
+    "prompt": "Co se stane s objektem uživatele, pokud je v Active Directory přesunut z jedné organizační jednotky (OU1) do jiné (OU2)?",
+    "options": [
+      "Dojde ke ztrátě veškerého členství ve skupinách",
+      "Uživateli se změní Distinguished Name (DN) a začnou se na něj vztahovat GPO propojené s OU2",
+      "Uživatelský účet je automaticky zablokován, dokud se znovu nenastaví heslo",
+      "Objekt si zachová zásady z OU1, dokud není uživatel ručně přihlášen k OÚ2"
+    ],
+    "correct_index": 1,
+    "explanation": "Přesunem objektu se změní jeho umístění ve stromové struktuře, tedy i Distinguished Name. Členství ve skupinách zůstává zachováno, ale začnou platit GPO navázané na novou OU (OU2) a projeví se při příští aktualizaci politik."
+  }
+]

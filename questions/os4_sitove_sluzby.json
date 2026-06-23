@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "prompt": "Který typ DNS záznamu slouží k mapování doménového jména na IPv4 adresu?",
+    "options": [
+      "MX záznam",
+      "CNAME záznam",
+      "A záznam",
+      "PTR záznam"
+    ],
+    "correct_index": 2,
+    "explanation": "A záznam (Address Record) přímo mapuje doménové jméno na IPv4 adresu (např. www.example.com -> 192.168.1.1). MX slouží pro mail servery, CNAME vytváří alias a PTR se používá pro zpětný překlad (IP na jméno)."
+  },
+  {
+    "id": "q2",
+    "prompt": "Jak se nazývá proces, kterým DHCP klient získává IP adresu od serveru, a jaké jsou jeho základní kroky ve správném pořadí?",
+    "options": [
+      "Proces TCP handshake (SYN, SYN-ACK, ACK)",
+      "Proces DNS lookup (Recursive, Iterative)",
+      "Proces ARP request (Request, Reply)",
+      "Proces DORA (Discover, Offer, Request, Acknowledgement)"
+    ],
+    "correct_index": 3,
+    "explanation": "Proces DORA popisuje komunikaci DHCP: Klient pošle Discover (hledá server), server odpoví Offer (nabídka IP), klient Request (žádost o tuto IP) a server potvrdí Acknowledgement. Ostatní procesy patří k jiným protokolům (TCP, DNS, ARP)."
+  },
+  {
+    "id": "q3",
+    "prompt": "Které standardní číslo portu používá protokol DNS?",
+    "options": [
+      "Port 80",
+      "Port 53",
+      "Port 67",
+      "Port 25"
+    ],
+    "correct_index": 1,
+    "explanation": "DNS standardně naslouchá na UDP (a TCP) portu 53. Port 80 je HTTP, port 25 je SMTP a port 67 je používán DHCP serverem pro příjem požadavků od klienta."
+  },
+  {
+    "id": "q4",
+    "prompt": "Jaký je hlavní rozdíl v komunikaci mezi protokolem TCP a UDP?",
+    "options": [
+      "TCP je nespolehlivý a nenavazuje spojení, UDP navazuje spojení a potvrzuje doručení.",
+      "TCP je rychlejší, protože nepotvrzuje data, UDP je pomalejší, protože kontroluje chyby.",
+      "TCP navazuje spojení a garantuje doručení dat, UDP je nespojovaný a negarantuje doručení.",
+      "TCP se používá pouze pro webovou komunikaci, UDP pouze pro e-maily."
+    ],
+    "correct_index": 2,
+    "explanation": "TCP je spojovaný protokol, který pomocí mechanismů jako ‘three-way handshake’ a potvrzování garantuje spolehlivé doručení dat. UDP je nespojovaný, odesílá datagramy bez záruky doručení a je typicky rychlejší. Tvrzení v ostatních možnostech mají vlastnosti prohozené nebo nesprávně přiřazené."
+  },
+  {
+    "id": "q5",
+    "prompt": "Co znamená pojem 'rezervace' (reservation) v kontextu DHCP serveru?",
+    "options": [
+      "Časové období, na které je adresa klientovi zapůjčena.",
+      "Doba, po kterou klient čeká na obnovení (renew) své IP adresy.",
+      "Přidělení stejné IP adresy konkrétnímu zařízení na základě jeho MAC adresy.",
+      "Rozsah IP adres, které může server přidělovat klientům."
+    ],
+    "correct_index": 2,
+    "explanation": "Rezervace v DHCP zajišťuje, že dané zařízení (identifikované MAC adresou) obdrží vždy stejnou IP adresu. Časové období se nazývá 'lease' (doba zapůjčení), rozsah adres je 'scope'."
+  },
+  {
+    "id": "q6",
+    "prompt": "Která z následujících dvojic portů se standardně používá pro nešifrovaný (FTP) a šifrovaný přenos webových stránek (HTTPS)?",
+    "options": [
+      "FTP: 21, HTTPS: 443",
+      "FTP: 22, HTTPS: 80",
+      "FTP: 20, HTTPS: 143",
+      "FTP: 25, HTTPS: 3389"
+    ],
+    "correct_index": 0,
+    "explanation": "Přenos webových stránek přes HTTPS probíhá na portu 443 TCP. FTP standardně používá port 21 pro řízení (příkazy) a port 20 pro data. Ostatní porty patří jiným službám (SSH: 22, HTTP: 80, SMTP: 25, IMAP: 143, RDP: 3389)."
+  },
+  {
+    "id": "q7",
+    "prompt": "Jaký typ DNS záznamu je potřeba pro funkci zpětného překladu (reverse lookup), tedy získání doménového jména z IP adresy?",
+    "options": [
+      "CNAME záznam",
+      "A záznam",
+      "MX záznam",
+      "PTR záznam"
+    ],
+    "correct_index": 3,
+    "explanation": "PTR záznam (Pointer Record) se speciálně používá v doméně in-addr.arpa pro mapování IP adresy na doménové jméno. A záznam poskytuje opačný směr (jméno -> IP), CNAME je alias a MX slouží pro e-mail."
+  },
+  {
+    "id": "q8",
+    "prompt": "Jaké standardní porty používá DHCP protokol pro komunikaci mezi klientem a serverem?",
+    "options": [
+      "Klient: 68, Server: 67",
+      "Klient: 53, Server: 53",
+      "Klient: 67, Server: 68",
+      "Klient: 80, Server: 443"
+    ],
+    "correct_index": 0,
+    "explanation": "DHCP klient odesílá požadavky ze zdrojového UDP portu 68 na cílový port 67 (server). Port 53 je DNS a porty 80/443 patří HTTP/HTTPS. V možnosti C jsou porty prohozené."
+  },
+  {
+    "id": "q9",
+    "prompt": "Zařízení v lokální síti má privátní IP adresu 192.168.1.10 a úspěšně komunikuje se serverem na internetu. Která technologie toto umožňuje tím, že při odeslání paketu změní zdrojovou IP adresu na veřejnou IP adresu routeru?",
+    "options": [
+      "DHCP (Dynamic Host Configuration Protocol)",
+      "DNS forward lookup",
+      "VLAN (Virtual Local Area Network)",
+      "NAT (Network Address Translation)"
+    ],
+    "correct_index": 3,
+    "explanation": "NAT (překlad síťových adres) umožňuje zařízením s privátní IP adresou přistupovat do veřejné sítě tím, že router nahradí jejich privátní zdrojovou IP adresu svou veřejnou IP adresou. DHCP přiděluje adresy, DNS překládá jména a VLAN odděluje sítě na 2. vrstvě."
+  },
+  {
+    "id": "q10",
+    "prompt": "Jaká je funkce výchozí brány (default gateway) v nastavení síťové karty počítače?",
+    "options": [
+      "Zajišťuje převod doménových jmen na IP adresy.",
+      "Jedná se o adresu směrovače, kterému počítač posílá pakety určené pro sítě mimo svůj lokální segment.",
+      "Je to fyzická adresa (MAC) zařízení, které poskytuje DHCP služby v síti.",
+      "Automaticky přiděluje IP adresu všem zařízením v lokální síti (LAN)."
+    ],
+    "correct_index": 1,
+    "explanation": "Výchozí brána je IP adresa routeru v lokální síti. Pokud cílový hostitel není ve stejném síťovém segmentu, počítač předá data bráně, která je směruje dál. Převod doménových jmen zajišťuje DNS server a přidělování IP adres DHCP server."
+  },
+  {
+    "id": "q11",
+    "prompt": "Kterou kombinaci portů a protokolů používají standardně poštovní protokoly pro příjem e-mailů ze serveru do klienta (IMAP a POP3)?",
+    "options": [
+      "IMAP: 110, POP3: 143",
+      "IMAP: 143, POP3: 110",
+      "IMAP: 25, POP3: 110",
+      "IMAP: 143, POP3: 443"
+    ],
+    "correct_index": 1,
+    "explanation": "POP3 pro stahování pošty standardně naslouchá na portu 110, zatímco IMAP na portu 143. Port 25 slouží pro SMTP (odesílání pošty) a port 443 je HTTPS."
+  },
+  {
+    "id": "q12",
+    "prompt": "Jaký standardní port se používá pro zabezpečené vzdálené připojení k příkazové řádce pomocí protokolu SSH?",
+    "options": [
+      "Port 3389",
+      "Port 23",
+      "Port 80",
+      "Port 22"
+    ],
+    "correct_index": 3,
+    "explanation": "SSH (Secure Shell) standardně běží na TCP portu 22 a poskytuje šifrované spojení pro správu systému. Port 3389 je používán protokolem RDP (vzdálená plocha), port 23 protokolem Telnet a port 80 protokolem HTTP."
+  }
+]

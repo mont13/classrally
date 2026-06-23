@@ -1,0 +1,122 @@
+[
+  {
+    "id": "q1",
+    "prompt": "Který z následujících hypervizorů patří do kategorie typu 1 (bare-metal)?",
+    "options": [
+      "Oracle VirtualBox",
+      "VMware Workstation",
+      "VMware ESXi",
+      "QEMU (bez KVM akcelerace)"
+    ],
+    "correct_index": 2,
+    "explanation": "VMware ESXi se instaluje přímo na fyzický hardware bez hostitelského OS, což ho řadí mezi hypervizory typu 1. VirtualBox, VMware Workstation a QEMU bez KVM vyžadují podkladový operační systém (typ 2)."
+  },
+  {
+    "id": "q2",
+    "prompt": "Jaký je hlavní technologický rozdíl mezi kontejnerem (např. Docker) a plnohodnotným virtuálním strojem?",
+    "options": [
+      "Kontejnery lze provozovat pouze v cloudu, zatímco virtuální stroje pouze lokálně.",
+      "Kontejnery nepotřebují žádný souborový systém.",
+      "Kontejnery sdílejí jádro hostitelského operačního systému, zatímco virtuální stroje mají vlastní jádro OS.",
+      "Virtuální stroje nevyužívají RAM, kontejnery ano."
+    ],
+    "correct_index": 2,
+    "explanation": "Kontejnery sdílejí jádro hostitele, a proto jsou odlehčenější. Každý virtuální stroj obsahuje plnohodnotný hostovaný OS s vlastním jádrem, což zvyšuje režii. Ostatní tvrzení jsou fakticky nesprávná (např. kontejnery samozřejmě pracují se souborovým systémem)."
+  },
+  {
+    "id": "q3",
+    "prompt": "Který z následujících popisů nejlépe vystihuje funkci Dockerfile?",
+    "options": [
+      "Je to spustitelný binární soubor s celým operačním systémem.",
+      "Je to textový soubor s instrukcemi pro automatické sestavení Docker image.",
+      "Jedná se o log soubor pro ladění běžícího kontejneru.",
+      "Je to síťová konfigurace pro propojení více kontejnerů."
+    ],
+    "correct_index": 1,
+    "explanation": "Dockerfile je sada instrukcí (např. FROM, RUN, CMD), podle nichž Docker démon sestaví obraz (image). Výsledný image je neměnná šablona, ze které se teprve spouští kontejner."
+  },
+  {
+    "id": "q4",
+    "prompt": "Co se v kontextu virtualizace rozumí pod pojmem 'snapshot' (nebo 'checkpoint' v Hyper-V)?",
+    "options": [
+      "Aktuální záloha fyzického hostitelského disku.",
+      "Záznam stavu virtuálního stroje v určitém okamžiku umožňující pozdější návrat.",
+      "Konfigurační soubor definující velikost dynamické paměti.",
+      "Nastavení virtuálního switche pro monitorování síťového provozu."
+    ],
+    "correct_index": 1,
+    "explanation": "Snapshot zachytí stav disku, paměti a nastavení VM v konkrétním čase. Umožňuje rychlý návrat do tohoto bodu, typicky před rizikovou změnou (např. instalací softwaru). Není to záloha hostitele ani síťová konfigurace."
+  },
+  {
+    "id": "q5",
+    "prompt": "Kterou výhodu přináší použití dynamické paměti u virtuálních strojů?",
+    "options": [
+      "Absolutní odstranění swapování na straně hostitelského systému.",
+      "Možnost, aby virtuální stroj okamžitě využil veškerou RAM fyzického serveru bez omezení.",
+      "Efektivnější využití fyzické RAM díky automatickému přidělování a odebírání paměti VM podle aktuální potřeby.",
+      "Trvalé navýšení výkonu pevného disku díky ukládání RAM na SSD."
+    ],
+    "correct_index": 2,
+    "explanation": "Dynamická paměť umožňuje hypervizoru měnit množství RAM přidělené VM za běhu podle její zátěže. Zbylou volnou paměť lze využít pro jiné VM. Neodstraňuje nutnost swapování ani nezvyšuje výkon disku."
+  },
+  {
+    "id": "q6",
+    "prompt": "Jakou primární funkci plní virtuální switch v hypervizoru?",
+    "options": [
+      "Přiděluje IP adresy virtuálním strojům pomocí DHCP.",
+      "Fyzicky odděluje síťové karty serveru, aby nedošlo ke zkratu.",
+      "Umožňuje přepínání mezi jednotlivými běžícími hypervizory.",
+      "Propojuje virtuální stroje mezi sebou a s fyzickou sítí na úrovni 2. vrstvy OSI modelu."
+    ],
+    "correct_index": 3,
+    "explanation": "Virtuální switch pracuje jako softwarový přepínač na linkové vrstvě. Přeposílá rámce mezi VM na stejném hostiteli a přes fyzické síťové adaptéry je spojuje s vnější sítí. DHCP službu typicky nezajišťuje samotný switch, ale dedikovaný server."
+  },
+  {
+    "id": "q7",
+    "prompt": "Co je to 'image' (obraz) v terminologii Dockeru?",
+    "options": [
+      "ISO soubor s instalačním médiem operačního systému.",
+      "Běžící proces v operační paměti, který vykonává kód aplikace.",
+      "Neměnná šablona s aplikací a jejími závislostmi, ze které se vytváří kontejnery.",
+      "Grafické uživatelské rozhraní pro správu kontejnerů (např. Portainer)."
+    ],
+    "correct_index": 2,
+    "explanation": "Docker image je read-only vrstvená předloha obsahující vše potřebné pro běh aplikace. Kontejner je pak spustitelná instance tohoto image s přidanou zapisovatelnou vrstvou."
+  },
+  {
+    "id": "q8",
+    "prompt": "Který model virtualizace využívá Microsoft Hyper-V ve Windows Serveru?",
+    "options": [
+      "Hypervizor typu 2 (hostovaný), běžící jako aplikace nad Windows.",
+      "Hypervizor typu 1 (bare-metal), který se instaluje na hardware a pod který se přesune i mateřský Windows.",
+      "Čistě kontejnerová virtualizace bez hypervizoru.",
+      "Emulace procesoru určená pouze pro jiné architektury (např. ARM)."
+    ],
+    "correct_index": 1,
+    "explanation": "Po povolení role Hyper-V se hypervizor usadí přímo na hardware a pod svou správu převezme i původní instanci Windows (tzv. root partition). Tím se stává hypervizorem typu 1, nikoli pouhou aplikací typu 2, jako je VirtualBox."
+  },
+  {
+    "id": "q9",
+    "prompt": "Který z uvedených pojmů NEpatří mezi hlavní výhody serverové virtualizace?",
+    "options": [
+      "Konsolidace serverů (snížení počtu fyzických zařízení).",
+      "Izolace provozu jednotlivých služeb na oddělených VM.",
+      "Fyzické zvýšení taktovací frekvence procesoru nad jeho tovární limity.",
+      "Možnost živé migrace (live migration) běžících VM mezi fyzickými hostiteli."
+    ],
+    "correct_index": 2,
+    "explanation": "Virtualizace umožňuje lépe využít stávající výkon, ale neumožňuje, aby procesor fyzicky překročil své hardwarové limity. Konsolidace, izolace a live migration patří k hlavním přínosům virtualizace."
+  },
+  {
+    "id": "q10",
+    "prompt": "Pokud potřebujete na svém notebooku s Windows spustit krátkodobě testovací linuxový server, přičemž nechcete měnit nastavení bootování, který nástroj zvolíte?",
+    "options": [
+      "VMware ESXi",
+      "Hyper-V Server (samostatná bezplatná edice)",
+      "Microsoft Hyper-V (role ve Windows) nebo Oracle VirtualBox",
+      "Docker bez jakékoli linuxové komponenty"
+    ],
+    "correct_index": 2,
+    "explanation": "Na notebooku s existující instalací Windows je vhodný hypervizor typu 2 (VirtualBox) nebo aktivace role Hyper-V (typ 1, ale integrovaný), aniž byste museli přeinstalovávat OS na ESXi. Docker na Windows pro Linuxové kontejnery vyžaduje linuxové jádro (přes WSL 2 nebo VM), takže odpověď s Dockerem 'bez linuxové komponenty' je zavádějící."
+  }
+]
