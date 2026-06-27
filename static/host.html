@@ -117,7 +117,7 @@
           <input id="musicVol" type="range" min="0" max="100" value="40" />
         </label>
         <label class="check-row">
-          <input id="musicAuto" type="checkbox" checked />
+          <input id="musicAuto" type="checkbox" />
           <span data-i18n="host.auto_music">Automaticky řídit hudbu podle fáze kvízu</span>
         </label>
         <p id="musicTrackInfo" class="help" data-i18n="host.track_none">Track: -</p>
@@ -354,6 +354,7 @@
       console.log('[music] stopMusic (full stop), userStopped=true');
       stopLoop();
       appState.userStopped = true;
+      try { localStorage.setItem('quiz_music_muted', '1'); } catch (_) {}
     }
 
     async function startMusic(forceNewTrack=false) {
@@ -467,26 +468,25 @@
     }
 
     function phaseMusicAutomation(phase) {
-      const auto = document.getElementById('musicAuto').checked;
       if (phase === appState.lastPhase) return;
-
-      // Phase changed — clear userStopped flag so automation can resume
+      const auto = document.getElementById('musicAuto').checked;
       console.log('[music] phase changed:', appState.lastPhase, '->', phase, 'auto:', auto, 'userStopped:', appState.userStopped);
-      appState.userStopped = false;
-
-      if (auto) {
-        if (phase === 'question') {
-          startMusic(true);
-        }
-        if (phase === 'reveal') {
-          stopLoop();
-          playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0 });
-        }
-        if (phase === 'finished' || phase === 'lobby') {
-          stopLoop();
-        }
-      }
       appState.lastPhase = phase;
+
+      // Only the auto-music feature drives playback here, and only if the host
+      // has NOT explicitly turned music off. We deliberately do NOT reset
+      // userStopped on phase change — an explicit "Hudba OFF" must stay off
+      // until the host turns it back on.
+      if (!auto || appState.userStopped) return;
+
+      if (phase === 'question') {
+        startMusic(true);
+      } else if (phase === 'reveal') {
+        stopLoop();
+        playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0 });
+      } else if (phase === 'finished' || phase === 'lobby') {
+        stopLoop();
+      }
     }
 
     function renderJoinInfo(info) {
@@ -854,6 +854,7 @@
         !phaseChanged &&
         state.phase === 'question' &&
         state.current_index >= 0 &&
+        !appState.userStopped &&
         (document.getElementById('musicAuto').checked || appState.musicOn)
       ) {
         startMusic(true);
@@ -978,11 +979,31 @@
     document.getElementById('btnNext').addEventListener('click', () => hostAction('next'));
     document.getElementById('btnReset').addEventListener('click', () => hostAction('reset'));
 
-    document.getElementById('btnMusicStart').addEventListener('click', () => { appState.userStopped = false; startMusic(); });
+    document.getElementById('btnMusicStart').addEventListener('click', () => {
+      appState.userStopped = false;
+      try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
+      startMusic();
+    });
     document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
     document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: i18n.t('host.stinger_label'), volumeScale: 1.0 }));
-    document.getElementById('btnRandomLoop').addEventListener('click', () => startMusic(true));
+    document.getElementById('btnRandomLoop').addEventListener('click', () => {
+      appState.userStopped = false;
+      try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
+      startMusic(true);
+    });
     document.getElementById('musicVol').addEventListener('input', () => setMusicVolume());
+
+    // Restore the host's saved music preferences so a page refresh never
+    // surprises them with sound. Auto-music is OFF by default (opt-in); an
+    // explicit "Hudba OFF" is remembered across reloads.
+    (function restoreMusicPrefs() {
+      const autoEl = document.getElementById('musicAuto');
+      autoEl.checked = localStorage.getItem('quiz_music_auto') === '1';
+      appState.userStopped = localStorage.getItem('quiz_music_muted') === '1';
+      autoEl.addEventListener('change', () => {
+        try { localStorage.setItem('quiz_music_auto', autoEl.checked ? '1' : '0'); } catch (_) {}
+      });
+    })();
 
     // QR click to enlarge overlay
     document.getElementById('qrImg').addEventListener('click', function() {
