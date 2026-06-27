@@ -50,8 +50,8 @@
           <input id="musicVol" type="range" min="0" max="100" value="40" />
         </label>
         <label class="check-row">
-          <input id="musicAuto" type="checkbox" checked />
-          Automaticky řídit hudbu podle fáze kvízu
+          <input id="musicAuto" type="checkbox" />
+          Automaticky řídit hudbu podle fáze kvízu (výchozí: vypnuto)
         </label>
         <p class="help">MP3 se vybírají automaticky z <code>/static/audio/</code> (náhodně).</p>
         <p id="musicTrackInfo" class="help">Track: -</p>
@@ -758,7 +758,28 @@
     document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
     document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: 'Stinger', volumeScale: 1.0 }));
     document.getElementById('btnRandomLoop').addEventListener('click', () => startMusic(true));
-    document.getElementById('musicVol').addEventListener('input', () => setMusicVolume());
+    document.getElementById('musicVol').addEventListener('input', () => {
+      setMusicVolume();
+      localStorage.setItem('classrally_music_vol', document.getElementById('musicVol').value);
+    });
+
+    // Auto-hudba je OPT-IN (výchozí vypnuto) a volba i hlasitost se pamatují mezi načteními.
+    // Tím se odstraňuje samovolné spouštění hudby při otevření /host nebo při běžící hře.
+    (function initMusicPrefs() {
+      const cb = document.getElementById('musicAuto');
+      const vol = document.getElementById('musicVol');
+      const savedVol = localStorage.getItem('classrally_music_vol');
+      if (savedVol !== null) { vol.value = savedVol; setMusicVolume(); }
+      cb.checked = localStorage.getItem('classrally_music_auto') === '1'; // výchozí vypnuto
+      cb.addEventListener('change', () => {
+        localStorage.setItem('classrally_music_auto', cb.checked ? '1' : '0');
+        if (cb.checked) {
+          appState.userStopped = false; // povol automatiku od příští změny fáze
+        } else {
+          stopMusic(); // učitel vypnul → okamžitě ztiš
+        }
+      });
+    })();
 
     // QR click to enlarge overlay
     document.getElementById('qrImg').addEventListener('click', function() {
