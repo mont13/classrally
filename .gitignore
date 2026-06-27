@@ -22,7 +22,7 @@ static/audio/*.aac
 .DS_Store
 Thumbs.db
 
-# Claude Code sessions
+# Local editor / agent session files
 .claude/
 
 # Windows package build artifacts
@@ -30,8 +30,8 @@ windows-build/
 dist/
 .cache/
 
-# DeepSeek delegation audit log (gitignored per skill convention)
-deepseek/calls.jsonl
+# Local AI / delegation working files (private, never published)
+deepseek/
 
 # Teoreticka cast zaverecne prace — SOUKROME, nepatri na verejny GitHub
 research/
