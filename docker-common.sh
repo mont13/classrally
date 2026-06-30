@@ -171,32 +171,47 @@ wait_and_print_info() {
     for i in $(seq 1 15); do
         if $DOCKER_CMD exec classrally python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/api/health')" &>/dev/null; then
             echo ""
-            info "ClassRally bezi!"
+            echo -e "  ${BOLD}${GREEN}=== ClassRally bezi! ===${NC}"
             echo ""
             local BASE="${EXT_IP:-localhost}"
-            echo -e "  ${GREEN}Host obrazovka:${NC}   http://${BASE}:${PORT}/host"
-            echo -e "  ${GREEN}Admin portal:${NC}     http://${BASE}:${PORT}/admin"
-            echo -e "  ${GREEN}Hracska stranka:${NC}  http://${BASE}:${PORT}/play"
+            local URL="http://${BASE}:${PORT}"
+
+            echo -e "  ${BOLD}Stranky:${NC}"
+            echo -e "    ${GREEN}Hlavni stranka:${NC}   ${URL}/"
+            echo -e "    ${GREEN}Hrat (zaci):${NC}      ${URL}/play"
+            echo -e "    ${GREEN}Projektor (host):${NC} ${URL}/host"
+            echo -e "    ${GREEN}Sprava (admin):${NC}   ${URL}/admin"
+            echo -e "    ${GREEN}Profil / Login:${NC}   ${URL}/profile"
             echo ""
+
             if [[ -z "$EXT_IP" ]]; then
-                warn "LAN IP neni k dispozici - URL vyse ukazuji na localhost (jen tento pocitac)."
+                warn "LAN IP neni k dispozici — URL vyse ukazuji na localhost (jen tento pocitac)."
+                warn "Zaci se pripoji pres IP adresu v lokalni siti."
                 echo ""
             fi
 
-            local TOKEN
-            TOKEN=$($DOCKER_CMD logs classrally 2>&1 | grep -oP 'HOST TOKEN: \K[a-f0-9]+' | tail -1 || true)
-            if [[ -n "$TOKEN" ]]; then
-                echo -e "  ${BOLD}${CYAN}Pristupovy klic: ${TOKEN}${NC}"
-                echo -e "  (zadej na /host pro ovladani hry)"
-                echo ""
+            echo -e "  ${BOLD}Ucitelsky ucet:${NC}"
+            # Check if DB exists and has a teacher
+            local HAS_TEACHER
+            HAS_TEACHER=$($DOCKER_CMD exec classrally python3 -c "
+import sys; sys.path.insert(0,'.')
+import db; from pathlib import Path
+db.set_db_path(Path('data/classrally.db')); db.init_db()
+print('yes' if db.teacher_exists() else 'no')
+" 2>/dev/null || echo "unknown")
+
+            if [[ "$HAS_TEACHER" == "no" ]]; then
+                echo -e "    ${CYAN}Prvni spusteni — otevri ${URL}/ a vytvor ucitelsky ucet.${NC}"
+                echo -e "    ${CYAN}Ucitel ma plnou kontrolu nad hrou, admin a host sekcemi.${NC}"
             else
-                echo -e "  Pristupovy klic: viz ${YELLOW}./logs.sh${NC} nebo ${YELLOW}/admin > Pokrocile nastaveni${NC}"
-                echo ""
+                echo -e "    Ucitelsky ucet uz existuje. Prihlaseni: ${URL}/profile"
             fi
+            echo ""
 
-            echo -e "  Zastaveni:  ${YELLOW}./stop.sh${NC}"
-            echo -e "  Logy:       ${YELLOW}./logs.sh${NC}"
-            echo -e "  Rebuild:    ${YELLOW}./rebuild.sh${NC}"
+            echo -e "  ${BOLD}Prikazy:${NC}"
+            echo -e "    Zastaveni:  ${YELLOW}./stop.sh${NC}"
+            echo -e "    Logy:       ${YELLOW}./logs.sh${NC}"
+            echo -e "    Rebuild:    ${YELLOW}./rebuild.sh${NC}"
             return 0
         fi
         printf "."

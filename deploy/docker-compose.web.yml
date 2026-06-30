@@ -1,0 +1,68 @@
+# ClassRally — web deployment overlay
+#
+# Extends the base docker-compose.yml to add a Caddy HTTPS reverse proxy.
+# Caddy obtains and renews Let's Encrypt certificates automatically.
+#
+# Usage:
+#   export CLASSRALLY_DOMAIN=classrally.example.com
+#   export QUIZ_ADMIN_PASSWORD=secretpassword
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.web.yml up -d
+#
+# The CLASSRALLY_DOMAIN variable must be set to your actual public domain.
+# Make sure DNS for that domain points to this server before starting.
+
+services:
+
+  # --- Override the base classrally service ---
+  classrally:
+    # In web deployment we do NOT expose port 8765 to the host directly;
+    # traffic comes in through Caddy on 80/443.
+    ports: []
+    environment:
+      # Tell the app its public base URL so QR codes and player URLs are correct.
+      - QUIZ_BASE_URL=https://${CLASSRALLY_DOMAIN:-classrally.example.com}
+      # Inherit everything else from the base docker-compose.yml.
+      - QUIZ_ADMIN_PASSWORD=${QUIZ_ADMIN_PASSWORD:-}
+      - QUIZ_EXTERNAL_IP=${QUIZ_EXTERNAL_IP:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-host.docker.internal}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gpt-oss:20b}
+      - QUESTION_TIME=${QUESTION_TIME:-20}
+      - REVEAL_TIME=${REVEAL_TIME:-5}
+      - QUIZ_TEACHER_CODE=${QUIZ_TEACHER_CODE:-}
+    # Only reachable inside the Docker network; Caddy talks to it by service name.
+    networks:
+      - classrally_net
+
+  # --- Caddy reverse proxy with automatic HTTPS ---
+  caddy:
+    image: caddy:2-alpine
+    container_name: classrally_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"    # HTTP (used for ACME challenge and redirect to HTTPS)
+      - "443:443"  # HTTPS
+      - "443:443/udp"  # HTTP/3 (QUIC)
+    volumes:
+      # Caddyfile — replace the domain inside it or use the CLASSRALLY_DOMAIN env var
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persistent storage for TLS certificates and Caddy's internal state
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # Make the domain available inside the Caddyfile via {env.CLASSRALLY_DOMAIN}
+      # if you prefer environment-based configuration over editing the file.
+      - CLASSRALLY_DOMAIN=${CLASSRALLY_DOMAIN:-classrally.example.com}
+    depends_on:
+      - classrally
+    networks:
+      - classrally_net
+
+volumes:
+  # Named volumes so TLS certificates survive container recreation
+  caddy_data:
+  caddy_config:
+
+networks:
+  classrally_net:
+    driver: bridge

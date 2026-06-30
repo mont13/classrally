@@ -3,132 +3,239 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ClassRally - Host</title>
+  <title data-i18n="host.title">ClassRally - Host</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .team-leaderboard { margin-bottom: 16px; }
+    .team-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-radius: 12px; margin-bottom: 7px; color: #fff; font-weight: 800;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .team-row .team-name { flex: 1; font-size: 1.05rem; }
+    .team-row .team-score-val { font-size: 1.25rem; font-weight: 900; }
+    .team-row .team-members { font-size: 0.82rem; font-weight: 600; opacity: 0.85; margin-left: 4px; }
+    .team-section-title { font-size: 0.9rem; font-weight: 800; color: #64748b;
+      margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+    #teamPodiumOverlay { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-end;
+      background: linear-gradient(180deg, #071428ee 0%, #0f2a50dd 60%, #071428f5 100%);
+      padding-bottom: 0; opacity: 0; pointer-events: none; transition: opacity 0.6s ease; }
+    #teamPodiumOverlay.visible { opacity: 1; pointer-events: all; }
+    .team-podium-title { color: #fff; font-size: clamp(1.6rem, 3vw, 2.6rem); font-weight: 900;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.5); margin-bottom: 20px; text-align: center; padding: 0 16px; }
+    .team-podium-close { position: absolute; top: 20px; right: 24px; background: rgba(255,255,255,0.18);
+      border: 2px solid rgba(255,255,255,0.4); color: #fff; font-size: 1rem; font-weight: 800;
+      padding: 8px 18px; border-radius: 10px; cursor: pointer; z-index: 3001; }
+    .team-podium-stage { display: flex; align-items: flex-end; justify-content: center;
+      gap: clamp(10px, 2vw, 28px); width: 100%; padding: 0 4vw; max-width: 900px; }
+    .team-podium-slot { display: flex; flex-direction: column; align-items: center; flex: 1;
+      max-width: 260px; opacity: 0; transform: translateY(120px); }
+    @keyframes tpRise { from { opacity: 0; transform: translateY(120px) scale(0.94); }
+      to { opacity: 1; transform: translateY(0) scale(1); } }
+    .team-podium-slot.rise { animation: tpRise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    .team-podium-info { text-align: center; margin-bottom: 10px; }
+    .team-podium-crown { font-size: 2.6rem; display: block; margin-bottom: 4px; }
+    .team-podium-name { font-size: clamp(1.2rem, 2vw, 1.9rem); font-weight: 900; color: #fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+    .team-podium-score { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.85); margin-top: 4px; }
+    .team-podium-block { width: 100%; border-radius: 14px 14px 0 0; display: flex; align-items: center;
+      justify-content: center; font-size: clamp(2.2rem, 4vw, 3.8rem); font-weight: 900;
+      color: rgba(255,255,255,0.3); box-shadow: 0 -6px 32px rgba(0,0,0,0.3); }
+    .team-podium-slot.trank-1 .team-podium-block { height: clamp(110px, 18vh, 200px); }
+    .team-podium-slot.trank-2 .team-podium-block { height: clamp(80px, 14vh, 150px); }
+    .team-podium-slot.trank-3 .team-podium-block { height: clamp(55px, 10vh, 110px); }
+    /* Join info panel */
+    .join-info-panel { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+      background: #f0f9ff; border: 2px solid #7dd3fc; border-radius: 14px; padding: 14px 18px; margin: 10px 0; }
+    .join-info-qr { flex-shrink: 0; }
+    .join-info-qr img { width: 140px; height: 140px; border-radius: 8px; border: 2px solid #e2e8f0;
+      cursor: pointer; display: block; }
+    .join-info-text { flex: 1; min-width: 160px; }
+    .join-info-url { font-size: 1rem; font-weight: 700; color: #0c4a6e; word-break: break-all; margin-bottom: 6px; }
+    .join-info-hint { font-size: 0.88rem; color: #64748b; margin-bottom: 0; }
+    /* Host login overlay */
+    #hostLoginOverlay { position: fixed; inset: 0; z-index: 5000; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #071428 0%, #103a63 100%); }
+    #hostLoginOverlay.hidden { display: none; }
+    .login-card { background: var(--panel); border-radius: var(--radius); padding: 36px 32px;
+      box-shadow: var(--shadow); text-align: center; max-width: 380px; width: 90%; }
+    .login-card h2 { margin: 0 0 8px; font-size: 1.6rem; }
+    .login-card p { color: var(--muted); margin: 0 0 20px; font-size: 0.95rem; }
+    .login-card input { width: 100%; padding: 12px; border: 2px solid #7dd3fc; border-radius: 10px;
+      font-size: 1.1rem; margin-bottom: 14px; }
+    .login-card input:focus { outline: 0; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.2); }
+    .login-error { color: var(--bad); font-weight: 700; font-size: 0.95rem; margin-bottom: 10px; display: none; }
+  </style>
 </head>
 <body class="host-page">
+  <!-- Login overlay — shown when teacher login is required -->
+  <div id="hostLoginOverlay" class="hidden">
+    <div class="login-card">
+      <h2 data-i18n="host.login_title">Prihlaseni ucitele</h2>
+      <p data-i18n="host.login_desc">Prihlaste se ucitelskym uctem.</p>
+      <div id="hostLoginError" class="login-error"></div>
+      <input type="text" id="hostLoginNick" data-i18n-placeholder="host.login_nick_placeholder" placeholder="Prezdivka" autocomplete="username" autofocus />
+      <input type="password" id="hostLoginPass" data-i18n-placeholder="host.login_pass_placeholder" placeholder="Heslo" autocomplete="current-password" />
+      <button class="btn good" id="hostLoginBtn" style="width:100%;" data-i18n="host.login_btn">Prihlasit se</button>
+      <p style="margin-top:16px;"><a href="/" style="color:var(--accent);" data-i18n="host.login_back">Zpet na vyber role</a></p>
+    </div>
+  </div>
+
   <main class="app">
     <section class="card host-hero">
       <div class="host-intro">
         <p class="eyebrow">Live classroom mode</p>
-        <h1>ClassRally</h1>
-        <p class="muted">Herní režie pro projektor.</p>
+        <h1 data-i18n="host.heading">ClassRally</h1>
+        <p class="muted" data-i18n="host.subheading">Herní režie pro projektor.</p>
         <div class="hero-badges">
           <span>Offline</span>
           <span>Zdarma</span>
           <span>Bez účtů</span>
         </div>
         <div class="btn-row" style="margin-bottom:10px;">
-          <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;">Učitelský portál</a>
+          <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;" data-i18n="host.admin_portal">Učitelský portál</a>
         </div>
-        <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url">Načítám...</span></p>
-        <p class="muted" id="joinHint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
+        <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url" data-i18n="host.loading">Načítám...</span></p>
+        <p class="muted" id="joinHint" data-i18n="host.wifi_hint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
         <ul id="joinExtra" class="join-extra hide"></ul>
       </div>
 
       <div class="host-qr-panel">
         <div id="qrBox">
-          <img id="qrImg" src="/api/qr" alt="QR kód pro připojení" style="max-width:280px;height:auto;cursor:pointer;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" title="Klikni pro zvětšení" />
+          <img id="qrImg" src="/api/qr" alt="QR kód pro připojení" style="max-width:280px;height:auto;cursor:pointer;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" title="Klikni pro zvětšení" data-i18n-title="host.qr_click_enlarge" />
         </div>
       </div>
 
       <div class="btn-row host-action-row">
-        <button class="btn good" id="btnStart">Start</button>
-        <button class="btn secondary" id="btnReveal">Ukázat správnou</button>
-        <button class="btn" id="btnNext">Další otázka</button>
-        <button class="btn warn" id="btnReset">Reset hry</button>
+        <button class="btn good" id="btnStart" data-i18n="host.btn_start">Start</button>
+        <button class="btn secondary" id="btnReveal" data-i18n="host.btn_reveal">Ukázat správnou</button>
+        <button class="btn" id="btnNext" data-i18n="host.btn_next">Další otázka</button>
+        <button class="btn warn" id="btnReset" data-i18n="host.btn_reset">Reset hry</button>
       </div>
 
       <div class="music-controls">
         <div class="btn-row">
-          <button class="btn ghost" id="btnMusicStart">Hudba ON</button>
-          <button class="btn secondary" id="btnMusicStop">Hudba OFF</button>
-          <button class="btn" id="btnStinger">Zvukový efekt</button>
-          <button class="btn" id="btnRandomLoop">Změnit hudbu</button>
+          <button class="btn ghost" id="btnMusicStart" data-i18n="host.btn_music_on">Hudba ON</button>
+          <button class="btn secondary" id="btnMusicStop" data-i18n="host.btn_music_off">Hudba OFF</button>
+          <button class="btn" id="btnStinger" data-i18n="host.btn_stinger">Zvukový efekt</button>
+          <button class="btn" id="btnRandomLoop" data-i18n="host.btn_change_music">Změnit hudbu</button>
         </div>
-        <label class="slider-row" for="musicVol">Hlasitost
+        <label class="slider-row" for="musicVol"><span data-i18n="host.volume">Hlasitost</span>
           <input id="musicVol" type="range" min="0" max="100" value="40" />
         </label>
         <label class="check-row">
           <input id="musicAuto" type="checkbox" />
-          Automaticky řídit hudbu podle fáze kvízu (výchozí: vypnuto)
+          <span data-i18n="host.auto_music">Automaticky řídit hudbu podle fáze kvízu (výchozí: vypnuto)</span>
         </label>
-        <p class="help">MP3 se vybírají automaticky z <code>/static/audio/</code> (náhodně).</p>
-        <p id="musicTrackInfo" class="help">Track: -</p>
-        <p id="musicState" class="help">Hudba: vypnuta</p>
+        <p id="musicTrackInfo" class="help" data-i18n="host.track_none">Track: -</p>
+        <p id="musicState" class="help" data-i18n="host.music_off">Hudba: vypnuta</p>
       </div>
     </section>
 
     <section class="grid">
       <div class="card col-7">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-          <h2 style="margin:0;">Aktuální otázka</h2>
+          <h2 style="margin:0;" data-i18n="host.current_question">Aktuální otázka</h2>
           <span id="phasePill" class="status-pill lobby">lobby</span>
         </div>
 
         <div class="kpi" style="margin:12px 0;">
-          <div class="item"><div class="label">Otázka</div><div class="value" id="kQuestion">-</div></div>
-          <div class="item"><div class="label">Hlasovalo</div><div class="value" id="kAnswered">0</div></div>
-          <div class="item"><div class="label">Hráči</div><div class="value" id="kPlayers">0</div></div>
-          <div class="item"><div class="label">Fáze</div><div class="value" id="kPhase">Lobby</div></div>
-          <div class="item timer"><div class="label">Odpočet</div><div class="value" id="kTimer">-</div></div>
+          <div class="item"><div class="label" data-i18n="host.kpi_question">Otázka</div><div class="value" id="kQuestion">-</div></div>
+          <div class="item"><div class="label" data-i18n="host.kpi_voted">Hlasovalo</div><div class="value" id="kAnswered">0</div></div>
+          <div class="item"><div class="label" data-i18n="host.kpi_players">Hráči</div><div class="value" id="kPlayers">0</div></div>
+          <div class="item"><div class="label" data-i18n="host.kpi_phase">Fáze</div><div class="value" id="kPhase">Lobby</div></div>
+          <div class="item timer"><div class="label" data-i18n="host.kpi_countdown">Odpočet</div><div class="value" id="kTimer">-</div></div>
         </div>
 
-        <p id="voteStatus" class="vote-status">Čekám na start kvízu.</p>
-        <div id="questionBox" class="question">Čekám na start kvízu.</div>
+        <p id="voteStatus" class="vote-status" data-i18n="host.waiting_for_start">Čekám na start kvízu.</p>
+        <div id="questionBox" class="question" data-i18n="host.waiting_for_start">Čekám na start kvízu.</div>
+        <img id="questionImage" class="hide" style="max-width:60%;max-height:300px;display:block;margin:12px auto;border-radius:12px;" />
         <div id="answerBig" class="big-answer hide"></div>
         <p id="explanation" class="muted"></p>
         <div id="options" class="options"></div>
       </div>
 
       <div class="card col-5">
-        <h2>Žebříček</h2>
+        <div id="teamLeaderboardSection" class="hide">
+          <div class="team-section-title" data-i18n="host.team_score">Tymove skore</div>
+          <div id="teamLeaderboard" class="team-leaderboard"></div>
+          <div class="team-section-title" style="margin-top:10px;" data-i18n="host.individual_leaderboard">Individualni zebricek</div>
+        </div>
+        <h2 id="leaderboardTitle" data-i18n="host.leaderboard">Žebříček</h2>
         <table>
-          <thead><tr><th>#</th><th>Jméno</th><th>Body</th></tr></thead>
+          <thead><tr><th>#</th><th data-i18n="host.th_name">Jméno</th><th data-i18n="host.th_score">Body</th></tr></thead>
           <tbody id="scoreBody"></tbody>
         </table>
       </div>
     </section>
   </main>
 
-  <script>
-    const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const FALLBACK_TRACKS = {
-      loops: [{ url: '/static/audio/tension-loop.mp3', name: 'tension-loop.mp3' }],
-      stingers: [{ url: '/static/audio/reveal-stinger.mp3', name: 'reveal-stinger.mp3' }],
-    };
+  <!-- Team podium overlay -->
+  <div id="teamPodiumOverlay">
+    <div class="team-podium-title" data-i18n="host.winning_team">Vitezny tym!</div>
+    <button class="team-podium-close" id="teamPodiumClose" data-i18n="host.close">Zavrit</button>
+    <div class="team-podium-stage" id="teamPodiumStage"></div>
+  </div>
 
+  <script src="/static/i18n.js"></script>
+  <script>
+    const AVATARS = [
+      { id: 1,  emoji: '\uD83E\uDD8A', color: '#f97316' },
+      { id: 2,  emoji: '\uD83D\uDC31', color: '#8b5cf6' },
+      { id: 3,  emoji: '\uD83D\uDC36', color: '#3b82f6' },
+      { id: 4,  emoji: '\uD83E\uDD81', color: '#eab308' },
+      { id: 5,  emoji: '\uD83D\uDC38', color: '#22c55e' },
+      { id: 6,  emoji: '\uD83D\uDC27', color: '#0ea5e9' },
+      { id: 7,  emoji: '\uD83E\uDD8B', color: '#ec4899' },
+      { id: 8,  emoji: '\uD83D\uDC1D', color: '#f59e0b' },
+      { id: 9,  emoji: '\uD83E\uDD84', color: '#a855f7' },
+      { id: 10, emoji: '\uD83D\uDC3C', color: '#6b7280' },
+      { id: 11, emoji: '\uD83D\uDC28', color: '#78716c' },
+      { id: 12, emoji: '\uD83D\uDC2F', color: '#ea580c' },
+      { id: 13, emoji: '\uD83E\uDD89', color: '#7c3aed' },
+      { id: 14, emoji: '\uD83D\uDC19', color: '#dc2626' },
+      { id: 15, emoji: '\uD83E\uDD88', color: '#1d4ed8' },
+      { id: 16, emoji: '\uD83D\uDC2C', color: '#0891b2' },
+      { id: 17, emoji: '\uD83D\uDC22', color: '#16a34a' },
+      { id: 18, emoji: '\uD83E\uDD8E', color: '#65a30d' },
+      { id: 19, emoji: '\uD83E\uDDA9', color: '#e11d48' },
+      { id: 20, emoji: '\uD83D\uDC3A', color: '#475569' }
+    ];
+    function getAvatarEmoji(id) {
+      if (!id || id < 1 || id > 20) return '';
+      var av = AVATARS.find(function(a) { return a.id === id; });
+      return av ? av.emoji : '';
+    }
+
+    const abc = ['A', 'B', 'C', 'D', 'E', 'F'];
     let hostToken = localStorage.getItem('quiz_host_token') || '';
 
     const appState = {
       lastPhase: 'lobby',
       lastQuestionIndex: -1,
       allAnsweredCueForIndex: -1,
-      audioCtx: null,
-      masterGain: null,
-      musicNodes: [],
       musicOn: false,
       userStopped: false,
       usingMp3: false,
-      mp3Ready: true,
       trackCatalogLoaded: false,
       trackCatalog: { loops: [], stingers: [], all: [] },
       tensionAudio: null,
       stingerAudio: null,
       activeLoopTrack: null,
       activeStingerTrack: null,
+      musicGen: 0,       // generation counter — prevents stale async callbacks
     };
 
     function phaseLabel(phase) {
-      if (phase === 'question') return 'Otázka';
-      if (phase === 'reveal') return 'Vyhodnocení';
-      if (phase === 'finished') return 'Konec';
-      return 'Čeká';
+      if (phase === 'question') return i18n.t('host.phase_question');
+      if (phase === 'reveal') return i18n.t('host.phase_reveal');
+      if (phase === 'finished') return i18n.t('host.phase_finished');
+      return i18n.t('host.phase_waiting');
     }
 
     function formatSecondsLeft(value) {
       if (!Number.isFinite(value)) return '-';
-      return `${Math.max(0, Math.floor(value))} s`;
+      return i18n.t('host.seconds_left', Math.max(0, Math.floor(value)));
     }
 
     async function api(path, method='GET', body=null) {
@@ -160,12 +267,12 @@
 
     function setMusicState(text, warn=false) {
       const el = document.getElementById('musicState');
-      el.textContent = text;
+      el.textContent = text;  // already translated by caller
       el.classList.toggle('warn-inline', warn);
     }
 
     function setTrackInfo(text) {
-      document.getElementById('musicTrackInfo').textContent = `Track: ${text}`;
+      document.getElementById('musicTrackInfo').textContent = `${i18n.t('host.track_prefix')} ${text}`;
     }
 
     async function loadTrackCatalog() {
@@ -183,23 +290,11 @@
     }
 
     function getLoopTracks() {
-      const catalog = appState.trackCatalog.loops;
-      return catalog.length > 0 ? catalog : FALLBACK_TRACKS.loops;
+      return appState.trackCatalog.loops;
     }
 
     function getStingerTracks() {
-      const catalog = appState.trackCatalog.stingers;
-      return catalog.length > 0 ? catalog : FALLBACK_TRACKS.stingers;
-    }
-
-    function markMp3Unavailable(reason) {
-      if (!appState.mp3Ready) return;
-      appState.mp3Ready = false;
-      setMusicState(`${reason} Používám synth fallback.`, true);
-    }
-
-    function getAudioCtor() {
-      return window.AudioContext || window.webkitAudioContext || null;
+      return appState.trackCatalog.stingers;
     }
 
     function initMp3Players() {
@@ -212,9 +307,15 @@
       const stinger = new Audio();
       stinger.preload = 'auto';
 
-      const onError = () => markMp3Unavailable('MP3 soubory nebyly nalezeny nebo nejdou přehrát.');
-      tension.addEventListener('error', onError);
-      stinger.addEventListener('error', onError);
+      // Error handlers only log — never permanently disable the music system.
+      // Transient failures (network blip, aborted load during track switch)
+      // must not kill music for the rest of the session.
+      tension.addEventListener('error', () => {
+        console.warn('[music] tension audio error, src:', tension.src || '(empty)');
+      });
+      stinger.addEventListener('error', () => {
+        console.warn('[music] stinger audio error, src:', stinger.src || '(empty)');
+      });
 
       appState.tensionAudio = tension;
       appState.stingerAudio = stinger;
@@ -225,9 +326,6 @@
       const raw = Number(document.getElementById('musicVol').value || 40);
       const vol = Math.max(0, Math.min(1, raw / 100));
 
-      if (appState.audioCtx && appState.masterGain) {
-        appState.masterGain.gain.setTargetAtTime(vol, appState.audioCtx.currentTime, 0.03);
-      }
       if (appState.tensionAudio) {
         appState.tensionAudio.volume = Math.max(0, Math.min(1, vol * 0.78));
       }
@@ -236,166 +334,62 @@
       }
     }
 
-    function ensureAudioContext() {
-      const AudioCtor = getAudioCtor();
-      if (!AudioCtor) {
-        setMusicState('Tento prohlížeč nepodporuje WebAudio.', true);
-        return false;
-      }
-      if (!appState.audioCtx) {
-        appState.audioCtx = new AudioCtor();
-        appState.masterGain = appState.audioCtx.createGain();
-        appState.masterGain.gain.value = 0.2;
-        appState.masterGain.connect(appState.audioCtx.destination);
-      }
-      if (appState.audioCtx.state === 'suspended') {
-        appState.audioCtx.resume().catch(() => {});
-      }
-      setMusicVolume();
-      return true;
-    }
+    // ── Audio stop helpers ──────────────────────────────────────────
+    // Rule: only ONE audio source may play at any time (loop XOR stinger).
 
-    function stopSynthOnly() {
-      if (appState.musicNodes.length === 0) return;
-      const nodes = appState.musicNodes.slice();
-      const ctx = appState.audioCtx;
-      const now = ctx ? ctx.currentTime : 0;
-
-      nodes.forEach((node) => {
-        if (node && node.gain && typeof node.gain.setTargetAtTime === 'function') {
-          try {
-            node.gain.setTargetAtTime(0.0001, now, 0.05);
-          } catch (_) {}
-        }
-      });
-
-      setTimeout(() => {
-        nodes.forEach((node) => {
-          try { if (typeof node.stop === 'function') node.stop(); } catch (_) {}
-          try { node.disconnect(); } catch (_) {}
-        });
-      }, 180);
-
-      appState.musicNodes = [];
-    }
-
-    function stopMp3Only() {
+    function stopAllAudio() {
+      appState.musicGen++;
       if (appState.tensionAudio) {
-        try {
-          appState.tensionAudio.pause();
-          appState.tensionAudio.currentTime = 0;
-        } catch (_) {}
+        try { appState.tensionAudio.pause(); appState.tensionAudio.currentTime = 0; } catch (_) {}
+      }
+      if (appState.stingerAudio) {
+        try { appState.stingerAudio.pause(); appState.stingerAudio.currentTime = 0; } catch (_) {}
       }
       appState.usingMp3 = false;
       appState.activeLoopTrack = null;
     }
 
-    function stopStinger() {
-      if (appState.stingerAudio) {
-        try {
-          appState.stingerAudio.pause();
-          appState.stingerAudio.currentTime = 0;
-        } catch (_) {}
-      }
-    }
-
-    // Stop only the loop (music) — used by automation during reveal
     function stopLoop() {
-      console.log('[music] stopLoop called, musicOn was:', appState.musicOn, 'nodes:', appState.musicNodes.length, 'usingMp3:', appState.usingMp3);
-      stopMp3Only();
-      stopSynthOnly();
+      console.log('[music] stopLoop called');
+      stopAllAudio();
       appState.musicOn = false;
-      setMusicState('Hudba: vypnuta.');
+      setMusicState(i18n.t('host.music_off'));
       setTrackInfo('-');
     }
 
-    // Stop everything including stinger — used by "Hudba OFF" button and reset
     function stopMusic() {
       console.log('[music] stopMusic (full stop), userStopped=true');
       stopLoop();
-      stopStinger();
       appState.userStopped = true;
+      try { localStorage.setItem('quiz_music_muted', '1'); } catch (_) {}
     }
 
-    function startSynthLoop() {
-      if (!ensureAudioContext()) {
-        console.log('[music] startSynthLoop: ensureAudioContext failed');
-        return false;
-      }
-      if (!appState.audioCtx || !appState.masterGain) {
-        console.log('[music] startSynthLoop: no audioCtx or masterGain');
-        return false;
-      }
-
-      if (appState.audioCtx.state !== 'running') {
-        console.log('[music] startSynthLoop: audioCtx.state =', appState.audioCtx.state);
-        setMusicState('Klikni na Hudba ON. Prohlížeč vyžaduje uživatelský klik pro zvuk.', true);
-        return false;
-      }
-      if (appState.musicNodes.length > 0) {
-        console.log('[music] startSynthLoop: already running (nodes:', appState.musicNodes.length, ')');
-        return true;
-      }
-
-      const ctx = appState.audioCtx;
-      const now = ctx.currentTime;
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(950, now);
-      filter.Q.setValueAtTime(0.8, now);
-      filter.connect(appState.masterGain);
-
-      const drone = ctx.createOscillator();
-      drone.type = 'triangle';
-      drone.frequency.setValueAtTime(82.41, now);
-      const droneGain = ctx.createGain();
-      droneGain.gain.setValueAtTime(0.07, now);
-      drone.connect(droneGain);
-      droneGain.connect(filter);
-
-      const pulse = ctx.createOscillator();
-      pulse.type = 'sawtooth';
-      pulse.frequency.setValueAtTime(164.81, now);
-      const pulseGain = ctx.createGain();
-      pulseGain.gain.setValueAtTime(0.018, now);
-      pulse.connect(pulseGain);
-      pulseGain.connect(filter);
-
-      const wobble = ctx.createOscillator();
-      wobble.type = 'sine';
-      wobble.frequency.setValueAtTime(0.18, now);
-      const wobbleGain = ctx.createGain();
-      wobbleGain.gain.setValueAtTime(0.014, now);
-      wobble.connect(wobbleGain);
-      wobbleGain.connect(pulseGain.gain);
-
-      drone.start(now);
-      pulse.start(now);
-      wobble.start(now);
-
-      appState.musicNodes = [drone, droneGain, pulse, pulseGain, wobble, wobbleGain, filter];
-      appState.usingMp3 = false;
-      console.log('[music] startSynthLoop: created new synth nodes OK');
-      return true;
-    }
-
-    function startMusic(forceNewTrack=false) {
+    async function startMusic(forceNewTrack=false) {
       if (appState.musicOn && !forceNewTrack) return;
-      console.log('[music] startMusic called, forceNewTrack:', forceNewTrack, 'musicOn:', appState.musicOn, 'userStopped:', appState.userStopped, 'ctxState:', appState.audioCtx?.state, 'mp3Ready:', appState.mp3Ready, 'nodes:', appState.musicNodes.length);
+      console.log('[music] startMusic called, forceNewTrack:', forceNewTrack, 'musicOn:', appState.musicOn, 'userStopped:', appState.userStopped);
 
-      if (forceNewTrack) {
-        stopMp3Only();
-        stopSynthOnly();
-        appState.musicOn = false;
+      // Remember current track before stopping (for forceNewTrack to avoid repeat)
+      const previousTrack = appState.activeLoopTrack;
+
+      // Stop ALL audio (loop + stinger) — only one source may play at a time
+      stopAllAudio();
+      appState.musicOn = false;
+
+      const gen = appState.musicGen;  // capture generation before any await
+
+      await loadTrackCatalog();
+
+      // If another startMusic was called while we awaited, bail out
+      if (gen !== appState.musicGen) {
+        console.log('[music] startMusic: stale generation, bailing');
+        return;
       }
 
-      // Try MP3 first if we have real audio files (not fallback placeholders)
-      if (appState.mp3Ready && appState.trackCatalog.loops.length > 0) {
+      if (appState.trackCatalog.loops.length > 0) {
         initMp3Players();
         const picked = forceNewTrack
-          ? nextTrack(getLoopTracks(), appState.activeLoopTrack)
-          : (appState.activeLoopTrack || randomItem(getLoopTracks()));
+          ? nextTrack(getLoopTracks(), previousTrack)
+          : (previousTrack || randomItem(getLoopTracks()));
 
         if (picked && picked.url && appState.tensionAudio) {
           appState.activeLoopTrack = picked;
@@ -406,76 +400,47 @@
           const playPromise = appState.tensionAudio.play();
           if (playPromise) {
             playPromise.then(() => {
+              // Ignore if a newer startMusic has superseded us
+              if (gen !== appState.musicGen) return;
               appState.usingMp3 = true;
               appState.musicOn = true;
               console.log('[music] MP3 loop started:', picked.name);
-              setMusicState('Hudba: MP3 loop (napětí).');
-            }).catch(() => {
-              markMp3Unavailable('MP3 loop nejde spustit.');
-              console.log('[music] MP3 loop failed, trying synth fallback');
-              const synthOk = startSynthLoop();
-              if (synthOk) {
-                appState.musicOn = true;
-                setMusicState('Hudba: synth fallback (napětí).');
-                setTrackInfo('Synth fallback');
-              }
+              setMusicState(i18n.t('host.music_mp3_loop'));
+            }).catch((err) => {
+              if (gen !== appState.musicGen) return; // stale, ignore
+              console.warn('[music] loop play() failed:', err);
+              appState.musicOn = false;
+              setMusicState(i18n.t('host.mp3_loop_fail'));
             });
             // Set musicOn optimistically for MP3 to prevent double-calls
             appState.musicOn = true;
-            setMusicState('Hudba: MP3 loop (napětí).');
+            setMusicState(i18n.t('host.music_mp3_loop'));
             return;
           }
         }
       }
 
-      // Synth fallback (synchronous, immediate, always works)
-      const synthStarted = startSynthLoop();
-      console.log('[music] startMusic synth result:', synthStarted);
-      if (synthStarted) {
-        appState.musicOn = true;
-        setMusicState('Hudba: synth fallback (napětí).');
-        setTrackInfo('Synth fallback');
-      }
-    }
-
-    function playSynthStinger(multiplier=1.0) {
-      if (!ensureAudioContext()) return false;
-      if (!appState.audioCtx || !appState.masterGain) return false;
-      if (appState.audioCtx.state !== 'running') return false;
-
-      const ctx = appState.audioCtx;
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(392.0, now);
-      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.23);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.2 * multiplier, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
-
-      osc.connect(gain);
-      gain.connect(appState.masterGain);
-      osc.start(now);
-      osc.stop(now + 0.4);
-
-      setTimeout(() => {
-        try { osc.disconnect(); } catch (_) {}
-        try { gain.disconnect(); } catch (_) {}
-      }, 450);
-      return true;
+      // No MP3 tracks available
+      setMusicState(i18n.t('host.mp3_not_found'), true);
+      console.log('[music] startMusic: no MP3 tracks available');
     }
 
     async function playStinger(opts={}) {
       const label = opts.label || 'Stinger';
       const volumeScale = Number.isFinite(opts.volumeScale) ? opts.volumeScale : 1;
 
+      // Stop ALL audio (loop + previous stinger) — only one source at a time
+      stopAllAudio();
+      appState.musicOn = false;
+      const gen = appState.musicGen;
       initMp3Players();
       await loadTrackCatalog();
 
+      // If another audio function ran during await, bail out
+      if (gen !== appState.musicGen) return;
+
       const picked = randomItem(getStingerTracks());
-      if (appState.mp3Ready && appState.stingerAudio && picked && picked.url) {
+      if (appState.stingerAudio && picked && picked.url) {
         try {
           appState.activeStingerTrack = picked;
           appState.stingerAudio.src = picked.url;
@@ -488,15 +453,9 @@
           setMusicState(`${label}: MP3.`);
           setTimeout(() => setMusicVolume(), 150);
           return;
-        } catch (_) {
-          markMp3Unavailable('MP3 stinger nejde přehrát.');
+        } catch (err) {
+          console.warn('[music] stinger play() failed:', err);
         }
-      }
-
-      const ok = playSynthStinger(volumeScale);
-      if (ok) {
-        setTrackInfo(`${label}: synth`);
-        setMusicState(`${label}: synth fallback.`);
       }
     }
 
@@ -509,31 +468,32 @@
       if (answered < total) return;
       if (appState.allAnsweredCueForIndex === state.current_index) return;
 
+      // Mark so we don't repeat, but don't play a stinger —
+      // it would kill the loop music (only one audio source at a time).
       appState.allAnsweredCueForIndex = state.current_index;
-      playStinger({ label: 'Dohlasováno', volumeScale: 0.7 });
+      console.log('[music] All answered cue — skipping stinger (loop playing)');
     }
 
     function phaseMusicAutomation(phase) {
-      const auto = document.getElementById('musicAuto').checked;
       if (phase === appState.lastPhase) return;
-
-      // Phase changed — clear userStopped flag so automation can resume
+      const auto = document.getElementById('musicAuto').checked;
       console.log('[music] phase changed:', appState.lastPhase, '->', phase, 'auto:', auto, 'userStopped:', appState.userStopped);
-      appState.userStopped = false;
-
-      if (auto) {
-        if (phase === 'question') {
-          startMusic();
-        }
-        if (phase === 'reveal') {
-          stopLoop();
-          playStinger({ label: 'Vyhodnocení', volumeScale: 1.0 });
-        }
-        if (phase === 'finished' || phase === 'lobby') {
-          stopLoop();
-        }
-      }
       appState.lastPhase = phase;
+
+      // Only the auto-music feature drives playback here, and only if the host
+      // has NOT explicitly turned music off. We deliberately do NOT reset
+      // userStopped on phase change — an explicit "Hudba OFF" must stay off
+      // until the host turns it back on.
+      if (!auto || appState.userStopped) return;
+
+      if (phase === 'question') {
+        startMusic(true);
+      } else if (phase === 'reveal') {
+        stopLoop();
+        playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0 });
+      } else if (phase === 'finished' || phase === 'lobby') {
+        stopLoop();
+      }
     }
 
     function renderJoinInfo(info) {
@@ -563,10 +523,10 @@
       }
 
       if (info?.loopback_only) {
-        joinHint.textContent = 'Server běží jen na localhostu. Spusť: python3 server.py --host 0.0.0.0 --port 48217';
+        joinHint.textContent = i18n.t('host.loopback_warning');
         joinHint.classList.add('warn-inline');
       } else {
-        joinHint.textContent = 'Mobily musí být ve stejné Wi-Fi/LAN. Použij URL výše.';
+        joinHint.textContent = i18n.t('host.wifi_hint');
         joinHint.classList.remove('warn-inline');
       }
     }
@@ -574,8 +534,110 @@
     function renderOptions(state) {
       const box = document.getElementById('options');
       box.innerHTML = '';
-      if (!state.question || !state.question.options) return;
+      if (!state.question) return;
 
+      const qType = state.question.type || 'choice';
+
+      // --- slide ---
+      if (qType === 'slide') {
+        const bodyEl = document.createElement('div');
+        bodyEl.style.cssText = 'font-size:1.4rem;line-height:1.6;white-space:pre-wrap;margin-top:8px;padding:16px;background:#f0f9ff;border-radius:10px;border:2px solid #7dd3fc;';
+        bodyEl.textContent = state.question.body || '';
+        box.appendChild(bodyEl);
+        return;
+      }
+
+      // --- wordcloud ---
+      if (qType === 'wordcloud') {
+        const wordCounts = state.question.word_counts || {};
+        const entries = Object.entries(wordCounts);
+        if (entries.length === 0) {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = i18n.t('host.wordcloud_waiting');
+          box.appendChild(p);
+        } else {
+          const cloud = document.createElement('div');
+          cloud.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:12px 0;';
+          const maxCount = Math.max(...entries.map(([,c]) => c), 1);
+          const colors = ['#0284c7','#16a34a','#dc2626','#d89e00','#7c3aed','#0891b2','#ea580c'];
+          entries.sort((a, b) => b[1] - a[1]);
+          entries.forEach(([word, count], i) => {
+            const span = document.createElement('span');
+            const ratio = count / maxCount;
+            const size = (1.1 + ratio * 3.2).toFixed(1);
+            span.style.cssText = `font-size:${size}rem;font-weight:900;color:${colors[i % colors.length]};line-height:1.1;`;
+            span.title = `${word}: ${count}x`;
+            span.textContent = word;
+            cloud.appendChild(span);
+          });
+          box.appendChild(cloud);
+        }
+        return;
+      }
+
+      // --- poll ---
+      if (qType === 'poll') {
+        if (!state.question.options) return;
+        const votes = state.question.vote_counts || state.vote_counts || [];
+        const totalVotes = votes.reduce((a, b) => a + b, 0) || 1;
+        state.question.options.forEach((opt, i) => {
+          const wrap = document.createElement('div');
+          wrap.className = 'option-btn';
+          const count = votes[i] || 0;
+          const pct = Math.round(count / totalVotes * 100);
+          const textDiv = document.createElement('div');
+          const prefix = document.createElement('span');
+          prefix.className = 'prefix';
+          prefix.textContent = `${abc[i]})`;
+          textDiv.appendChild(prefix);
+          textDiv.appendChild(document.createTextNode(' ' + opt));
+          wrap.appendChild(textDiv);
+          const helpDiv = document.createElement('div');
+          helpDiv.className = 'help';
+          helpDiv.textContent = i18n.t('host.votes_count', count, pct);
+          wrap.appendChild(helpDiv);
+          const barDiv = document.createElement('div');
+          barDiv.className = 'vote-bar';
+          const barSpan = document.createElement('span');
+          barSpan.style.width = pct + '%';
+          barDiv.appendChild(barSpan);
+          wrap.appendChild(barDiv);
+          box.appendChild(wrap);
+        });
+        return;
+      }
+
+      // --- openended ---
+      if (qType === 'openended') {
+        if (state.phase === 'reveal' || state.phase === 'finished') {
+          const answers = state.open_answers || [];
+          if (answers.length > 0) {
+            const ul = document.createElement('ul');
+            ul.style.cssText = 'list-style:disc;padding-left:20px;';
+            answers.forEach(a => {
+              const li = document.createElement('li');
+              li.textContent = a;
+              ul.appendChild(li);
+            });
+            box.appendChild(ul);
+          } else {
+            const p = document.createElement('p');
+            p.className = 'muted';
+            p.textContent = i18n.t('host.no_answers');
+            box.appendChild(p);
+          }
+        } else {
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = i18n.t('host.openended_waiting');
+          box.appendChild(p);
+        }
+        return;
+      }
+
+      // --- choice / truefalse / multiselect (default) ---
+      if (!state.question.options) return;
       const votes = state.vote_counts || [];
       const maxVotes = Math.max(1, ...votes, 1);
 
@@ -598,7 +660,7 @@
 
         const helpDiv = document.createElement('div');
         helpDiv.className = 'help';
-        helpDiv.textContent = `Hlasy: ${votes[i] || 0}`;
+        helpDiv.textContent = i18n.t('host.votes_label', votes[i] || 0);
         wrap.appendChild(helpDiv);
 
         const barDiv = document.createElement('div');
@@ -621,7 +683,8 @@
         const tdRank = document.createElement('td');
         tdRank.textContent = p.rank;
         const tdName = document.createElement('td');
-        tdName.textContent = p.name;
+        const avatarEmoji = getAvatarEmoji(p.avatar_id);
+        tdName.textContent = (avatarEmoji ? avatarEmoji + ' ' : '') + p.name;
         const tdScore = document.createElement('td');
         const strong = document.createElement('strong');
         strong.textContent = p.score;
@@ -637,11 +700,11 @@
       const el = document.getElementById('voteStatus');
       if (state.phase !== 'question') {
         if (state.phase === 'lobby') {
-          el.textContent = 'Čekám na start kvízu.';
+          el.textContent = i18n.t('host.waiting_for_start');
         } else if (state.phase === 'reveal') {
-          el.textContent = `Vyhodnocení... další otázka za ${formatSecondsLeft(state.phase_time_left)}.`;
+          el.textContent = i18n.t('host.reveal_next', formatSecondsLeft(state.phase_time_left));
         } else {
-          el.textContent = 'Otázka je uzavřena.';
+          el.textContent = i18n.t('host.question_closed');
         }
         el.className = 'vote-status';
         return;
@@ -650,18 +713,135 @@
       const answered = Number(state.answer_count || 0);
       const left = formatSecondsLeft(state.phase_time_left);
       if (total === 0) {
-        el.textContent = `Čekám na připojení hráčů... odpočet ${left}.`;
+        el.textContent = i18n.t('host.waiting_players', left);
         el.className = 'vote-status';
         return;
       }
-      el.textContent = `Odpočet ${left} • Hlasovalo ${answered}/${total}`;
+      el.textContent = i18n.t('host.countdown_voted', left, answered, total);
       if (answered >= total) {
-        el.textContent += ' • všichni odevzdali.';
+        el.textContent += ' • ' + i18n.t('host.all_submitted');
         el.className = 'vote-status done';
       } else {
         el.className = 'vote-status';
       }
     }
+
+    const TEAM_COLORS_HOST = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#ea580c'];
+
+    function renderTeamScores(state) {
+      const section = document.getElementById('teamLeaderboardSection');
+      const container = document.getElementById('teamLeaderboard');
+      const title = document.getElementById('leaderboardTitle');
+      if (!state.team_mode || !state.team_scores || !state.team_names || state.team_names.length === 0) {
+        section.classList.add('hide');
+        if (title) title.style.display = '';
+        return;
+      }
+      section.classList.remove('hide');
+      if (title) title.style.display = 'none';
+      container.innerHTML = '';
+
+      const memberCounts = {};
+      (state.team_names || []).forEach(n => { memberCounts[n] = 0; });
+      (state.players || []).forEach(p => { if (p.team) memberCounts[p.team] = (memberCounts[p.team] || 0) + 1; });
+
+      const sorted = state.team_names.map((name, i) => ({
+        name,
+        score: state.team_scores[name] || 0,
+        color: state.team_colors ? state.team_colors[i] : (TEAM_COLORS_HOST[i] || '#64748b'),
+        members: memberCounts[name] || 0,
+      })).sort((a, b) => b.score - a.score);
+
+      sorted.forEach((team, rank) => {
+        const row = document.createElement('div');
+        row.className = 'team-row';
+        row.style.background = team.color;
+        const medal = rank === 0 ? '\u{1F947} ' : rank === 1 ? '\u{1F948} ' : rank === 2 ? '\u{1F949} ' : (rank + 1) + '. ';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'team-name';
+        nameEl.textContent = medal + team.name;
+        const scoreEl = document.createElement('span');
+        scoreEl.className = 'team-score-val';
+        scoreEl.textContent = team.score;
+        const membersEl = document.createElement('span');
+        membersEl.className = 'team-members';
+        membersEl.textContent = '(' + team.members + ' ' + i18n.t('host.players_abbr') + ')';
+        row.appendChild(nameEl);
+        row.appendChild(scoreEl);
+        row.appendChild(membersEl);
+        container.appendChild(row);
+      });
+    }
+
+    const teamPodiumState = { shown: false, lastFinished: false };
+
+    function showTeamPodium(state) {
+      const overlay = document.getElementById('teamPodiumOverlay');
+      const stage = document.getElementById('teamPodiumStage');
+      stage.innerHTML = '';
+      if (!state.team_mode || !state.team_scores || !state.team_names || state.team_names.length === 0) return;
+
+      const memberCounts = {};
+      (state.team_names || []).forEach(n => { memberCounts[n] = 0; });
+      (state.players || []).forEach(p => { if (p.team) memberCounts[p.team] = (memberCounts[p.team] || 0) + 1; });
+      const sorted = state.team_names.map((name, i) => ({
+        name,
+        score: state.team_scores[name] || 0,
+        color: state.team_colors ? state.team_colors[i] : (TEAM_COLORS_HOST[i] || '#64748b'),
+        members: memberCounts[name] || 0,
+      })).sort((a, b) => b.score - a.score);
+
+      const top3 = sorted.slice(0, 3);
+      if (top3.length === 0) return;
+
+      const slotsByRank = {};
+      top3.forEach((team, idx) => {
+        const rank = idx + 1;
+        const slot = document.createElement('div');
+        slot.className = 'team-podium-slot trank-' + rank;
+        const info = document.createElement('div');
+        info.className = 'team-podium-info';
+        if (rank === 1) {
+          const crown = document.createElement('span');
+          crown.className = 'team-podium-crown';
+          crown.textContent = '\u{1F3C6}';
+          info.appendChild(crown);
+        }
+        const nameEl = document.createElement('div');
+        nameEl.className = 'team-podium-name';
+        nameEl.textContent = team.name;
+        info.appendChild(nameEl);
+        const scoreEl = document.createElement('div');
+        scoreEl.className = 'team-podium-score';
+        scoreEl.textContent = team.score + ' ' + i18n.t('host.points');
+        info.appendChild(scoreEl);
+        slot.appendChild(info);
+        const block = document.createElement('div');
+        block.className = 'team-podium-block';
+        block.style.background = team.color;
+        block.textContent = rank;
+        slot.appendChild(block);
+        slotsByRank[rank] = slot;
+      });
+
+      const displayOrder = [2, 1, 3].filter(r => slotsByRank[r]);
+      displayOrder.forEach(r => stage.appendChild(slotsByRank[r]));
+      overlay.classList.add('visible');
+      teamPodiumState.shown = true;
+
+      const riseOrder = [{ rank: 3, delay: 400 }, { rank: 2, delay: 900 }, { rank: 1, delay: 1500 }];
+      riseOrder.forEach(({ rank, delay }) => {
+        if (!slotsByRank[rank]) return;
+        setTimeout(() => slotsByRank[rank].classList.add('rise'), delay);
+      });
+    }
+
+    function hideTeamPodium() {
+      document.getElementById('teamPodiumOverlay').classList.remove('visible');
+      teamPodiumState.shown = false;
+    }
+
+    document.getElementById('teamPodiumClose').addEventListener('click', hideTeamPodium);
 
     function render(state) {
       const questionChanged = state.current_index !== appState.lastQuestionIndex;
@@ -670,11 +850,18 @@
         appState.allAnsweredCueForIndex = -1;
       }
 
+      const phaseChanged = state.phase !== appState.lastPhase;
       phaseMusicAutomation(state.phase);
+      // Force a new track when question index changes, but only if the phase
+      // did NOT just change — phaseMusicAutomation already called startMusic()
+      // in that case and calling startMusic(true) would race against the first
+      // play() promise, causing its .catch() to markMp3Unavailable permanently.
       if (
         questionChanged &&
+        !phaseChanged &&
         state.phase === 'question' &&
         state.current_index >= 0 &&
+        !appState.userStopped &&
         (document.getElementById('musicAuto').checked || appState.musicOn)
       ) {
         startMusic(true);
@@ -694,18 +881,52 @@
       const qBox = document.getElementById('questionBox');
       const ansBig = document.getElementById('answerBig');
       const exp = document.getElementById('explanation');
+      const qImg = document.getElementById('questionImage');
 
       if (!state.question) {
-        qBox.textContent = state.phase === 'finished' ? 'Kvíz dokončen.' : 'Čekám na start kvízu.';
+        qBox.textContent = state.phase === 'finished' ? i18n.t('host.quiz_finished') : i18n.t('host.waiting_for_start');
         ansBig.classList.add('hide');
         exp.textContent = '';
+        qImg.classList.add('hide');
+        qImg.src = '';
       } else {
         qBox.textContent = state.question.prompt;
+        if (state.question.image_url) {
+          qImg.src = state.question.image_url;
+          qImg.classList.remove('hide');
+          qImg.style.display = 'block';
+        } else {
+          qImg.classList.add('hide');
+          qImg.src = '';
+        }
         if (state.phase === 'reveal' || state.phase === 'finished') {
-          const c = state.question.correct_index;
-          ansBig.textContent = `Správně: ${abc[c]}) ${state.question.options[c]}`;
-          ansBig.classList.remove('hide');
-          exp.textContent = state.question.explanation || '';
+          const qType = state.question.type || 'choice';
+          if (qType === 'poll' || qType === 'wordcloud' || qType === 'slide') {
+            ansBig.classList.add('hide');
+            exp.textContent = '';
+          } else if (qType === 'openended') {
+            ansBig.textContent = state.question.correct_answer
+              ? i18n.t('host.correct_answer', state.question.correct_answer)
+              : '';
+            ansBig.classList.remove('hide');
+            exp.textContent = state.question.explanation || '';
+          } else if (qType === 'ordering') {
+            ansBig.textContent = i18n.t('host.correct_order');
+            ansBig.classList.remove('hide');
+            exp.textContent = state.question.explanation || '';
+          } else if (qType === 'multiselect') {
+            const ci = state.question.correct_indices || [];
+            const opts = state.question.options || [];
+            const labels = ci.map(i => `${abc[i]}) ${opts[i] || '?'}`).join(', ');
+            ansBig.textContent = `${i18n.t('host.correct')}: ${labels}`;
+            ansBig.classList.remove('hide');
+            exp.textContent = state.question.explanation || '';
+          } else {
+            const c = state.question.correct_index;
+            ansBig.textContent = `${i18n.t('host.correct')}: ${abc[c]}) ${state.question.options[c]}`;
+            ansBig.classList.remove('hide');
+            exp.textContent = state.question.explanation || '';
+          }
         } else {
           ansBig.classList.add('hide');
           exp.textContent = '';
@@ -714,6 +935,17 @@
 
       renderOptions(state);
       renderScores(state.players || []);
+      renderTeamScores(state);
+
+      // Team podium on finish
+      const isFinished = state.phase === 'finished';
+      if (isFinished && !teamPodiumState.lastFinished && !teamPodiumState.shown && state.team_mode) {
+        showTeamPodium(state);
+      }
+      if (!isFinished && teamPodiumState.shown) {
+        hideTeamPodium();
+      }
+      teamPodiumState.lastFinished = isFinished;
     }
 
     async function refresh() {
@@ -754,10 +986,18 @@
     document.getElementById('btnNext').addEventListener('click', () => hostAction('next'));
     document.getElementById('btnReset').addEventListener('click', () => hostAction('reset'));
 
-    document.getElementById('btnMusicStart').addEventListener('click', () => { appState.userStopped = false; startMusic(); });
+    document.getElementById('btnMusicStart').addEventListener('click', () => {
+      appState.userStopped = false;
+      try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
+      startMusic();
+    });
     document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
-    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: 'Stinger', volumeScale: 1.0 }));
-    document.getElementById('btnRandomLoop').addEventListener('click', () => startMusic(true));
+    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: i18n.t('host.stinger_label'), volumeScale: 1.0 }));
+    document.getElementById('btnRandomLoop').addEventListener('click', () => {
+      appState.userStopped = false;
+      try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
+      startMusic(true);
+    });
     document.getElementById('musicVol').addEventListener('input', () => {
       setMusicVolume();
       localStorage.setItem('classrally_music_vol', document.getElementById('musicVol').value);
@@ -771,10 +1011,12 @@
       const savedVol = localStorage.getItem('classrally_music_vol');
       if (savedVol !== null) { vol.value = savedVol; setMusicVolume(); }
       cb.checked = localStorage.getItem('classrally_music_auto') === '1'; // výchozí vypnuto
+      appState.userStopped = localStorage.getItem('quiz_music_muted') === '1'; // explicitní "Hudba OFF" přežije reload
       cb.addEventListener('change', () => {
         localStorage.setItem('classrally_music_auto', cb.checked ? '1' : '0');
         if (cb.checked) {
           appState.userStopped = false; // povol automatiku od příští změny fáze
+          try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
         } else {
           stopMusic(); // učitel vypnul → okamžitě ztiš
         }
@@ -787,7 +1029,7 @@
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
       const bigImg = document.createElement('img');
       bigImg.src = this.src;
-      bigImg.alt = 'QR kod';
+      bigImg.alt = i18n.t('host.qr_code');
       bigImg.style.cssText = 'max-width:80vmin;max-height:80vmin;background:#fff;padding:16px;border-radius:12px;';
       overlay.appendChild(bigImg);
       overlay.addEventListener('click', () => overlay.remove());
@@ -798,24 +1040,113 @@
     loadTrackCatalog().then(() => {
       const loops = getLoopTracks().length;
       const stingers = getStingerTracks().length;
-          setTrackInfo(`Dostupné: ${loops} loop, ${stingers} stinger`);
+          setTrackInfo(i18n.t('host.tracks_available', loops, stingers));
     });
 
     api('/api/network')
       .then(renderJoinInfo)
       .catch(() => renderJoinInfo(null));
 
-    // Host token: prompt user if not set
-    if (!hostToken) {
-      const token = prompt('Zadej přístupový klíč (zobrazený při startu serveru nebo v Učitelském portálu > Nastavení):');
-      if (token) {
-        hostToken = token.trim();
-        localStorage.setItem('quiz_host_token', hostToken);
-      }
-    }
+    // Initialize i18n, then start refresh loop
+    i18n.init().then(async () => {
+      i18n.apply();
+      injectLangSwitcher();
 
-    refresh();
-    setInterval(refresh, 1000);
+      // Host token: fetch from server (requires teacher login)
+      function getAuthHeaders() {
+        const headers = {};
+        const userToken = localStorage.getItem('quiz_user_token');
+        if (userToken) headers['Authorization'] = `UserToken ${userToken}`;
+        return headers;
+      }
+
+      async function ensureHostToken() {
+        try {
+          const resp = await fetch('/api/host/token', { headers: getAuthHeaders() });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.host_token) {
+              hostToken = data.host_token;
+              localStorage.setItem('quiz_host_token', hostToken);
+              return;
+            }
+          }
+          if (resp.status === 401) {
+            await showHostLogin();
+            return;
+          }
+        } catch (_) {}
+        // Fallback: prompt user for raw token
+        const token = prompt(i18n.t('host.enter_token'));
+        if (token) {
+          hostToken = token.trim();
+          localStorage.setItem('quiz_host_token', hostToken);
+        }
+      }
+
+      function showHostLogin() {
+        return new Promise((resolve) => {
+          const overlay = document.getElementById('hostLoginOverlay');
+          const nickInput = document.getElementById('hostLoginNick');
+          const passInput = document.getElementById('hostLoginPass');
+          const loginBtn = document.getElementById('hostLoginBtn');
+          const errorEl = document.getElementById('hostLoginError');
+          overlay.classList.remove('hidden');
+
+          async function doLogin() {
+            const nickname = nickInput.value.trim();
+            const password = passInput.value;
+            if (!nickname || !password) return;
+            loginBtn.disabled = true;
+            errorEl.style.display = 'none';
+            try {
+              // Log in with teacher account
+              const resp = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nickname, password })
+              });
+              const data = await resp.json();
+              if (data.ok && data.token && data.user) {
+                if (data.user.role !== 'teacher') {
+                  errorEl.textContent = i18n.t('host.login_not_teacher');
+                  errorEl.style.display = 'block';
+                  loginBtn.disabled = false;
+                  return;
+                }
+                localStorage.setItem('quiz_user_token', data.token);
+                // Now fetch the host token with the teacher session
+                const resp2 = await fetch('/api/host/token', {
+                  headers: { 'Authorization': `UserToken ${data.token}` }
+                });
+                const data2 = await resp2.json();
+                if (data2.host_token) {
+                  hostToken = data2.host_token;
+                  localStorage.setItem('quiz_host_token', hostToken);
+                }
+                overlay.classList.add('hidden');
+                resolve();
+              } else {
+                errorEl.textContent = data.error || i18n.t('host.login_error');
+                errorEl.style.display = 'block';
+              }
+            } catch (_) {
+              errorEl.textContent = i18n.t('host.login_error');
+              errorEl.style.display = 'block';
+            }
+            loginBtn.disabled = false;
+          }
+
+          loginBtn.onclick = doLogin;
+          passInput.onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
+        });
+      }
+
+      await ensureHostToken();
+
+      refresh();
+      setInterval(refresh, 1000);
+    });
   </script>
 </body>
 </html>

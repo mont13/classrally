@@ -1,0 +1,13 @@
+{
+  "name": "ClassRally",
+  "short_name": "ClassRally",
+  "description": "Kvizova platforma pro tridu",
+  "start_url": "/play",
+  "display": "standalone",
+  "background_color": "#071428",
+  "theme_color": "#0284c7",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

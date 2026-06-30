@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClassRally - Offline</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .offline-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .offline-card {
+      text-align: center;
+      max-width: 420px;
+      width: 100%;
+    }
+    .offline-card h1 {
+      font-size: 1.6rem;
+      margin-bottom: 12px;
+    }
+    .offline-card p {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .retry-btn {
+      display: inline-block;
+      padding: 12px 32px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .retry-btn:hover {
+      background: #0369a1;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-wrap">
+    <div class="card offline-card">
+      <h1>Jsi offline</h1>
+      <p>Pripoj se k siti a zkus to znovu.</p>
+      <button class="retry-btn" onclick="location.reload()">Zkusit znovu</button>
+    </div>
+  </div>
+</body>
+</html>

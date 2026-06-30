@@ -14,6 +14,9 @@ mkdir -p history questions static/audio
 # Detect host IP for player URLs
 detect_host_ip
 
+# Stop any previous instance to free the port
+$COMPOSE_CMD down --remove-orphans 2>/dev/null || true
+
 info "Spoustim ClassRally v Dockeru..."
 $COMPOSE_CMD up -d
 

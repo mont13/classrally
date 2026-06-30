@@ -11,6 +11,8 @@ services:
       - ./questions:/app/questions
       # Mount custom audio files (MP3/OGG/WAV)
       - ./static/audio:/app/static/audio
+      # SQLite database for user accounts and classes
+      - ./data:/app/data
     environment:
       - QUIZ_ADMIN_PASSWORD=${QUIZ_ADMIN_PASSWORD:-}
       - QUIZ_PORT=${QUIZ_PORT:-48217}
@@ -20,6 +22,9 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-gpt-oss:20b}
       - QUESTION_TIME=${QUESTION_TIME:-20}
       - REVEAL_TIME=${REVEAL_TIME:-5}
+      - QUIZ_TEACHER_CODE=${QUIZ_TEACHER_CODE:-}
+      - QUIZ_BASE_URL=${QUIZ_BASE_URL:-}
+      - QUIZ_TRUSTED_PROXIES=${QUIZ_TRUSTED_PROXIES:-}
     extra_hosts:
       # Allow connecting to Ollama running on host machine
       - "host.docker.internal:host-gateway"
