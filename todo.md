@@ -31,7 +31,8 @@
 - ✅ Historie her
 - ✅ Lokální běh bez internetu
 - ✅ Docker deployment
-- ✅ 77 testů
+- ✅ Režim písemky se známkováním, měkkým dohledem a CSV exportem
+- ✅ 93 testů
 
 ---
 
@@ -87,7 +88,9 @@
 - [ ] Drag & drop řazení otázek
 - [ ] Obrázky v otázkách (upload nebo URL)
 - [ ] Sdílení sad otázek (export jako link/soubor)
-- [ ] Export výsledků (CSV/PDF)
+- [x] Export výsledků písemky do CSV
+- [ ] Detailní per-otázkový export výsledků písemky
+- [ ] PDF export výsledků
 
 ### 🟢 FÁZE 3: Pokročilé funkce (nice to have)
 
@@ -103,6 +106,8 @@
 - [ ] Ligy mezi třídami
 
 #### 3.3 Moderace a bezpečnost
+- [ ] Při startu bez `QUIZ_ADMIN_PASSWORD` výrazně varovat, že admin je v lokální síti otevřený
+- [ ] Volitelně generovat jednorázové admin heslo/token při startu
 - [ ] Filtr nevhodných přezdívek
 - [ ] Generátor náhodných přezdívek (volitelné)
 - [ ] Anti-bot ochrana
@@ -155,7 +160,7 @@
 | Skupiny/třídy | ❌ | 💰 | ✅ | ✅ |
 | Historie per student | ❌ | 💰 | 💰 | ✅ |
 | AI generátor | ✅ | 💰 | ❌ | ✅ |
-| Export výsledků | ❌ | 💰 | 💰 | ✅ |
+| Export výsledků | ✅ CSV | 💰 | 💰 | ✅ |
 | Hudba/zvuky | ✅ | ✅ | ✅ | ✅ |
 
 *Quizizz (Wayground) vyžaduje účet pro async mód

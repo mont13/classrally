@@ -40,6 +40,9 @@ QUIZ_ADMIN_PASSWORD=mojeHeslo ./start.sh
 ./rebuild.sh
 ```
 
+> **Doporuceni pro tridu:** pri ostrem pouziti nastavte `QUIZ_ADMIN_PASSWORD`.
+> Bez hesla je ucitelsky portal v lokalni siti otevreny komukoli, kdo zna adresu serveru.
+
 ### Bez Dockeru
 
 ```bash
@@ -164,7 +167,7 @@ Pokud zadne soubory nenahrajete, host obrazovka pouzije vestaveny syntetizator (
 - Soubory s `stinger`, `reveal`, `hit`, `win`, `ding`, `correct`, `lock`, `end` v nazvu → kratke efekty
 - Ostatni → hudba na pozadi
 
-## Predpripravene sady otazek (12 temat)
+## Predpripravene sady otazek (16 sad)
 
 | Tema | Pocet |
 |------|:---:|
@@ -180,8 +183,12 @@ Pokud zadne soubory nenahrajete, host obrazovka pouzije vestaveny syntetizator (
 | RAM, SSD, RAID, NVMe, BIOS | 8 |
 | Docker, K8s, CI/CD, Terraform | 8 |
 | Teams, OneDrive, Excel, Power Automate | 8 |
+| Serverove OS | 10 |
+| Active Directory a GPO | 12 |
+| Sitove sluzby a porty | 12 |
+| Virtualizace a kontejnery | 10 |
 
-Celkem **90 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI.
+Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI.
 
 ---
 
