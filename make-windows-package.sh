@@ -57,6 +57,10 @@ cp "${ROOT}/server.py" "${ROOT}/qrgen.py" "${ROOT}/db.py" "${ROOT}/ws.py" "${APP
 cp -r "${ROOT}/static" "${APP}/static"
 cp -r "${ROOT}/questions" "${APP}/questions"
 mkdir -p "${APP}/history" "${APP}/static/audio"
+# Audio ma licencni omezeni (viz .gitignore) — do distribuovaneho baliku nepatri;
+# ucitel si prida vlastni do static/audio/. Smazeme jen zkopirovana media v BUILDU
+# (zdrojova static/audio/ zustava netknuta), necháme README.
+find "${APP}/static/audio" -type f ! -iname 'README*' -delete 2>/dev/null || true
 
 echo ">> Kopiruji spousteci skripty a navody..."
 cp "${ROOT}/windows/"*.bat "${APP}/" 2>/dev/null || true
