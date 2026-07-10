@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="manifest" href="/static/manifest.json" />
   <script src="/static/i18n.js"></script>
+  <script src="/static/sfx.js"></script>
+  <script src="/static/confetti.js"></script>
   <meta name="theme-color" content="#0284c7" />
   <style>
     .countdown-bar { width: 100%; height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 10px 0 16px; }
@@ -138,6 +140,98 @@
       display: flex; align-items: center; justify-content: center; flex-direction: column; margin: 0 auto 20px;
       color: #fff; font-weight: 900; font-size: 2rem; box-shadow: 0 8px 24px rgba(2,132,199,0.3); }
     .sp-score-circle .sp-score-pct { font-size: 1rem; font-weight: 700; opacity: 0.9; }
+    /* --- Get-ready overlay --- */
+    #answerArea { position: relative; }
+    #answerArea.gr-active { min-height: 200px; }
+    #options.gr-hide { visibility: hidden; pointer-events: none; }
+    .get-ready-overlay { position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 4px; border-radius: 14px; z-index: 5;
+      background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff; }
+    .gr-label { font-weight: 800; font-size: 1.15rem; opacity: 0.9; }
+    .gr-num { font-size: 4.5rem; font-weight: 900; line-height: 1;
+      text-shadow: 0 4px 18px rgba(56,189,248,0.6); }
+    .gr-num.gr-pop { animation: grPop 0.95s ease; }
+    @keyframes grPop { 0% { transform: scale(1.7); opacity: 0; }
+      30% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.92); opacity: 0.9; } }
+    /* --- Reveal fullscreen flash --- */
+    .flash-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 95;
+      animation: flashFade 0.28s ease-out forwards; }
+    .flash-overlay.flash-good { background: rgba(22,163,74,0.5); }
+    .flash-overlay.flash-bad { background: rgba(220,38,38,0.45); }
+    @keyframes flashFade { from { opacity: 1; } to { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .flash-overlay { display: none; }
+      .gr-num.gr-pop, .toast-popup, .double-chip { animation: none; }
+    }
+    /* --- Rank + rival card --- */
+    .rank-card { display: flex; align-items: center; justify-content: center; gap: 10px;
+      background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;
+      margin: 10px 0; font-weight: 800; font-size: 1.05rem; flex-wrap: wrap; text-align: center; }
+    .rank-arrow { font-weight: 900; font-size: 1.2rem; }
+    .rank-arrow.up { color: #16a34a; }
+    .rank-arrow.down { color: #dc2626; }
+    .rank-arrow.same { color: #94a3b8; }
+    .rank-rival { color: #475569; font-size: 0.95rem; font-weight: 700; }
+    /* --- Streak fire levels + popup toast --- */
+    .streak-badge.lvl4 { font-size: 1rem; box-shadow: 0 0 12px rgba(255,110,0,0.75); }
+    .streak-badge.lvl5 { font-size: 1.12rem; box-shadow: 0 0 18px rgba(255,70,0,0.95); }
+    .toast-popup { position: fixed; top: 22%; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(135deg, #ff4500, #ff8c00); color: #fff; font-weight: 900;
+      font-size: 1.25rem; padding: 12px 20px; border-radius: 99px; z-index: 99; pointer-events: none;
+      box-shadow: 0 10px 30px rgba(255,69,0,0.4); animation: toastPop 1.9s ease forwards;
+      white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+    .toast-popup.sad { background: linear-gradient(135deg, #64748b, #475569);
+      box-shadow: 0 10px 30px rgba(71,85,105,0.4); }
+    @keyframes toastPop { 0% { opacity: 0; transform: translateX(-50%) scale(0.6); }
+      15% { opacity: 1; transform: translateX(-50%) scale(1.05); }
+      80% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(0.95); } }
+    /* --- Double points chip --- */
+    .double-chip { display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 0;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; font-weight: 900;
+      padding: 6px 14px; border-radius: 99px; font-size: 0.95rem; letter-spacing: 0.03em;
+      box-shadow: 0 4px 12px rgba(245,158,11,0.45); animation: doublePop 0.5s ease; }
+    @keyframes doublePop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    /* --- Fun line inside result banner --- */
+    .fun-line { font-size: 1.05rem; font-weight: 800; margin-top: 6px; opacity: 0.95; }
+    /* --- Sound / vibration mini toggles --- */
+    .mini-toggles { display: inline-flex; gap: 6px; }
+    .mini-toggle { border: 2px solid #e2e8f0; background: #fff; border-radius: 99px;
+      min-width: 44px; height: 36px; font-size: 1.05rem; cursor: pointer; padding: 2px 10px;
+      line-height: 1; }
+    .mini-toggle.off { filter: grayscale(1); opacity: 0.5; }
+    /* --- Finished screen: personal card + awards --- */
+    .finish-card { text-align: center; padding: 18px; border-radius: 14px; margin: 12px 0;
+      background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 2px solid #bae6fd; }
+    .finish-medal { font-size: 3.2rem; line-height: 1; }
+    .finish-title { font-size: 1.5rem; font-weight: 900; margin: 6px 0 2px; }
+    .award-card { display: flex; align-items: center; gap: 10px; background: #fffbeb;
+      border: 2px solid #fcd34d; border-radius: 12px; padding: 10px 14px; margin: 8px 0;
+      text-align: left; flex-wrap: wrap; }
+    .award-emoji { font-size: 1.8rem; }
+    .award-name { font-weight: 800; }
+    .award-value { color: #92400e; font-weight: 700; font-size: 0.9rem; margin-left: auto; }
+    .awards-list { margin-top: 6px; }
+    .awards-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; margin: 4px 0;
+      font-size: 0.95rem; text-align: left; flex-wrap: wrap; }
+    /* --- Avatar picker (join screen) --- */
+    .avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+      gap: 8px; margin: 8px 0 4px; }
+    .avatar-btn { border: 3px solid transparent; border-radius: 12px; background: #f1f5f9;
+      font-size: 1.5rem; padding: 6px 0; cursor: pointer; line-height: 1.4; min-height: 44px; }
+    .avatar-btn.selected { border-color: #0284c7; background: #e0f2fe;
+      box-shadow: 0 0 0 2px rgba(2,132,199,0.25); }
+    /* --- .hide must always win ---------------------------------------
+       Shared style.css defines .hide{display:none}, but this inline sheet
+       loads later, so any class rule above that sets display (e.g.
+       .get-ready-overlay{display:flex}, .streak-badge{display:inline-flex})
+       would override it at equal specificity. Re-assert .hide as the LAST
+       rule, plus id.class rules for the toggled elements (same pattern as
+       host.html #getReadyOverlay.hide). */
+    #getReadyOverlay.hide, #doubleChip.hide, #rankCard.hide, #finishCard.hide,
+    #streakBadge.hide, #teamBadge.hide, #loggedInBadge.hide,
+    #avatarPickerWrap.hide { display: none; }
+    .hide { display: none; }
   </style>
 </head>
 <body class="player-page">
@@ -156,6 +250,10 @@
           <div style="display:flex;gap:8px;align-items:center;">
             <input id="nameInput" class="input" data-i18n-placeholder="play.name_placeholder" placeholder="např. Tereza" maxlength="24" autofocus style="flex:1;" />
             <button id="randomNickBtn" class="btn ghost" data-i18n-title="play.random_nick_title" title="Náhodná přezdívka" style="padding:10px 14px;font-size:1.3rem;flex-shrink:0;" data-i18n-aria="play.random_nick_aria" aria-label="Vygeneruj náhodnou přezdívku">&#x1F3B2;</button>
+          </div>
+          <div id="avatarPickerWrap" style="margin-top:12px;">
+            <p class="muted" style="margin:0 0 4px 0;font-size:0.9rem;font-weight:700;" data-i18n="play.avatar_pick">Vyber si avatara:</p>
+            <div id="avatarGrid" class="avatar-grid"></div>
           </div>
           <div class="btn-row" style="margin-top:10px;">
             <button id="joinBtn" class="btn good" data-i18n="play.join_btn">Vstoupit</button>
@@ -181,7 +279,17 @@
     <section id="gameCard" class="card hide">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <h2 style="margin:0;"><span id="playerAvatarEmoji"></span><span data-i18n="play.greeting">Ahoj, </span><span id="playerName">-</span><span id="loggedInBadge" class="logged-in-badge hide" data-i18n="play.logged_in_badge">Přihlášen</span><span id="streakBadge" class="streak-badge hide"></span><span id="teamBadge" class="team-badge hide"></span></h2>
-        <span id="phasePill" class="status-pill lobby">lobby</span>
+        <span style="display:inline-flex;align-items:center;gap:8px;">
+          <span class="mini-toggles">
+            <button id="sfxToggle" class="mini-toggle off" type="button" aria-pressed="false"
+              data-i18n-title="play.sound_toggle" title="Zapnout/vypnout zvuk"
+              data-i18n-aria="play.sound_toggle" aria-label="Zapnout/vypnout zvuk">&#x1F507;</button>
+            <button id="vibeToggle" class="mini-toggle" type="button" aria-pressed="true"
+              data-i18n-title="play.vibrate_toggle" title="Zapnout/vypnout vibrace"
+              data-i18n-aria="play.vibrate_toggle" aria-label="Zapnout/vypnout vibrace">&#x1F4F3;</button>
+          </span>
+          <span id="phasePill" class="status-pill lobby">lobby</span>
+        </span>
       </div>
       <div id="teamAnnounce" class="team-announce hide"></div>
 
@@ -196,12 +304,21 @@
 
       <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
 
+      <div id="doubleChip" class="double-chip hide"><span data-i18n="play.double_chip">&#x26A1;&#xD7;2 BODY</span></div>
       <div id="mainMessage" class="question" data-i18n="play.wait_for_teacher">Čekej na start od učitele.</div>
       <img id="questionImage" class="hide" style="max-width:100%;max-height:200px;display:block;margin:10px auto;border-radius:10px;" />
       <div id="resultBanner" class="hide"></div>
+      <div id="rankCard" class="rank-card hide"></div>
       <p id="explanation" class="muted"></p>
-      <div id="options" class="kahoot-options"></div>
+      <div id="answerArea">
+        <div id="options" class="kahoot-options"></div>
+        <div id="getReadyOverlay" class="get-ready-overlay hide" aria-live="polite">
+          <div class="gr-label" data-i18n="play.get_ready">Připrav se!</div>
+          <div class="gr-num" id="grNum">3</div>
+        </div>
+      </div>
       <div id="podium" class="hide"></div>
+      <div id="finishCard" class="finish-card hide"></div>
       <p class="help" data-i18n="play.answer_final">Odpověď je po odeslání finální.</p>
     </section>
 
@@ -325,11 +442,342 @@
       setTimeout(() => el.remove(), 1600);
     }
 
+    // ===================================================================
+    // PERSONAL JUICE: sound, vibration, flash, rank, streak, awards
+    // ===================================================================
+    const SFX_ON_KEY = 'classrally_player_sfx';   // default OFF (a class full of beeping phones = chaos)
+    const VIBRATE_KEY = 'classrally_vibrate';     // default ON
+    const AVATAR_PICK_KEY = 'classrally_avatar_id';
+    let soundOn = localStorage.getItem(SFX_ON_KEY) === '1';
+    let vibrateOn = localStorage.getItem(VIBRATE_KEY) !== '0';
+    const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // i18n.t with a fallback text when the key is not translated yet.
+    // Supports the same {0} positional placeholders as i18n.t.
+    function tfb(key, fallback, ...args) {
+      const v = i18n.t(key, ...args);
+      if (v !== key) return v;
+      return fallback.replace(/\{(\d+)\}/g, (m, i) => String(args[+i] ?? ''));
+    }
+
+    function sfxPlay(name, ...args) {
+      if (!soundOn || !window.SFX || !SFX.supported) return;
+      try { SFX[name](...args); } catch (e) { /* sound must never break the game */ }
+    }
+
+    function maybeUnlockSfx() {
+      if (soundOn && window.SFX && SFX.supported) {
+        try { SFX.unlock(); } catch (e) {}
+      }
+    }
+
+    function vibrate(pattern) {
+      if (!vibrateOn) return;
+      try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+    }
+
+    function flashScreen(cls) {
+      if (REDUCED_MOTION) return;
+      const el = document.createElement('div');
+      el.className = 'flash-overlay ' + cls;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 420);
+    }
+
+    function showToast(text, cls) {
+      const el = document.createElement('div');
+      el.className = 'toast-popup' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2000);
+    }
+
+    const FUN_FALLBACK = {
+      correct: ['\u{1F680} Raketa!', '\u{1F9E0} Velký mozek!', '\u{1F3AF} Přesná trefa!', '⭐ Hvězdný výkon!', '\u{1F3C6} Jde ti to skvěle!'],
+      wrong: ['\u{1F4AA} Příště to dáš!', '\u{1F648} Těsně vedle!', '\u{1F340} Štěstí příště!', '\u{1F913} Z chyb se učíme!', '\u{1F501} Hlavu vzhůru, jedeme dál!']
+    };
+
+    const AWARD_META = {
+      fastest_finger: { emoji: '⚡', fb: 'Nejrychlejší prst' },
+      streak_master:  { emoji: '\u{1F525}', fb: 'Král sérií' },
+      sharpshooter:   { emoji: '\u{1F3AF}', fb: 'Ostrostřelec' },
+      comeback:       { emoji: '\u{1F4C8}', fb: 'Velký návrat' }
+    };
+
+    // --- edge-detection state (WS pushes and polling may deliver the same
+    //     state repeatedly — effects fire only on real transitions) ---
+    let currentFunMsg = null;    // { kind: 'correct'|'wrong', text } for the current reveal
+    let lastSeenStreak = 0;      // streak value before the current reveal scored it
+    let dblSoundIdx = -1;        // question index the double() sound already played for
+    let finishCelebrated = false;
+    let prevRevealRank = null;   // my rank at the previous reveal (for the arrow)
+    let rankArrow = '';          // '', 'up', 'down', 'same'
+
+    // What happened to me this question? 'correct' | 'wrong' | 'timeout' | 'none'
+    function revealOutcome(state, scoreDelta) {
+      const q = state.question;
+      if (!q) return 'none';
+      const t = q.type || 'choice';
+      if (t === 'poll' || t === 'wordcloud' || t === 'slide') return 'none';
+      if (state.my_choice === undefined) return 'timeout';
+      if (t === 'choice' || t === 'truefalse') {
+        return state.my_choice === q.correct_index ? 'correct' : 'wrong';
+      }
+      if (t === 'multiselect') {
+        const c = new Set(q.correct_indices || []);
+        const m = new Set(Array.isArray(state.my_choice) ? state.my_choice : []);
+        return c.size === m.size && [...c].every(i => m.has(i)) ? 'correct' : 'wrong';
+      }
+      if (t === 'ordering') {
+        return JSON.stringify(state.my_choice) === JSON.stringify(q.correct_order || []) ? 'correct' : 'wrong';
+      }
+      // openended: the server scored it — points gained means correct
+      return scoreDelta > 0 ? 'correct' : 'wrong';
+    }
+
+    function prepareStateEffects(state, edges) {
+      const me = state.me || {};
+      if (state.phase === 'lobby') {
+        prevRevealRank = null;
+        rankArrow = '';
+        currentFunMsg = null;
+        finishCelebrated = false;
+      }
+      if (edges.enteredQuestion) {
+        currentFunMsg = null;
+        if (state.question && state.question.double && dblSoundIdx !== state.current_index) {
+          dblSoundIdx = state.current_index;
+          sfxPlay('double');
+        }
+      }
+      if (edges.enteredReveal) {
+        const outcome = revealOutcome(state, edges.scoreDelta);
+        if (outcome === 'correct' || outcome === 'wrong') {
+          flashScreen(outcome === 'correct' ? 'flash-good' : 'flash-bad');
+          vibrate(outcome === 'correct' ? [40, 60, 40] : [250]);
+          sfxPlay(outcome === 'correct' ? 'correct' : 'wrong');
+          const idx = Math.floor(Math.random() * 5);
+          currentFunMsg = { kind: outcome, text: tfb('fun.' + outcome + '.' + idx, FUN_FALLBACK[outcome][idx]) };
+        }
+        const st = me.streak || 0;
+        if (outcome === 'correct' && st >= 3 && st > lastSeenStreak) {
+          const pct = st >= 5 ? 50 : (st === 4 ? 40 : 20);
+          showToast(tfb('play.streak_popup', '\u{1F525} Série {0}! (+{1} % bodů)', st, pct), '');
+          sfxPlay('streak', st);
+        } else if (lastSeenStreak >= 4 && st === 0) {
+          showToast(tfb('play.streak_lost', 'Série v tahu \u{1F494}'), 'sad');
+        }
+        if (me.rank) {
+          rankArrow = prevRevealRank == null ? ''
+            : me.rank < prevRevealRank ? 'up'
+            : me.rank > prevRevealRank ? 'down' : 'same';
+          prevRevealRank = me.rank;
+        }
+      }
+      if (edges.enteredFinished && !finishCelebrated) {
+        finishCelebrated = true;
+        if ((me.rank || 99) <= 3 && window.Confetti) {
+          try {
+            Confetti.burst();
+            setTimeout(() => { try { Confetti.burst(); } catch (e) {} }, 450);
+          } catch (e) {}
+        }
+      }
+      if (state.phase !== 'finished') finishCelebrated = false;
+      lastSeenStreak = me.streak || 0;
+    }
+
+    // --- Get-ready overlay (server: get_ready window is the first part of the
+    //     question phase; remaining = get_ready_sec - (server_time - question_started_at)) ---
+    let grIdx = -1, grDeadline = 0, grTimer = null, grLastNum = -1;
+
+    function grSetVisual(active) {
+      document.getElementById('options').classList.toggle('gr-hide', active);
+      document.getElementById('answerArea').classList.toggle('gr-active', active);
+      document.getElementById('getReadyOverlay').classList.toggle('hide', !active);
+    }
+
+    function stopGetReady() {
+      if (grTimer) { clearInterval(grTimer); grTimer = null; }
+      grSetVisual(false);
+    }
+
+    function grTick() {
+      const msLeft = grDeadline - performance.now();
+      if (msLeft <= 0) { stopGetReady(); return; }
+      const num = Math.max(1, Math.ceil(msLeft / 1000));
+      if (num !== grLastNum) {
+        grLastNum = num;
+        const el = document.getElementById('grNum');
+        el.textContent = num;
+        el.classList.remove('gr-pop');
+        void el.offsetWidth; // restart the pop animation
+        el.classList.add('gr-pop');
+      }
+    }
+
+    function ensureGetReady(state) {
+      const inWindow = state.phase === 'question' && state.question &&
+        state.question.type !== 'slide' && (state.get_ready_sec || 0) > 0 &&
+        state.question_started_at > 0 && state.server_time > 0;
+      if (!inWindow) {
+        if (state.phase !== 'question') grIdx = -1;
+        stopGetReady();
+        return;
+      }
+      if (state.current_index !== grIdx) {
+        grIdx = state.current_index;
+        const remaining = state.get_ready_sec - (state.server_time - state.question_started_at);
+        if (remaining > 0.15) {
+          grDeadline = performance.now() + remaining * 1000;
+          grLastNum = -1;
+          if (!grTimer) grTimer = setInterval(grTick, 80);
+          grSetVisual(true);
+          grTick();
+        } else {
+          stopGetReady();
+        }
+      } else if (grTimer && performance.now() >= grDeadline) {
+        stopGetReady();
+      }
+    }
+
+    // --- Rank + rival card (reveal & finished) ---
+    function renderRankCard(state) {
+      const card = document.getElementById('rankCard');
+      const me = state.me || {};
+      const show = (state.phase === 'reveal' || state.phase === 'finished') && me.rank;
+      if (!show) { card.classList.add('hide'); return; }
+      card.classList.remove('hide');
+      card.innerHTML = '';
+      if (rankArrow) {
+        const ar = document.createElement('span');
+        ar.className = 'rank-arrow ' + rankArrow;
+        ar.textContent = rankArrow === 'up' ? '↑' : (rankArrow === 'down' ? '↓' : '=');
+        card.appendChild(ar);
+      }
+      const place = document.createElement('span');
+      place.textContent = tfb('play.rank_place', '{0}. místo', me.rank);
+      card.appendChild(place);
+      const rival = document.createElement('span');
+      rival.className = 'rank-rival';
+      if (me.rank === 1) {
+        rival.textContent = tfb('play.rank_leader', 'Jsi v čele! \u{1F451}');
+      } else if (me.behind) {
+        rival.textContent = tfb('play.rank_behind', 'Ztrácíš {0} b na {1} \u{1F3AF}', me.behind.gap, me.behind.name);
+      }
+      if (rival.textContent) card.appendChild(rival);
+    }
+
+    // --- Double points chip ---
+    function renderDoubleChip(state) {
+      const chip = document.getElementById('doubleChip');
+      const show = !!(state.question && state.question.double) &&
+        (state.phase === 'question' || state.phase === 'reveal');
+      chip.classList.toggle('hide', !show);
+    }
+
+    // --- Finished: personal congratulation + awards ---
+    let finishSig = '';
+    function renderFinishCard(state) {
+      const card = document.getElementById('finishCard');
+      if (state.phase !== 'finished' || !state.me) {
+        card.classList.add('hide');
+        finishSig = '';
+        return;
+      }
+      const me = state.me;
+      const awards = state.awards || [];
+      const sig = [i18n.getLang(), me.rank, (me.awards || []).join(','), awards.length].join('|');
+      if (sig === finishSig && !card.classList.contains('hide')) return;
+      finishSig = sig;
+      card.classList.remove('hide');
+      card.innerHTML = '';
+
+      const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+      const medal = document.createElement('div');
+      medal.className = 'finish-medal';
+      medal.textContent = (me.rank >= 1 && me.rank <= 3) ? medals[me.rank - 1] : '\u{1F389}';
+      card.appendChild(medal);
+
+      const title = document.createElement('div');
+      title.className = 'finish-title';
+      title.textContent = (me.rank >= 1 && me.rank <= 3)
+        ? tfb('play.finish_congrats', 'Gratulace!')
+        : tfb('play.finish_encourage', 'Skvělý výkon, příště to bude ještě lepší! \u{1F4AA}');
+      card.appendChild(title);
+
+      const rankLine = document.createElement('div');
+      rankLine.style.cssText = 'font-weight:800;color:#475569;';
+      rankLine.textContent = tfb('play.rank_place', '{0}. místo', me.rank);
+      card.appendChild(rankLine);
+
+      const myAwards = me.awards || [];
+      if (myAwards.length) {
+        const h = document.createElement('div');
+        h.style.cssText = 'font-weight:900;margin-top:12px;';
+        h.textContent = tfb('play.awards_mine_title', 'Tvoje ocenění');
+        card.appendChild(h);
+        myAwards.forEach(k => {
+          const a = awards.find(x => x.key === k);
+          const meta = AWARD_META[k] || { emoji: '\u{1F3C5}', fb: k };
+          const row = document.createElement('div');
+          row.className = 'award-card';
+          const em = document.createElement('span');
+          em.className = 'award-emoji';
+          em.textContent = meta.emoji;
+          const nm = document.createElement('span');
+          nm.className = 'award-name';
+          nm.textContent = tfb('play.award_' + k, meta.fb);
+          row.appendChild(em);
+          row.appendChild(nm);
+          if (a && a.value) {
+            const v = document.createElement('span');
+            v.className = 'award-value';
+            v.textContent = a.value;
+            row.appendChild(v);
+          }
+          card.appendChild(row);
+        });
+      }
+
+      if (awards.length) {
+        const h2 = document.createElement('div');
+        h2.style.cssText = 'font-weight:900;margin-top:12px;';
+        h2.textContent = tfb('play.awards_all_title', 'Ocenění');
+        card.appendChild(h2);
+        const list = document.createElement('div');
+        list.className = 'awards-list';
+        awards.forEach(a => {
+          const meta = AWARD_META[a.key] || { emoji: '\u{1F3C5}', fb: a.key };
+          const row = document.createElement('div');
+          row.className = 'awards-row';
+          const em = document.createElement('span');
+          em.textContent = meta.emoji;
+          const nm = document.createElement('span');
+          nm.style.fontWeight = '800';
+          nm.textContent = tfb('play.award_' + a.key, meta.fb) + ':';
+          const who = document.createElement('span');
+          who.textContent = getAvatarEmoji(a.avatar_id) + ' ' + a.player;
+          const val = document.createElement('span');
+          val.style.cssText = 'margin-left:auto;color:#64748b;font-weight:700;';
+          val.textContent = a.value || '';
+          row.appendChild(em);
+          row.appendChild(nm);
+          row.appendChild(who);
+          row.appendChild(val);
+          list.appendChild(row);
+        });
+        card.appendChild(list);
+      }
+    }
+
     // --- Multiselect state ---
     let msSelected = new Set();
     let ordOrder = [];
 
     async function submitChoice(playerId, choice) {
+      sfxPlay('pop');
       const secret = localStorage.getItem(SECRET_KEY) || '';
       await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice });
       await refresh();
@@ -768,10 +1216,13 @@
       const streak = me.streak || 0;
       if (streak >= 3) {
         badge.classList.remove('hide');
-        badge.textContent = streak + 'x';
+        badge.textContent = '\u{1F525}' + streak + '×';
+        badge.classList.toggle('lvl4', streak >= 4);
+        badge.classList.toggle('lvl5', streak >= 5);
         badge.classList.toggle('hot', streak >= 5);
       } else {
         badge.classList.add('hide');
+        badge.classList.remove('lvl4', 'lvl5', 'hot');
       }
     }
 
@@ -850,6 +1301,14 @@
       } else if (qType === 'slide') {
         banner.classList.add('hide');
       }
+
+      // Fun message picked once per reveal (edge-detected in prepareStateEffects)
+      if (currentFunMsg && !banner.classList.contains('hide')) {
+        const funLine = document.createElement('div');
+        funLine.className = 'fun-line';
+        funLine.textContent = currentFunMsg.text;
+        banner.appendChild(funLine);
+      }
     }
 
     function updateTeamUI(me) {
@@ -870,6 +1329,25 @@
 
     function render(state, playerId) {
       const me = state.me || {};
+
+      // Edge detection first: WS pushes and 1s polling repeat the same state,
+      // so one-shot effects key off real phase/question transitions only.
+      const phaseChanged = state.phase !== lastPhase;
+      const questionChanged = state.current_index !== lastQuestionIndex;
+      prepareStateEffects(state, {
+        enteredQuestion: state.phase === 'question' && (phaseChanged || questionChanged),
+        enteredReveal: phaseChanged && state.phase === 'reveal' && lastPhase === 'question',
+        enteredFinished: phaseChanged && state.phase === 'finished',
+        scoreDelta: (me.score ?? 0) - lastScore
+      });
+
+      // Restore avatar next to the name after a reload (join() sets it normally)
+      const avSpan = document.getElementById('playerAvatarEmoji');
+      if (avSpan && !avSpan.textContent) {
+        const storedAv = parseInt(localStorage.getItem(AVATAR_PICK_KEY) || '0', 10);
+        avSpan.textContent = getAvatarEmoji(me.avatar_id > 0 ? me.avatar_id : storedAv) + ' ';
+      }
+
       document.getElementById('playerName').textContent = me.name || '-';
       document.getElementById('myScore').textContent = `${me.score ?? 0}`;
       document.getElementById('answered').textContent = `${state.answer_count ?? 0}`;
@@ -924,7 +1402,11 @@
           qImg.classList.add('hide');
           qImg.src = '';
         }
-        podium.classList.add('hide');
+        if (state.phase === 'finished') {
+          renderPodium(state.players);
+        } else {
+          podium.classList.add('hide');
+        }
 
         const qType = state.question.type || 'choice';
         if (state.phase === 'reveal' || state.phase === 'finished') {
@@ -956,6 +1438,10 @@
       }
 
       renderOptions(state, playerId);
+      ensureGetReady(state);
+      renderRankCard(state);
+      renderDoubleChip(state);
+      renderFinishCard(state);
 
       lastPhase = state.phase;
       lastQuestionIndex = state.current_index;
@@ -993,6 +1479,9 @@
           document.getElementById('nameInput').value = profile.nickname;
           isLoggedIn = true;
           myAvatarId = profile.avatar_id || 0;
+          // Logged-in players already have a profile avatar — hide the picker
+          const apw = document.getElementById('avatarPickerWrap');
+          if (apw) apw.classList.add('hide');
         }
       } catch (e) {
         console.error('Auto-fill from account failed:', e);
@@ -1005,7 +1494,11 @@
       err.textContent = '';
       try {
         const userToken = localStorage.getItem('quiz_user_token') || '';
-        const data = await api('/api/register', 'POST', { name, user_token: userToken });
+        const regBody = { name, user_token: userToken };
+        // Locally picked avatar for anonymous players. The server currently
+        // ignores unknown fields, so this is forward-compatible and harmless.
+        if (!isLoggedIn && pickedAvatarId) regBody.avatar_id = pickedAvatarId;
+        const data = await api('/api/register', 'POST', regBody);
         localStorage.setItem(KEY, data.player_id);
         localStorage.setItem(SECRET_KEY, data.player_secret);
         if (data.team) {
@@ -1013,7 +1506,11 @@
         } else {
           localStorage.removeItem('quiz_player_team');
         }
-        myAvatarId = data.avatar_id || myAvatarId;
+        // Server avatar (profile) wins; anonymous players keep their local pick
+        myAvatarId = data.avatar_id || pickedAvatarId || myAvatarId;
+        if (!data.avatar_id && pickedAvatarId) {
+          localStorage.setItem(AVATAR_PICK_KEY, String(pickedAvatarId));
+        }
         document.getElementById('joinCard').classList.add('hide');
         document.getElementById('gameCard').classList.remove('hide');
         if (isLoggedIn) {
@@ -1060,6 +1557,91 @@
         btn.addEventListener('animationend', () => btn.classList.remove('spin-once'), { once: true });
       }
     });
+
+    // --- Avatar picker for anonymous players (random preselect) ---
+    let pickedAvatarId = parseInt(localStorage.getItem(AVATAR_PICK_KEY) || '0', 10) || 0;
+    (function initAvatarPicker() {
+      const grid = document.getElementById('avatarGrid');
+      if (!grid) return;
+      if (!pickedAvatarId || pickedAvatarId < 1 || pickedAvatarId > 20) {
+        pickedAvatarId = AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
+      }
+      AVATARS.forEach(a => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'avatar-btn' + (a.id === pickedAvatarId ? ' selected' : '');
+        b.textContent = a.emoji;
+        b.setAttribute('aria-label', 'Avatar ' + a.id);
+        b.setAttribute('aria-pressed', a.id === pickedAvatarId ? 'true' : 'false');
+        b.addEventListener('click', () => {
+          pickedAvatarId = a.id;
+          grid.querySelectorAll('.avatar-btn').forEach(x => {
+            x.classList.remove('selected');
+            x.setAttribute('aria-pressed', 'false');
+          });
+          b.classList.add('selected');
+          b.setAttribute('aria-pressed', 'true');
+        });
+        grid.appendChild(b);
+      });
+    })();
+
+    // --- Sound + vibration toggles (sound default OFF, vibration default ON) ---
+    function syncToggleUI() {
+      const sb = document.getElementById('sfxToggle');
+      const vb = document.getElementById('vibeToggle');
+      if (sb) {
+        sb.textContent = soundOn ? '\u{1F50A}' : '\u{1F507}';
+        sb.classList.toggle('off', !soundOn);
+        sb.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+      }
+      if (vb) {
+        vb.classList.toggle('off', !vibrateOn);
+        vb.setAttribute('aria-pressed', vibrateOn ? 'true' : 'false');
+      }
+    }
+
+    (function initTogglesAndSfx() {
+      if (window.SFX) {
+        try {
+          SFX.setEnabled(soundOn);
+          SFX.setVolume(0.35); // mobile stays quiet — the projector does the show
+        } catch (e) {}
+      }
+      syncToggleUI();
+      const sb = document.getElementById('sfxToggle');
+      if (sb) {
+        sb.addEventListener('click', () => {
+          soundOn = !soundOn;
+          localStorage.setItem(SFX_ON_KEY, soundOn ? '1' : '0');
+          if (window.SFX) {
+            try {
+              SFX.setEnabled(soundOn);
+              if (soundOn && SFX.supported) {
+                SFX.unlock(); // user gesture — safe place to unlock audio
+                SFX.setVolume(0.35);
+                SFX.pop();
+              }
+            } catch (e) {}
+          }
+          syncToggleUI();
+        });
+      }
+      const vb = document.getElementById('vibeToggle');
+      if (vb) {
+        vb.addEventListener('click', () => {
+          vibrateOn = !vibrateOn;
+          localStorage.setItem(VIBRATE_KEY, vibrateOn ? '1' : '0');
+          if (vibrateOn) {
+            try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {}
+          }
+          syncToggleUI();
+        });
+      }
+      // Unlock audio from answer taps too (works when sound was ON from a past session)
+      const area = document.getElementById('answerArea');
+      if (area) area.addEventListener('pointerdown', maybeUnlockSfx, true);
+    })();
 
 
     // --- WebSocket with polling fallback ---

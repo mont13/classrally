@@ -13,10 +13,13 @@ python3 test_server.py 2>&1
 echo ""
 
 echo "=== Running smoke test (port ${PORT}) ==="
-python3 -u server.py --host 127.0.0.1 --port "$PORT" >/tmp/quiz_smoke.log 2>&1 &
+# Isolated data dir: smoke must not depend on (or touch) the real data/ DB
+SMOKE_DATA_DIR="$(mktemp -d /tmp/quiz_smoke_data.XXXXXX)"
+QUIZ_DATA_DIR="$SMOKE_DATA_DIR" python3 -u server.py --host 127.0.0.1 --port "$PORT" >/tmp/quiz_smoke.log 2>&1 &
 PID=$!
 cleanup() {
   kill "$PID" >/dev/null 2>&1 || true
+  rm -rf "$SMOKE_DATA_DIR"
 }
 trap cleanup EXIT
 sleep 2

@@ -520,6 +520,16 @@
               <label for="timingReveal" data-i18n="admin.timing_reveal_label">Čas na vyhodnocení (sekundy)</label>
               <input id="timingReveal" type="number" min="2" max="30" />
             </div>
+            <div class="form-group">
+              <label for="timingGetReady" data-i18n="admin.timing_get_ready_label">Odpočet Připrav se (s)</label>
+              <input id="timingGetReady" type="number" min="0" max="10" />
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin:12px 0;">
+            <label style="font-weight:700;">
+              <input type="checkbox" id="timingFinalDouble" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" />
+              <span data-i18n="admin.final_double_label">Poslední otázka za dvojnásobek bodů</span>
+            </label>
           </div>
           <button class="btn good" id="btnSaveTiming" data-i18n="admin.btn_save_settings">Uložit nastavení</button>
           <p class="muted" style="margin-top:10px;" data-i18n="admin.timing_hint">Změny se projeví od další otázky.</p>
@@ -1097,6 +1107,11 @@
           if (imgVal) q.image_url = imgVal;
           else delete q.image_url;
         }
+        const dblCb = ed.querySelector('.q-double');
+        if (dblCb) {
+          if (dblCb.checked) q.double = true;
+          else delete q.double;
+        }
         const qType = q.type || 'choice';
 
         if (qType === 'choice' || qType === 'truefalse' || qType === 'multiselect') {
@@ -1226,6 +1241,16 @@
           if (t.value === qType) opt.selected = true;
           typeSelect.appendChild(opt);
         });
+        // Double points checkbox (writes/reads bool `double` on the question)
+        const dblLabel = document.createElement('label');
+        dblLabel.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.9rem;font-weight:700;cursor:pointer;white-space:nowrap;';
+        const dblCb = document.createElement('input');
+        dblCb.type = 'checkbox';
+        dblCb.className = 'q-double';
+        dblCb.checked = !!q.double;
+        dblLabel.appendChild(dblCb);
+        dblLabel.appendChild(document.createTextNode(i18n.t('admin.q_double_label')));
+
         typeSelect.addEventListener('change', () => {
           collectEditorData();
           const newType = typeSelect.value;
@@ -1253,6 +1278,7 @@
           renderEditor();
         });
         header.appendChild(typeSelect);
+        header.appendChild(dblLabel);
 
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn warn';
@@ -1644,6 +1670,8 @@
         const state = await api('/api/state?host=1');
         document.getElementById('timingQuestion').value = state.question_duration_sec || 20;
         document.getElementById('timingReveal').value = state.reveal_duration_sec || 5;
+        document.getElementById('timingGetReady').value = state.get_ready_sec ?? 3;
+        document.getElementById('timingFinalDouble').checked = !!state.final_double;
       } catch {}
     }
 
@@ -1842,6 +1870,8 @@
         await api('/api/admin/timing', 'POST', {
           question_duration_sec: parseInt(document.getElementById('timingQuestion').value),
           reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
+          get_ready_sec: parseInt(document.getElementById('timingGetReady').value),
+          final_double: document.getElementById('timingFinalDouble').checked,
         });
         alert(i18n.t('admin.settings_saved'));
       } catch (e) { alert(e.message); }

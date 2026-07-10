@@ -85,7 +85,42 @@
     "sp_next_question": "Ďalšia otázka →",
     "sp_show_results": "Zobraziť výsledky",
     "sp_done": "Hotovo!",
-    "sp_restart": "Zahrať znovu"
+    "sp_restart": "Zahrať znovu",
+    "get_ready": "Priprav sa!",
+    "sound_toggle": "Zapnúť/vypnúť zvuk",
+    "vibrate_toggle": "Zapnúť/vypnúť vibrácie",
+    "double_chip": "⚡×2 BODY",
+    "rank_place": "{0}. miesto",
+    "rank_leader": "Si na čele! 👑",
+    "rank_behind": "Strácaš {0} b na {1} 🎯",
+    "streak_popup": "🔥 Séria {0}! (+{1} % bodov)",
+    "streak_lost": "Séria je preč 💔",
+    "finish_congrats": "Gratulujeme!",
+    "finish_encourage": "Skvelý výkon, nabudúce to bude ešte lepšie! 💪",
+    "awards_mine_title": "Tvoje ocenenia",
+    "awards_all_title": "Ocenenia",
+    "award_fastest_finger": "Najrýchlejší prst",
+    "award_streak_master": "Majster sérií",
+    "award_sharpshooter": "Ostrostrelec",
+    "award_comeback": "Veľký návrat",
+    "avatar_pick": "Vyber si avatara:"
+  },
+
+  "fun": {
+    "correct": {
+      "0": "🚀 Raketa!",
+      "1": "🧠 Veľký mozog!",
+      "2": "🎯 Presná trefa!",
+      "3": "⭐ Hviezdny výkon!",
+      "4": "🏆 Ide ti to skvele!"
+    },
+    "wrong": {
+      "0": "💪 Nabudúce to dáš!",
+      "1": "🙈 Tesne vedľa!",
+      "2": "🍀 Šťastie nabudúce!",
+      "3": "🤓 Z chýb sa učíme!",
+      "4": "🔁 Hlavu hore, ideme ďalej!"
+    }
   },
 
   "host": {
@@ -163,7 +198,24 @@
     "correct_order": "Správne poradie je zobrazené nižšie.",
     "correct": "Správne",
     "tracks_available": "Dostupné: {0} loop, {1} stinger",
-    "enter_token": "Zadaj prístupový kľúč (zobrazený pri štarte servera alebo v Učiteľskom portáli > Nastavenia):"
+    "enter_token": "Zadaj prístupový kľúč (zobrazený pri štarte servera alebo v Učiteľskom portáli > Nastavenia):",
+    "sfx_toggle": "Zvukové efekty",
+    "builtin_music": "Vstavaná hudba (bez MP3)",
+    "track_synth": "Vstavaný syntetizátor",
+    "music_synth": "Hudba: vstavaná (syntetizátor).",
+    "synth_needs_sfx": "Vstavaná hudba hrá len so zapnutými zvukovými efektmi.",
+    "get_ready": "Priprav sa!",
+    "double_banner": "OTÁZKA ZA DVOJNÁSOBOK",
+    "players_milestone": "🎉 Už {0} hráčov!",
+    "podium_title": "Najlepší hráči",
+    "awards_title": "Ocenenia"
+  },
+
+  "awards": {
+    "fastest_finger": "Najrýchlejší prst",
+    "streak_master": "Majster sérií",
+    "sharpshooter": "Ostrostrelec",
+    "comeback": "Veľký návrat"
   },
 
   "admin": {
@@ -464,7 +516,14 @@
     "qr_class_alt": "QR kód triedy",
 
     "auth_required": "Nutné prihlásenie",
-    "error": "Chyba"
+    "error": "Chyba",
+
+    "q_double_label": "⚡ Dvojnásobné body",
+    "timing_get_ready_label": "Odpočet Priprav sa (s)",
+    "final_double_label": "Posledná otázka za dvojnásobok bodov",
+    "badge_free": "Zadarmo bez limitu",
+    "badge_open_license": "Otvorená licencia",
+    "tab_exam": "Písomka"
   },
 
   "profile": {

@@ -281,6 +281,76 @@ class TestQuizState(unittest.TestCase):
         state = qs.public_state()
         self.assertEqual(state["phase"], "reveal")
 
+    def test_ws_notify_called_after_lock_released(self):
+        """State mutations must broadcast only AFTER releasing the game lock.
+
+        The WS broadcast state getter re-acquires the lock via public_state(),
+        so notifying while still holding it deadlocks the whole server
+        (regression: host_action used to call _ws_notify inside the lock).
+        """
+        qs = server.QuizState(self._sample_questions())
+        lock_free: list[bool] = []
+        orig_notify = server._ws_notify
+
+        def probe():
+            got = qs._lock.acquire(timeout=1)
+            if got:
+                qs._lock.release()
+            lock_free.append(got)
+
+        server._ws_notify = probe
+        try:
+            ra = qs.register_player("Alice")
+            qs.register_player("Bob")  # silent second player blocks auto-advance
+            qs.host_action("start")
+            qs.submit_answer(ra["player_id"], ra["player_secret"], 1)
+            qs.host_action("reveal")
+            qs.host_action("next")
+            qs.host_action("reset")
+            qs.kick_player(ra["player_id"])
+        finally:
+            server._ws_notify = orig_notify
+
+        # register x2, start, submit, reveal, next, reset, kick = 8 notifies,
+        # every one of them with the game lock already released
+        self.assertEqual(lock_free, [True] * 8)
+
+    def test_tick_and_notify_broadcasts_timer_transitions(self):
+        """tick_and_notify() must pick up timeout-driven phase changes,
+        notify exactly once per change (no spam) and never under the lock."""
+        qs = server.QuizState(self._sample_questions())
+        qs.set_timing(question_sec=5, reveal_sec=2)
+        qs.register_player("Alice")
+        notifications: list[bool] = []
+        orig_notify = server._ws_notify
+
+        def probe():
+            got = qs._lock.acquire(timeout=1)
+            if got:
+                qs._lock.release()
+            notifications.append(got)
+
+        server._ws_notify = probe
+        try:
+            qs.host_action("start")  # explicit action broadcasts itself
+            notifications.clear()
+
+            # Nothing changed yet -> tick stays silent
+            self.assertFalse(qs.tick_and_notify())
+            self.assertEqual(notifications, [])
+
+            # Question times out -> tick must advance to reveal and notify
+            qs.question_started_at = time.time() - 6
+            self.assertTrue(qs.tick_and_notify())
+            self.assertEqual(qs.phase, "reveal")
+            self.assertEqual(notifications, [True])  # lock already released
+
+            # Same state again -> no repeated broadcast
+            self.assertFalse(qs.tick_and_notify())
+            self.assertEqual(notifications, [True])
+        finally:
+            server._ws_notify = orig_notify
+
 
 class TestAdminAuth(unittest.TestCase):
     """Tests for admin authentication."""
@@ -562,6 +632,10 @@ class TestHTTPIntegration(unittest.TestCase):
         """POST with host token auth."""
         return self._post(path, data, headers={"Authorization": f"Bearer {server.HOST_TOKEN}"})
 
+    def _host_get(self, path):
+        """GET with host token auth (X-Host-Token header)."""
+        return self._get(path, headers={"X-Host-Token": server.HOST_TOKEN})
+
     def test_health(self):
         data = self._get("/api/health")
         self.assertTrue(data["ok"])
@@ -600,10 +674,333 @@ class TestHTTPIntegration(unittest.TestCase):
         # P1 should have score > 0
         p1_score = next(p for p in state["players"] if p["name"] == "P1")
         self.assertGreater(p1_score["score"], 0)
-        # Host view includes player_id; player view should NOT
-        self.assertIn("player_id", state["players"][0])  # host=1 → host view
+        # host=1 WITHOUT token silently degrades to public view: no player_id
+        self.assertNotIn("player_id", state["players"][0])
+        # host=1 WITH the X-Host-Token header → full host view with player_id
+        host_state = self._host_get("/api/state?host=1")
+        self.assertIn("player_id", host_state["players"][0])
         player_state = self._get("/api/state")
         self.assertNotIn("player_id", player_state["players"][0])  # player view
+
+    def test_state_host_view_requires_token(self):
+        """host=1 without a valid token silently degrades to the public view."""
+        self._post("/api/register", {"name": "SecPlayer"})
+        self._host_post("/api/host/action", {"action": "start"})
+
+        # No token → public view: no answer leak during the question phase
+        state = self._get("/api/state?host=1")
+        self.assertEqual(state["phase"], "question")
+        self.assertNotIn("correct_index", state["question"])
+        self.assertNotIn("explanation", state["question"])
+        self.assertNotIn("player_id", state["players"][0])
+        self.assertNotIn("bot_score", state["players"][0])
+        self.assertEqual(state["suspected_bots"], [])
+
+        # Wrong token → still the public view, no error
+        bad = self._get("/api/state?host=1", headers={"X-Host-Token": "wrong-token"})
+        self.assertEqual(bad["phase"], "question")
+        self.assertNotIn("correct_index", bad["question"])
+        self.assertNotIn("player_id", bad["players"][0])
+
+        # Correct X-Host-Token header → full host view during the question
+        host_state = self._host_get("/api/state?host=1")
+        self.assertEqual(host_state["question"]["correct_index"], 1)
+        self.assertIn("player_id", host_state["players"][0])
+        self.assertIn("bot_score", host_state["players"][0])
+
+        # Legacy Authorization: Bearer form is accepted as well
+        bearer = self._get(
+            "/api/state?host=1",
+            headers={"Authorization": f"Bearer {server.HOST_TOKEN}"},
+        )
+        self.assertEqual(bearer["question"]["correct_index"], 1)
+
+        # Without host=1 the token alone must not switch to host view
+        plain = self._host_get("/api/state")
+        self.assertNotIn("player_id", plain["players"][0])
+
+    def test_ws_host_view_requires_token(self):
+        """WebSocket host=1 without a token must not receive the host view."""
+        import socket as socket_mod
+
+        from ws import OPCODE_TEXT, ws_decode_frame
+
+        self._post("/api/register", {"name": "WsPlayer"})
+        self._host_post("/api/host/action", {"action": "start"})
+
+        def ws_initial_state(extra_headers=""):
+            sock = socket_mod.create_connection(("127.0.0.1", self.port), timeout=5)
+            try:
+                request = (
+                    "GET /api/ws?host=1 HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{self.port}\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    f"{extra_headers}"
+                    "\r\n"
+                )
+                sock.sendall(request.encode("ascii"))
+                buf = b""
+                while b"\r\n\r\n" not in buf:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        self.fail("WebSocket handshake failed (connection closed)")
+                    buf += chunk
+                status_line = buf.split(b"\r\n", 1)[0]
+                self.assertIn(b"101", status_line)
+                frame_data = buf.split(b"\r\n\r\n", 1)[1]
+                for _ in range(50):
+                    result = ws_decode_frame(bytes(frame_data))
+                    if result is not None:
+                        opcode, payload, consumed = result
+                        frame_data = frame_data[consumed:]
+                        if opcode == OPCODE_TEXT:
+                            return json.loads(payload.decode("utf-8"))
+                        continue  # skip pings etc.
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    frame_data += chunk
+                self.fail("No WebSocket state frame received")
+            finally:
+                sock.close()
+
+        # Without token: public view even with host=1 in the WS query
+        state = ws_initial_state()
+        self.assertNotIn("player_id", state["players"][0])
+        self.assertNotIn("correct_index", state["question"])
+
+        # With X-Host-Token handshake header: full host view
+        host_state = ws_initial_state(f"X-Host-Token: {server.HOST_TOKEN}\r\n")
+        self.assertIn("player_id", host_state["players"][0])
+        self.assertEqual(host_state["question"]["correct_index"], 1)
+
+    def test_ws_client_does_not_deadlock_host_actions(self):
+        """Host actions must not freeze the server while a WS client is open.
+
+        Regression: _ws_notify() used to run inside the game lock; the WS
+        broadcast re-acquires that lock via public_state(), so any host
+        action with >= 1 connected WebSocket deadlocked the whole server.
+        Each POST below uses a hard 5s timeout — without the fix it hangs,
+        with it it returns 200 and the change arrives as a WS broadcast.
+        """
+        import socket as socket_mod
+
+        from ws import OPCODE_TEXT, ws_decode_frame
+
+        self._post("/api/register", {"name": "WsDeadlock"})
+
+        def host_action(action):
+            body = json.dumps({"action": action}).encode()
+            req = Request(
+                f"{self.base_url}/api/host/action",
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {server.HOST_TOKEN}",
+                },
+                method="POST",
+            )
+            with urlopen(req, timeout=5) as r:  # hangs forever without the fix
+                self.assertEqual(r.status, 200)
+                return json.loads(r.read())
+
+        sock = socket_mod.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            request = (
+                "GET /api/ws HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            )
+            sock.sendall(request.encode("ascii"))
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    self.fail("WebSocket handshake failed (connection closed)")
+                buf += chunk
+            self.assertIn(b"101", buf.split(b"\r\n", 1)[0])
+            frame_buf = bytearray(buf.split(b"\r\n\r\n", 1)[1])
+
+            def next_state_where(predicate, what):
+                """Read WS frames until a state frame satisfies predicate."""
+                deadline = time.time() + 5
+                while time.time() < deadline:
+                    result = ws_decode_frame(bytes(frame_buf))
+                    if result is not None:
+                        opcode, payload, consumed = result
+                        del frame_buf[:consumed]
+                        if opcode == OPCODE_TEXT:
+                            state = json.loads(payload.decode("utf-8"))
+                            if predicate(state):
+                                return state
+                        continue  # skip pings etc.
+                    try:
+                        chunk = sock.recv(4096)
+                    except socket_mod.timeout:
+                        break
+                    if not chunk:
+                        self.fail("WebSocket closed while waiting for broadcast")
+                    frame_buf.extend(chunk)
+                self.fail(f"No WS broadcast received: {what}")
+
+            # Initial state is pushed right after the handshake
+            next_state_where(lambda s: s["phase"] == "lobby", "initial lobby state")
+
+            self.assertTrue(host_action("start")["ok"])
+            next_state_where(lambda s: s["phase"] == "question", "start broadcast")
+
+            self.assertTrue(host_action("reveal")["ok"])
+            next_state_where(lambda s: s["phase"] == "reveal", "reveal broadcast")
+
+            self.assertTrue(host_action("next")["ok"])
+            next_state_where(
+                lambda s: s["phase"] == "question" and s["current_index"] == 1,
+                "next broadcast",
+            )
+
+            self.assertTrue(host_action("reset")["ok"])
+            next_state_where(lambda s: s["phase"] == "lobby", "reset broadcast")
+        finally:
+            sock.close()
+
+    def test_ws_ticker_broadcasts_auto_transitions(self):
+        """Timer-driven transitions must reach WS clients without any client
+        action (regression): WS clients stop polling, so question timeout ->
+        reveal -> next question -> finished must be pushed by the server
+        ticker. Also checks the ticker stays silent while nothing changes.
+        """
+        import socket as socket_mod
+
+        from ws import OPCODE_TEXT, ws_decode_frame
+
+        server.start_quiz_ticker()  # lazy-started by main() in production
+        time.sleep(0.1)  # let the first tick sync its (phase, index) marker
+
+        orig_q_sec = server.QUIZ.question_duration_sec
+        orig_r_sec = server.QUIZ.reveal_duration_sec
+
+        sock = socket_mod.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            request = (
+                "GET /api/ws HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            )
+            sock.sendall(request.encode("ascii"))
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    self.fail("WebSocket handshake failed (connection closed)")
+                buf += chunk
+            self.assertIn(b"101", buf.split(b"\r\n", 1)[0])
+            frame_buf = bytearray(buf.split(b"\r\n\r\n", 1)[1])
+
+            def read_text_frames_for(seconds):
+                """Collect all TEXT frames arriving within `seconds`."""
+                frames = []
+                deadline = time.time() + seconds
+                while True:
+                    result = ws_decode_frame(bytes(frame_buf))
+                    if result is not None:
+                        opcode, payload, consumed = result
+                        del frame_buf[:consumed]
+                        if opcode == OPCODE_TEXT:
+                            frames.append(json.loads(payload.decode("utf-8")))
+                        continue
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        return frames
+                    sock.settimeout(remaining)
+                    try:
+                        chunk = sock.recv(4096)
+                    except socket_mod.timeout:
+                        return frames
+                    finally:
+                        sock.settimeout(5)
+                    if not chunk:
+                        self.fail("WebSocket closed unexpectedly")
+                    frame_buf.extend(chunk)
+
+            def next_state_where(predicate, what, deadline_sec):
+                """Read WS frames until a state frame satisfies predicate."""
+                deadline = time.time() + deadline_sec
+                while time.time() < deadline:
+                    result = ws_decode_frame(bytes(frame_buf))
+                    if result is not None:
+                        opcode, payload, consumed = result
+                        del frame_buf[:consumed]
+                        if opcode == OPCODE_TEXT:
+                            state = json.loads(payload.decode("utf-8"))
+                            if predicate(state):
+                                return state
+                        continue  # skip pings etc.
+                    try:
+                        chunk = sock.recv(4096)
+                    except socket_mod.timeout:
+                        continue
+                    if not chunk:
+                        self.fail("WebSocket closed while waiting for broadcast")
+                    frame_buf.extend(chunk)
+                self.fail(f"No WS broadcast received: {what}")
+
+            # Initial state is pushed right after the handshake
+            next_state_where(lambda s: s["phase"] == "lobby", "initial lobby state", 5)
+
+            # Quiet lobby: the ticker must not spam unchanged state
+            self.assertEqual(read_text_frames_for(2.0), [])
+
+            # Short timers so the whole game runs on timeouts alone
+            # (set directly: set_timing clamps question_sec to >= 5 s)
+            server.QUIZ.question_duration_sec = 1.5
+            server.QUIZ.reveal_duration_sec = 1.5
+
+            body = json.dumps({"action": "start"}).encode()
+            req = Request(
+                f"{self.base_url}/api/host/action",
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {server.HOST_TOKEN}",
+                },
+                method="POST",
+            )
+            with urlopen(req, timeout=5) as r:
+                self.assertEqual(r.status, 200)
+
+            # From here on NOBODY answers or polls — the ticker must push
+            # every transition of the 2-question bank on its own.
+            next_state_where(
+                lambda s: s["phase"] == "question" and s["current_index"] == 0,
+                "start broadcast", 5,
+            )
+            next_state_where(
+                lambda s: s["phase"] == "reveal" and s["current_index"] == 0,
+                "auto reveal broadcast (question timeout)", 10,
+            )
+            next_state_where(
+                lambda s: s["phase"] == "question" and s["current_index"] == 1,
+                "auto next-question broadcast", 10,
+            )
+            next_state_where(
+                lambda s: s["phase"] == "finished",
+                "auto finished broadcast", 10,
+            )
+        finally:
+            sock.close()
+            server.QUIZ.question_duration_sec = orig_q_sec
+            server.QUIZ.reveal_duration_sec = orig_r_sec
 
     def test_admin_banks_api(self):
         banks = self._get("/api/admin/banks")
@@ -629,6 +1026,25 @@ class TestHTTPIntegration(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["question_duration_sec"], 30)
         self.assertEqual(result["reveal_duration_sec"], 8)
+
+    def test_admin_timing_new_keys(self):
+        result = self._post("/api/admin/timing", {"get_ready_sec": 5, "final_double": True})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["get_ready_sec"], 5)
+        self.assertTrue(result["final_double"])
+        # Restore defaults so other tests see a clean global QUIZ
+        result = self._post("/api/admin/timing", {"get_ready_sec": 3, "final_double": False})
+        self.assertEqual(result["get_ready_sec"], 3)
+        self.assertFalse(result["final_double"])
+
+    def test_admin_timing_old_payload_compat(self):
+        """Old payloads without the new keys still work and leave them untouched."""
+        before = self._get("/api/state")
+        result = self._post("/api/admin/timing", {"question_duration_sec": 25})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["question_duration_sec"], 25)
+        self.assertEqual(result["get_ready_sec"], before["get_ready_sec"])
+        self.assertEqual(result["final_double"], before["final_double"])
 
     def test_admin_auth_status(self):
         data = self._get("/api/admin/auth-status")
@@ -664,6 +1080,105 @@ class TestHTTPIntegration(unittest.TestCase):
         result = self._host_post("/api/host/action", {"action": "save_history"})
         self.assertTrue(result["ok"])
         self.assertIn("record", result)
+
+
+class TestRegisterAvatarHTTP(unittest.TestCase):
+    """Tests for optional avatar_id in POST /api/register."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp()
+        cls.orig_questions_dir = server.QUESTIONS_DIR
+        cls.orig_history_dir = server.HISTORY_DIR
+        server.QUESTIONS_DIR = Path(cls.tmpdir) / "questions"
+        server.HISTORY_DIR = Path(cls.tmpdir) / "history"
+        server.QUESTIONS_DIR.mkdir()
+        server.HISTORY_DIR.mkdir()
+
+        # Isolated user DB (needed for logged-in registration tests)
+        import db
+        cls.orig_db_path = db._DB_PATH
+        db.set_db_path(Path(cls.tmpdir) / "test_avatar.db")
+        db._migrated = False
+        db.init_db()
+
+        test_q = [
+            {"id": "av1", "prompt": "Avatar Q1?", "options": ["A", "B", "C", "D"], "correct_index": 0, "explanation": "A"},
+        ]
+        server.QUIZ.reload_questions(test_q, "avatar_bank.json")
+        server.ADMIN_AUTH.set_password(None)
+
+        cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        cls.port = cls.httpd.server_address[1]
+        cls.base_url = f"http://127.0.0.1:{cls.port}"
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        server.QUESTIONS_DIR = cls.orig_questions_dir
+        server.HISTORY_DIR = cls.orig_history_dir
+        import db
+        db.set_db_path(cls.orig_db_path)
+        shutil.rmtree(cls.tmpdir)
+
+    def setUp(self):
+        # Avoid 429s from the shared registration rate limiter
+        server.REGISTER_LIMITER._attempts.clear()
+
+    def _get(self, path):
+        with urlopen(Request(f"{self.base_url}{path}")) as r:
+            return json.loads(r.read())
+
+    def _post(self, path, data):
+        body = json.dumps(data).encode()
+        req = Request(f"{self.base_url}{path}", data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(req) as r:
+            return json.loads(r.read())
+
+    def test_register_valid_avatar_saved_and_returned(self):
+        reg = self._post("/api/register", {"name": "AvatarFan", "avatar_id": 7})
+        self.assertEqual(reg["avatar_id"], 7)
+        # avatar_id propagates to me + players in state
+        state = self._get(f"/api/state?player_id={reg['player_id']}")
+        self.assertEqual(state["me"]["avatar_id"], 7)
+        entry = next(p for p in state["players"] if p["name"] == "AvatarFan")
+        self.assertEqual(entry["avatar_id"], 7)
+
+    def test_register_avatar_numeric_string(self):
+        reg = self._post("/api/register", {"name": "StringAv", "avatar_id": "12"})
+        self.assertEqual(reg["avatar_id"], 12)
+
+    def test_register_avatar_invalid_falls_back_to_zero(self):
+        for i, bad in enumerate(["abc", -1, 999]):
+            reg = self._post("/api/register", {"name": f"BadAv{i}", "avatar_id": bad})
+            self.assertIn("player_id", reg)  # registration must still succeed
+            self.assertEqual(reg["avatar_id"], 0)
+
+    def test_register_avatar_missing_defaults_to_zero(self):
+        reg = self._post("/api/register", {"name": "NoAv"})
+        self.assertIn("player_id", reg)
+        self.assertEqual(reg["avatar_id"], 0)
+
+    def test_register_logged_in_profile_avatar_wins(self):
+        import db
+        user = db.create_user("AvUser", "pass1234", "student", avatar_id=5)
+        token = db.create_session(user["id"])
+        reg = self._post("/api/register", {"name": "AvUser", "avatar_id": 9, "user_token": token})
+        self.assertEqual(reg["avatar_id"], 5)
+
+    def test_register_logged_in_without_profile_avatar_uses_sent(self):
+        import db
+        user = db.create_user("NoAvUser", "pass1234", "student")
+        # create_user always assigns 1-20, so force "no avatar" directly in DB
+        conn = db.get_conn()
+        conn.execute("UPDATE users SET avatar_id = 0 WHERE id = ?", (user["id"],))
+        conn.commit()
+        conn.close()
+        token = db.create_session(user["id"])
+        reg = self._post("/api/register", {"name": "NoAvUser", "avatar_id": 9, "user_token": token})
+        self.assertEqual(reg["avatar_id"], 9)
 
 
 class TestAdminAuthHTTP(unittest.TestCase):
@@ -1512,19 +2027,496 @@ class TestStreakCombo(unittest.TestCase):
         self.assertEqual(state["me"]["max_streak"], 1)
 
 
+class TestDoublePoints(unittest.TestCase):
+    """Tests for the double-points question flag and final_double timing option."""
+
+    def _make_qs(self, n_questions=3, double_indices=()):
+        questions = []
+        for i in range(n_questions):
+            q = {"id": f"d{i}", "prompt": f"Q{i}?", "options": ["A", "B", "C", "D"], "correct_index": 0}
+            if i in double_indices:
+                q["double"] = True
+            questions.append(q)
+        return server.QuizState(questions)
+
+    def _inject_answer(self, qs, pid, correct=True):
+        """Inject an instant answer (elapsed 0 -> base points 1000)."""
+        now = time.time()
+        qs.question_started_at = now
+        qs.answers = {pid: {"choice": 0 if correct else 1, "time": now}}
+        qs.scored_question_index = None
+
+    def test_double_flag_validation_accepts_missing(self):
+        q = {"id": "v1", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0}
+        server._validate_question(q, 0)  # should not raise
+
+    def test_double_flag_validation_accepts_bool(self):
+        for value in (True, False):
+            q = {"id": "v1", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0, "double": value}
+            server._validate_question(q, 0)  # should not raise
+
+    def test_double_flag_validation_rejects_non_bool(self):
+        for value in (1, "yes", None, [True]):
+            q = {"id": "v1", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0, "double": value}
+            with self.assertRaises(RuntimeError):
+                server._validate_question(q, 0)
+
+    def test_double_question_doubles_points(self):
+        qs = self._make_qs(double_indices={0})
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")  # prevent auto-advance
+        pid = r["player_id"]
+        qs.host_action("start")
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 2000)  # 1000 * 2
+
+    def test_normal_question_not_doubled(self):
+        qs = self._make_qs()
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 1000)
+
+    def test_double_wrong_answer_still_zero(self):
+        qs = self._make_qs(double_indices={0})
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+        self._inject_answer(qs, pid, correct=False)
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 0)
+
+    def test_set_timing_final_double(self):
+        qs = self._make_qs()
+        self.assertFalse(qs.final_double)  # default off
+        qs.set_timing(final_double=True)
+        self.assertTrue(qs.final_double)
+        qs.set_timing(question_sec=30)  # old-style call leaves it untouched
+        self.assertTrue(qs.final_double)
+        qs.set_timing(final_double=False)
+        self.assertFalse(qs.final_double)
+
+    def test_final_double_scores_last_question_double(self):
+        qs = self._make_qs(n_questions=2)
+        qs.set_timing(final_double=True)
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 1000)  # first question not doubled
+
+        qs.host_action("next")
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        # Last question: streak 2 (1.0x) -> 1000 * 2 = 2000
+        self.assertEqual(qs.players[pid].score, 3000)
+
+    def test_final_double_off_by_default(self):
+        qs = self._make_qs(n_questions=2)
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        qs.host_action("next")
+        self._inject_answer(qs, pid, correct=True)
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 2000)  # no doubling anywhere
+
+    def test_double_stacks_with_streak_multiplier(self):
+        """Double applies AFTER the streak multiplier: int(1000*1.2)*2 = 2400."""
+        qs = self._make_qs(n_questions=3, double_indices={2})
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+
+        for _ in range(2):
+            self._inject_answer(qs, pid, correct=True)
+            qs.host_action("reveal")
+            qs.host_action("next")
+
+        self._inject_answer(qs, pid, correct=True)  # streak 3 -> 1.2x, doubled
+        qs.host_action("reveal")
+        expected = 1000 + 1000 + int(1000 * 1.2) * 2
+        self.assertEqual(qs.players[pid].score, expected)
+
+    def test_double_exposed_in_state(self):
+        qs = self._make_qs(n_questions=2, double_indices={0})
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        qs.host_action("start")
+
+        # Question phase: player and host both see the flag
+        state = qs.public_state(player_id=r["player_id"])
+        self.assertTrue(state["question"]["double"])
+        self.assertTrue(qs.public_state(host_view=True)["question"]["double"])
+
+        # Reveal phase keeps the flag
+        qs.host_action("reveal")
+        self.assertTrue(qs.public_state()["question"]["double"])
+
+        # Second question has no flag
+        qs.host_action("next")
+        self.assertFalse(qs.public_state()["question"]["double"])
+
+    def test_final_double_exposed_on_last_question(self):
+        qs = self._make_qs(n_questions=2)
+        qs.set_timing(final_double=True)
+        qs.register_player("Alice")
+        qs.register_player("Dummy")
+        qs.host_action("start")
+        self.assertFalse(qs.public_state()["question"]["double"])
+        qs.host_action("reveal")
+        qs.host_action("next")
+        self.assertTrue(qs.public_state()["question"]["double"])
+
+    def test_final_double_in_top_level_state(self):
+        qs = self._make_qs()
+        self.assertFalse(qs.public_state()["final_double"])
+        qs.set_timing(final_double=True)
+        self.assertTrue(qs.public_state()["final_double"])
+
+
+class TestGetReady(unittest.TestCase):
+    """Tests for the get-ready countdown and its scoring adjustment."""
+
+    def _sample_questions(self):
+        return [
+            {"id": "g1", "prompt": "Q1?", "options": ["A", "B", "C", "D"], "correct_index": 0},
+        ]
+
+    def _q(self):
+        return {"id": "c1", "prompt": "?", "options": ["A", "B", "C", "D"], "correct_index": 0}
+
+    def test_default_value(self):
+        qs = server.QuizState(self._sample_questions())
+        self.assertEqual(qs.get_ready_sec, 3)
+
+    def test_exposed_in_state(self):
+        qs = server.QuizState(self._sample_questions())
+        state = qs.public_state()
+        self.assertEqual(state["get_ready_sec"], 3)
+        qs.set_timing(get_ready_sec=5)
+        self.assertEqual(qs.public_state()["get_ready_sec"], 5)
+
+    def test_set_timing_clamped_0_to_10(self):
+        qs = server.QuizState(self._sample_questions())
+        qs.set_timing(get_ready_sec=99)
+        self.assertEqual(qs.get_ready_sec, 10)
+        qs.set_timing(get_ready_sec=-4)
+        self.assertEqual(qs.get_ready_sec, 0)
+        qs.set_timing(get_ready_sec=7)
+        self.assertEqual(qs.get_ready_sec, 7)
+
+    def test_set_timing_old_call_keeps_get_ready(self):
+        qs = server.QuizState(self._sample_questions())
+        qs.set_timing(question_sec=30, reveal_sec=8)
+        self.assertEqual(qs.get_ready_sec, 3)
+
+    def test_speed_bonus_uses_effective_elapsed(self):
+        """elapsed 5s with get_ready 3 counts as 2s: 600 + 38*10 = 980."""
+        started = 1000.0
+        answer = {"choice": 0, "time": started + 5.0}
+        pts = server.QuizState._calculate_points(self._q(), "choice", answer, started, 3)
+        self.assertEqual(pts, 980)
+
+    def test_speed_bonus_without_get_ready(self):
+        """Default get_ready_sec=0 keeps the original formula: 600 + 35*10 = 950."""
+        started = 1000.0
+        answer = {"choice": 0, "time": started + 5.0}
+        pts = server.QuizState._calculate_points(self._q(), "choice", answer, started)
+        self.assertEqual(pts, 950)
+
+    def test_full_bonus_within_get_ready_window(self):
+        """Answer during the countdown (elapsed 2 < 3) gets the full bonus."""
+        started = 1000.0
+        answer = {"choice": 0, "time": started + 2.0}
+        pts = server.QuizState._calculate_points(self._q(), "choice", answer, started, 3)
+        self.assertEqual(pts, 1000)
+
+    def test_get_ready_zero_disables_adjustment(self):
+        started = 1000.0
+        answer = {"choice": 0, "time": started + 5.0}
+        pts = server.QuizState._calculate_points(self._q(), "choice", answer, started, 0)
+        self.assertEqual(pts, 950)
+
+    def test_scoring_integration_uses_quiz_get_ready(self):
+        """_apply_scoring passes the configured get_ready_sec through."""
+        qs = server.QuizState(self._sample_questions())
+        qs.set_timing(get_ready_sec=5)
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        pid = r["player_id"]
+        qs.host_action("start")
+        started = time.time()
+        qs.question_started_at = started
+        qs.answers = {pid: {"choice": 0, "time": started + 4.0}}  # inside the window
+        qs.scored_question_index = None
+        qs.host_action("reveal")
+        self.assertEqual(qs.players[pid].score, 1000)  # full speed bonus
+
+    def test_answers_accepted_during_get_ready_window(self):
+        """Server accepts answers immediately after start (during the countdown)."""
+        qs = server.QuizState(self._sample_questions())
+        r = qs.register_player("Alice")
+        qs.register_player("Dummy")
+        qs.host_action("start")
+        qs.submit_answer(r["player_id"], r["player_secret"], 0)  # elapsed ~0 < 3
+        self.assertIn(r["player_id"], qs.answers)
+
+
+class TestAwards(unittest.TestCase):
+    """Tests for end-of-game awards, using simulated multi-player games."""
+
+    def setUp(self):
+        # Finished games auto-save history; keep it out of the repo dir
+        self.tmpdir = tempfile.mkdtemp()
+        self.orig_history_dir = server.HISTORY_DIR
+        server.HISTORY_DIR = Path(self.tmpdir)
+
+    def tearDown(self):
+        server.HISTORY_DIR = self.orig_history_dir
+        shutil.rmtree(self.tmpdir)
+
+    def _make_qs(self, n_questions):
+        questions = [
+            {"id": f"a{i}", "prompt": f"Q{i}?", "options": ["A", "B", "C", "D"], "correct_index": 0}
+            for i in range(n_questions)
+        ]
+        qs = server.QuizState(questions)
+        qs.set_timing(get_ready_sec=0)  # deterministic elapsed -> points math
+        return qs
+
+    def _register(self, qs, names):
+        """Register players plus a silent dummy that prevents auto-advance."""
+        pids = {name: qs.register_player(name)["player_id"] for name in names}
+        qs.register_player("zzz")  # never answers
+        return pids
+
+    def _play_question(self, qs, answers):
+        """Score the current question with controlled answers and advance.
+
+        answers: {player_id: (correct, elapsed_sec)}
+        """
+        started = time.time()
+        qs.question_started_at = started
+        qs.answers = {
+            pid: {"choice": 0 if correct else 1, "time": started + elapsed}
+            for pid, (correct, elapsed) in answers.items()
+        }
+        qs.scored_question_index = None
+        qs.host_action("reveal")
+        qs.host_action("next")
+
+    def _award_map(self, state):
+        return {a["key"]: a for a in state.get("awards", [])}
+
+    def test_fastest_finger_needs_3_correct_and_lowest_avg(self):
+        qs = self._make_qs(4)
+        p = self._register(qs, ["Rychla", "Pomaly", "Kratka"])
+        qs.host_action("start")
+        # Rychla: 3 correct at 2s (avg 2.0); Pomaly: 4 correct at 10s (streak 4);
+        # Kratka: only 2 correct at 0s -> below the 3-correct minimum
+        self._play_question(qs, {p["Rychla"]: (True, 2), p["Pomaly"]: (True, 10), p["Kratka"]: (True, 0)})
+        self._play_question(qs, {p["Rychla"]: (True, 2), p["Pomaly"]: (True, 10), p["Kratka"]: (True, 0)})
+        self._play_question(qs, {p["Rychla"]: (True, 2), p["Pomaly"]: (True, 10), p["Kratka"]: (False, 0)})
+        self._play_question(qs, {p["Rychla"]: (False, 2), p["Pomaly"]: (True, 10), p["Kratka"]: (False, 0)})
+
+        self.assertEqual(qs.phase, "finished")
+        awards = self._award_map(qs.public_state())
+        self.assertIn("fastest_finger", awards)
+        self.assertEqual(awards["fastest_finger"]["player"], "Rychla")
+        self.assertEqual(awards["fastest_finger"]["value"], "2.0 s")
+        # Pomaly has 4-in-a-row -> streak_master
+        self.assertEqual(awards["streak_master"]["player"], "Pomaly")
+        self.assertEqual(awards["streak_master"]["value"], "série 4")
+        # Nobody else qualifies for the remaining awards
+        self.assertNotIn("sharpshooter", awards)
+        self.assertNotIn("comeback", awards)
+
+    def test_priority_order_and_max_one_award_per_player(self):
+        """Adam qualifies for everything but gets only the highest-priority award."""
+        qs = self._make_qs(4)
+        p = self._register(qs, ["Adam", "Bara", "Dana"])
+        qs.host_action("start")
+        # All three answer everything correctly, at 0s / 10s / 20s
+        for _ in range(4):
+            self._play_question(qs, {p["Adam"]: (True, 0), p["Bara"]: (True, 10), p["Dana"]: (True, 20)})
+
+        state = qs.public_state()
+        awards = self._award_map(state)
+        self.assertEqual(awards["fastest_finger"]["player"], "Adam")
+        self.assertEqual(awards["streak_master"]["player"], "Bara")  # tie 4 vs 4, name order
+        self.assertEqual(awards["sharpshooter"]["player"], "Dana")
+        self.assertEqual(awards["sharpshooter"]["value"], "4/4")
+        # Max one award per player
+        winners = [a["player"] for a in state["awards"]]
+        self.assertEqual(len(winners), len(set(winners)))
+        # Priority order preserved in the list itself
+        keys = [a["key"] for a in state["awards"]]
+        self.assertEqual(keys, ["fastest_finger", "streak_master", "sharpshooter"])
+
+    def test_comeback_rank_improvement(self):
+        qs = self._make_qs(6)  # midgame rank recorded at question index 3
+        p = self._register(qs, ["Alena", "Beata", "Cyril", "David"])
+        qs.host_action("start")
+        self._play_question(qs, {p["Alena"]: (True, 10), p["Beata"]: (True, 20), p["Cyril"]: (True, 30)})
+        self._play_question(qs, {p["Alena"]: (True, 10), p["Beata"]: (True, 20)})
+        self._play_question(qs, {})
+        self._play_question(qs, {})  # midgame: Alena 1., Beata 2., Cyril 3., David 4.
+        self._play_question(qs, {p["David"]: (True, 0)})
+        self._play_question(qs, {p["David"]: (True, 0)})  # David finishes 1st (2000 pts)
+
+        self.assertEqual(qs.players[p["David"]].midgame_rank, 4)
+        awards = self._award_map(qs.public_state())
+        self.assertEqual(list(awards), ["comeback"])  # nobody qualifies for the rest
+        self.assertEqual(awards["comeback"]["player"], "David")
+        self.assertEqual(awards["comeback"]["value"], "+3 míst")
+
+    def test_tie_prefers_player_outside_top3(self):
+        """streak_master tie (6 vs 6 vs 6) goes to the player outside the top 3."""
+        qs = self._make_qs(6)
+        p = self._register(qs, ["Alik", "Bara", "Cyril", "Zofie"])
+        qs.host_action("start")
+        # Everyone 100% correct; speed decides final ranks:
+        # Alik 7600 (1.), Bara 6840 (2.), Cyril 6080 (3.), Zofie 5320 (4.)
+        for _ in range(6):
+            self._play_question(qs, {
+                p["Alik"]: (True, 0), p["Bara"]: (True, 10),
+                p["Cyril"]: (True, 20), p["Zofie"]: (True, 30),
+            })
+
+        awards = self._award_map(qs.public_state())
+        self.assertEqual(awards["fastest_finger"]["player"], "Alik")
+        # Bara, Cyril and Zofie all have max_streak 6; plain name order would
+        # pick Bara, but Zofie is outside the top 3 and takes precedence
+        self.assertEqual(awards["streak_master"]["player"], "Zofie")
+        self.assertEqual(awards["streak_master"]["value"], "série 6")
+        self.assertEqual(awards["sharpshooter"]["player"], "Bara")
+
+    def test_awards_cached_and_reset(self):
+        qs = self._make_qs(2)
+        p = self._register(qs, ["Hrac"])
+        qs.host_action("start")
+        self._play_question(qs, {p["Hrac"]: (True, 0)})
+        self._play_question(qs, {p["Hrac"]: (True, 0)})
+
+        self.assertEqual(qs.phase, "finished")
+        self.assertIsNotNone(qs._awards_cache)
+        cache_before = qs._awards_cache
+        qs.public_state()
+        qs.public_state()
+        self.assertIs(qs._awards_cache, cache_before)  # computed once, reused
+
+        qs.host_action("reset")
+        self.assertIsNone(qs._awards_cache)
+        self.assertNotIn("awards", qs.public_state())
+        player = qs.players[p["Hrac"]]
+        self.assertEqual(player.answered_count, 0)
+        self.assertEqual(player.correct_count, 0)
+        self.assertEqual(player.correct_times, [])
+        self.assertIsNone(player.midgame_rank)
+
+    def test_awards_shape_and_me_keys(self):
+        qs = self._make_qs(2)
+        p = self._register(qs, ["Hrac"])
+        qs.host_action("start")
+        self.assertNotIn("awards", qs.public_state())  # only in finished phase
+        self._play_question(qs, {p["Hrac"]: (True, 0)})
+        self._play_question(qs, {p["Hrac"]: (True, 0)})
+
+        state = qs.public_state(player_id=p["Hrac"])
+        # Hrac answered 2/2 correctly -> sharpshooter (too few correct for fastest)
+        self.assertEqual(len(state["awards"]), 1)
+        entry = state["awards"][0]
+        self.assertEqual(set(entry), {"key", "player", "avatar_id", "value"})  # no player_id leak
+        self.assertEqual(entry["key"], "sharpshooter")
+        self.assertEqual(entry["value"], "2/2")
+        self.assertEqual(state["me"]["awards"], ["sharpshooter"])
+
+        # The silent dummy earned nothing
+        dummy_pid = next(pid for pid, pl in qs.players.items() if pl.name == "zzz")
+        dummy_state = qs.public_state(player_id=dummy_pid)
+        self.assertEqual(dummy_state["me"]["awards"], [])
+
+
+class TestRankRival(unittest.TestCase):
+    """Tests for personal rank and the rival ("behind") info in me."""
+
+    def _make_game(self):
+        questions = [
+            {"id": "r1", "prompt": "Q?", "options": ["A", "B", "C", "D"], "correct_index": 0},
+        ]
+        qs = server.QuizState(questions)
+        pids = {}
+        for name in ("Ada", "Ben", "Cid"):
+            pids[name] = qs.register_player(name)["player_id"]
+        qs.host_action("start")
+        qs.players[pids["Ada"]].score = 3000
+        qs.players[pids["Ben"]].score = 2000
+        qs.players[pids["Cid"]].score = 1000
+        return qs, pids
+
+    def test_rank_in_me(self):
+        qs, pids = self._make_game()
+        self.assertEqual(qs.public_state(player_id=pids["Ada"])["me"]["rank"], 1)
+        self.assertEqual(qs.public_state(player_id=pids["Ben"])["me"]["rank"], 2)
+        self.assertEqual(qs.public_state(player_id=pids["Cid"])["me"]["rank"], 3)
+
+    def test_behind_names_player_directly_above(self):
+        qs, pids = self._make_game()
+        me = qs.public_state(player_id=pids["Cid"])["me"]
+        self.assertEqual(me["behind"], {"name": "Ben", "gap": 1000})
+        me = qs.public_state(player_id=pids["Ben"])["me"]
+        self.assertEqual(me["behind"], {"name": "Ada", "gap": 1000})
+
+    def test_leader_behind_is_null(self):
+        qs, pids = self._make_game()
+        me = qs.public_state(player_id=pids["Ada"])["me"]
+        self.assertIsNone(me["behind"])
+
+    def test_tie_uses_stable_name_order(self):
+        qs, pids = self._make_game()
+        qs.players[pids["Ben"]].score = 3000  # tie with Ada
+        me_ada = qs.public_state(player_id=pids["Ada"])["me"]
+        me_ben = qs.public_state(player_id=pids["Ben"])["me"]
+        self.assertEqual(me_ada["rank"], 1)
+        self.assertEqual(me_ben["rank"], 2)
+        self.assertEqual(me_ben["behind"], {"name": "Ada", "gap": 0})
+
+    def test_present_in_reveal_phase(self):
+        qs, pids = self._make_game()
+        qs.host_action("reveal")
+        me = qs.public_state(player_id=pids["Ben"])["me"]
+        self.assertEqual(me["rank"], 2)
+        self.assertIn("behind", me)
+
+
 class TestWebSocket(unittest.TestCase):
     """Tests for ws.py WebSocket implementation."""
 
     def test_accept_key_known_vector(self):
-        """Accept key computation: SHA1(key + GUID) base64-encoded."""
+        """Accept key matches the official RFC 6455 section 1.3 example.
+
+        The expected value is a spec literal on purpose: recomputing it from
+        our own GUID constant once masked a wrong GUID (browsers rejected
+        every handshake while this suite stayed green).
+        """
         from ws import ws_accept_key
-        import base64, hashlib
-        # Use a known key and independently compute the expected value
-        client_key = "AAAAAAAAAAAAAAAAAAAAAA=="
-        guid = "258EAFA5-E914-47DA-95CA-5ABFB7FE4357"
-        combined = client_key + guid
-        expected = base64.b64encode(hashlib.sha1(combined.encode("ascii")).digest()).decode("ascii")
-        self.assertEqual(ws_accept_key(client_key), expected)
+        self.assertEqual(
+            ws_accept_key("dGhlIHNhbXBsZSBub25jZQ=="),
+            "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+        )
 
     def test_accept_key_different_inputs(self):
         """Different keys produce different accept values."""

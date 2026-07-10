@@ -2,7 +2,7 @@
 
 ClassRally je lokalni nastroj pro tridu se dvema rezimy:
 
-- **Hra (Kahoot styl)** — ziva lockstep hra, vsichni na stejne otazce, body za rychlost, leaderboard, hudba, podium.
+- **Hra (Kahoot styl)** — ziva lockstep hra, vsichni na stejne otazce, body za rychlost, dvojnasobne body, leaderboard, hudba, oceneni, konfety a slavnostni podium.
 - **Pisemka (test pro znamku)** — kazdy zak svym tempem, vlastni zamichane poradi otazek/odpovedi, casovy limit, automaticke znamkovani (ceske 1-5) a **dohled** (vidite, kdo opustil okno testu).
 
 Ucitel server spusti na notebooku, zaci se pripoji pres QR kod z mobilu. Internet ani studentske ucty nejsou potreba — vse bezi v lokalni siti.
@@ -109,6 +109,14 @@ V ucitelskem portalu (`/admin`) zalozka **Pisemka (test)**:
 
 ClassRally pouziva overeny koncept: barevne odpovedi, odpocet, bodovani za rychlost, zive hlasovani, zebricek, podium. Ale na rozdil od cloudovych sluzeb bezi kompletne ve vasi siti.
 
+### Herni prvky
+
+- **Odpocet "Priprav se"** pred kazdou otazkou (0-10 s, vychozi 3 — nastavitelne v portalu)
+- **Dvojnasobne body** — per otazka (checkbox v editoru) nebo volba "posledni otazka za dvojnasobek"
+- **Oceneni na konci hry** — nejrychlejsi prst, mistr serii, ostrostrelec, velky navrat
+- **Konfety a slavnostni podium** pro nejlepsi hrace
+- **Na mobilu**: prubezne poradi + "ztracis X b na Y", vibrace a volitelne zvuky
+
 ## Ucitelsky portal (/admin)
 
 ### Sady otazek
@@ -118,6 +126,7 @@ ClassRally pouziva overeny koncept: barevne odpovedi, odpocet, bodovani za rychl
 
 ### Editor otazek
 - Vizualni editor: text otazky, 4 moznosti, vyber spravne, vysvetleni
+- Checkbox "Dvojnasobne body" u kazde otazky (bool pole `double` v JSON)
 - Pridani/odebrani otazek, ulozeni zmen
 
 ### AI navrh otazek (pokrocile)
@@ -141,12 +150,14 @@ Konfigurace AI serveru je v tabulce Pokrocile nastaveni.
 
 ### Casovani
 - Kazda otazka bezi **20 sekund** (konfigurovatelne 5–120s)
+- Pred otazkou bezi odpocet "Priprav se" (0-10 s, vychozi 3)
 - Pokud odpovi vsichni driv, vyhodnoceni probehne okamzite
 - Po vyhodnoceni system automaticky prejde na dalsi otazku
 
 ### Bodovani
 - Spravna odpoved: **600 bodu** + bonus za rychlost (az +400)
-- Cim rychleji odpovis, tim vice bodu
+- Cim rychleji odpovis, tim vice bodu — odpocet "Priprav se" se od casu odecita, takze speed bonus bezi az od zobrazeni odpovedi
+- **Dvojnasobne body**: otazka oznacena v editoru (nebo posledni otazka pri zapnute volbe finale) se pocita 2x
 
 ## QR kod pro pripojeni
 
@@ -154,18 +165,17 @@ Na host obrazovce i hracske obrazovce se automaticky zobrazi QR kod s URL pro pr
 
 ## Hudba a zvuky
 
-Audio soubory nejsou soucasti repozitare (licence). Nahrajte vlastni MP3/OGG/WAV do `static/audio/` — server je automaticky nacte a nahodne vybira.
+Vychozi chovani: **vestaveny syntetizator (WebAudio)** — zadne soubory nejsou potreba. Zvukove efekty (spravna/spatna odpoved, tikot odpoctu, drumroll, fanfara) funguji hned po prvnim kliknuti na host obrazovce.
 
-Pokud zadne soubory nenahrajete, host obrazovka pouzije vestaveny syntetizator (WebAudio) — vse funguje i bez MP3.
+Hudba na pozadi je stale **opt-in** — nikdy nezacne hrat sama. Zapina se tlacitkem **Hudba ON**, pripadne auto rezim pak ridi hudbu podle faze kvizu (otazka → napeti, vyhodnoceni → efekt, konec → fanfara).
 
-### Automaticky rezim (default)
-- Pri otazce se spusti hudba
-- Pri vyhodnoceni se pusti zvukovy efekt
-- Kdyz vsichni odpovedeli, zazni kratke upozorneni
-
-### Vlastni soubory
+### Vlastni soubory (maji prednost)
+Nahrajte MP3/OGG/WAV do `static/audio/` — server je automaticky nacte a pouzije misto syntezatoru:
 - Soubory s `stinger`, `reveal`, `hit`, `win`, `ding`, `correct`, `lock`, `end` v nazvu → kratke efekty
-- Ostatni → hudba na pozadi
+- Ostatni → hudba na pozadi (nahodny vyber)
+
+### Stazeni legalni hudby
+Skript `./download_free_quiz_music.sh` stahne legalni hudbu a zvukove efekty (Kevin MacLeod, CC-BY — nutna atribuce; Kenney, CC0) do `static/audio/` vcetne souboru `ATTRIBUTION.md`.
 
 ## Predpripravene sady otazek (16 sad)
 

@@ -85,7 +85,42 @@
     "sp_next_question": "Nächste Frage →",
     "sp_show_results": "Ergebnisse anzeigen",
     "sp_done": "Fertig!",
-    "sp_restart": "Nochmal spielen"
+    "sp_restart": "Nochmal spielen",
+    "get_ready": "Mach dich bereit!",
+    "sound_toggle": "Ton ein/aus",
+    "vibrate_toggle": "Vibration ein/aus",
+    "double_chip": "⚡×2 PUNKTE",
+    "rank_place": "{0}. Platz",
+    "rank_leader": "Du bist in Führung! 👑",
+    "rank_behind": "{0} Pkt. hinter {1} 🎯",
+    "streak_popup": "🔥 Serie {0}! (+{1} % Punkte)",
+    "streak_lost": "Serie futsch 💔",
+    "finish_congrats": "Glückwunsch!",
+    "finish_encourage": "Starke Leistung — nächstes Mal noch besser! 💪",
+    "awards_mine_title": "Deine Auszeichnungen",
+    "awards_all_title": "Auszeichnungen",
+    "award_fastest_finger": "Schnellster Finger",
+    "award_streak_master": "Serienmeister",
+    "award_sharpshooter": "Scharfschütze",
+    "award_comeback": "Großes Comeback",
+    "avatar_pick": "Wähl deinen Avatar:"
+  },
+
+  "fun": {
+    "correct": {
+      "0": "🚀 Raketenstart!",
+      "1": "🧠 Superhirn!",
+      "2": "🎯 Volltreffer!",
+      "3": "⭐ Sternstunde!",
+      "4": "🏆 Du rockst das!"
+    },
+    "wrong": {
+      "0": "💪 Nächstes Mal klappt's!",
+      "1": "🙈 Knapp daneben!",
+      "2": "🍀 Mehr Glück beim nächsten Mal!",
+      "3": "🤓 Aus Fehlern lernt man!",
+      "4": "🔁 Kopf hoch, weiter geht's!"
+    }
   },
 
   "host": {
@@ -163,7 +198,24 @@
     "correct_order": "Die richtige Reihenfolge wird unten angezeigt.",
     "correct": "Richtig",
     "tracks_available": "Verfügbar: {0} Loop, {1} Stinger",
-    "enter_token": "Geben Sie den Zugangsschlüssel ein (wird beim Serverstart oder im Lehrerportal > Einstellungen angezeigt):"
+    "enter_token": "Geben Sie den Zugangsschlüssel ein (wird beim Serverstart oder im Lehrerportal > Einstellungen angezeigt):",
+    "sfx_toggle": "Soundeffekte",
+    "builtin_music": "Eingebaute Musik (ohne MP3)",
+    "track_synth": "Eingebauter Synthesizer",
+    "music_synth": "Musik: eingebaut (Synthesizer).",
+    "synth_needs_sfx": "Die eingebaute Musik spielt nur bei aktivierten Soundeffekten.",
+    "get_ready": "Mach dich bereit!",
+    "double_banner": "FRAGE MIT DOPPELTEN PUNKTEN",
+    "players_milestone": "🎉 Schon {0} Spieler dabei!",
+    "podium_title": "Top-Spieler",
+    "awards_title": "Auszeichnungen"
+  },
+
+  "awards": {
+    "fastest_finger": "Schnellster Finger",
+    "streak_master": "Serienmeister",
+    "sharpshooter": "Scharfschütze",
+    "comeback": "Großes Comeback"
   },
 
   "admin": {
@@ -465,7 +517,14 @@
     "qr_class_alt": "QR-Code der Klasse",
 
     "auth_required": "Anmeldung erforderlich",
-    "error": "Fehler"
+    "error": "Fehler",
+
+    "q_double_label": "⚡ Doppelte Punkte",
+    "timing_get_ready_label": "Countdown „Mach dich bereit“ (s)",
+    "final_double_label": "Letzte Frage mit doppelten Punkten",
+    "badge_free": "Kostenlos ohne Limits",
+    "badge_open_license": "Offene Lizenz",
+    "tab_exam": "Klassenarbeit"
   },
 
   "profile": {

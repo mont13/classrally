@@ -15,14 +15,16 @@
     .team-row .team-members { font-size: 0.82rem; font-weight: 600; opacity: 0.85; margin-left: 4px; }
     .team-section-title { font-size: 0.9rem; font-weight: 800; color: #64748b;
       margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-    #teamPodiumOverlay { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
+    #teamPodiumOverlay, #podiumOverlay { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
       align-items: center; justify-content: flex-end;
       background: linear-gradient(180deg, #071428ee 0%, #0f2a50dd 60%, #071428f5 100%);
       padding-bottom: 0; opacity: 0; pointer-events: none; transition: opacity 0.6s ease; }
-    #teamPodiumOverlay.visible { opacity: 1; pointer-events: all; }
+    #teamPodiumOverlay.visible, #podiumOverlay.visible { opacity: 1; pointer-events: all; }
     .team-podium-title { color: #fff; font-size: clamp(1.6rem, 3vw, 2.6rem); font-weight: 900;
       text-shadow: 0 2px 12px rgba(0,0,0,0.5); margin-bottom: 20px; text-align: center; padding: 0 16px; }
-    .team-podium-close { position: absolute; top: 20px; right: 24px; background: rgba(255,255,255,0.18);
+    /* top: 56px — the fixed .i18n-switcher (z-index 9000) sits at the top-right
+       corner and would otherwise cover this button */
+    .team-podium-close { position: absolute; top: 56px; right: 24px; background: rgba(255,255,255,0.18);
       border: 2px solid rgba(255,255,255,0.4); color: #fff; font-size: 1rem; font-weight: 800;
       padding: 8px 18px; border-radius: 10px; cursor: pointer; z-index: 3001; }
     .team-podium-stage { display: flex; align-items: flex-end; justify-content: center;
@@ -65,6 +67,61 @@
       font-size: 1.1rem; margin-bottom: 14px; }
     .login-card input:focus { outline: 0; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.2); }
     .login-error { color: var(--bad); font-weight: 700; font-size: 0.95rem; margin-bottom: 10px; display: none; }
+    /* ── Game-show layer (SFX, get-ready, reveal, podium, awards) ── */
+    .question-card-rel { position: relative; }
+    .kpi .item.timer.timer-pulse { border-color: #fca5a5;
+      background: linear-gradient(155deg, #fee2e2, #fef2f2); }
+    .kpi .item.timer.timer-pulse .value { color: #dc2626; animation: timer-pulse-beat 1s ease-in-out infinite; }
+    @keyframes timer-pulse-beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
+    #getReadyOverlay { position: fixed; inset: 0; z-index: 4000; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: rgba(7, 20, 40, 0.72);
+      pointer-events: none; }
+    #getReadyOverlay.hide { display: none; }
+    .get-ready-label { color: #e0f2fe; font-size: clamp(1.4rem, 3vw, 2.4rem); font-weight: 900;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.5); margin-bottom: 6px; }
+    .get-ready-num { color: #fff; font-size: clamp(7rem, 24vw, 15rem); font-weight: 900; line-height: 1;
+      text-shadow: 0 6px 40px rgba(0,0,0,0.55); animation: get-ready-pop 0.9s ease-out; }
+    @keyframes get-ready-pop { from { transform: scale(1.55); opacity: 0.15; } to { transform: scale(1); opacity: 1; } }
+    .double-banner { background: linear-gradient(100deg, #b45309, #f59e0b 30%, #fde68a 50%, #f59e0b 70%, #b45309);
+      background-size: 200% 100%; color: #451a03; font-weight: 900; font-size: 1.25rem; text-align: center;
+      letter-spacing: 0.04em; padding: 10px 14px; border-radius: 12px; margin: 10px 0 4px;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.45); animation: double-shimmer 2.2s linear infinite; }
+    @keyframes double-shimmer { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+    .suspense-overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center;
+      justify-content: center; gap: 0.18em; background: rgba(240, 249, 255, 0.92); border-radius: inherit;
+      font-size: 6rem; font-weight: 900; color: #0284c7; }
+    .suspense-overlay.hide { display: none; }
+    .suspense-overlay span { animation: suspense-bounce 0.55s ease-in-out infinite alternate; }
+    .suspense-overlay span:nth-child(2) { animation-delay: 0.18s; }
+    .suspense-overlay span:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes suspense-bounce { from { transform: translateY(0.08em); } to { transform: translateY(-0.14em); } }
+    .bar-animate .vote-bar > span { transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+    .option-btn.correct-glow { animation: gold-glow 0.9s ease-in-out 3; }
+    @keyframes gold-glow { 0%, 100% { box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+      50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.28), 0 0 34px 10px rgba(245, 158, 11, 0.55); } }
+    tr.player-pop { animation: player-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes player-pop { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
+    .host-toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 6000;
+      background: linear-gradient(135deg, #0284c7, #7c3aed); color: #fff; font-weight: 900;
+      font-size: 1.15rem; padding: 12px 22px; border-radius: 999px; pointer-events: none;
+      box-shadow: 0 8px 30px rgba(2, 132, 199, 0.45); animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .host-toast.hide { display: none; }
+    @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -16px) scale(0.8); }
+      to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+    .podium-avatar { font-size: clamp(2.2rem, 5vw, 3.6rem); display: block; margin-bottom: 4px; }
+    .awards-wrap { width: 100%; max-width: 900px; padding: 0 4vw; margin-bottom: 18px; }
+    .awards-title { color: rgba(255,255,255,0.85); font-weight: 900; font-size: 1.05rem;
+      text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px; text-align: center; }
+    .awards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+    .award-card { background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 14px; padding: 12px 10px; text-align: center; color: #fff; opacity: 0;
+      animation: award-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+    .award-emoji { font-size: 2rem; }
+    .award-name { font-weight: 900; font-size: 0.95rem; margin-top: 4px; }
+    .award-player { font-weight: 700; font-size: 1.05rem; margin-top: 6px; }
+    .award-value { color: #fde68a; font-weight: 800; font-size: 0.9rem; margin-top: 2px; }
+    @keyframes award-pop { from { opacity: 0; transform: scale(0.6) translateY(16px); }
+      to { opacity: 1; transform: scale(1) translateY(0); } }
   </style>
 </head>
 <body class="host-page">
@@ -127,13 +184,21 @@
           <input id="musicAuto" type="checkbox" />
           <span data-i18n="host.auto_music">Automaticky řídit hudbu podle fáze kvízu (výchozí: vypnuto)</span>
         </label>
+        <label class="check-row">
+          <input id="musicSynth" type="checkbox" />
+          <span>🎹 <span data-i18n="host.builtin_music">Vestavěná hudba (bez MP3)</span></span>
+        </label>
+        <label class="check-row">
+          <input id="sfxToggle" type="checkbox" checked />
+          <span>🔊 <span data-i18n="host.sfx_toggle">Zvukové efekty</span></span>
+        </label>
         <p id="musicTrackInfo" class="help" data-i18n="host.track_none">Track: -</p>
         <p id="musicState" class="help" data-i18n="host.music_off">Hudba: vypnuta</p>
       </div>
     </section>
 
     <section class="grid">
-      <div class="card col-7">
+      <div class="card col-7 question-card-rel" id="questionCard">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <h2 style="margin:0;" data-i18n="host.current_question">Aktuální otázka</h2>
           <span id="phasePill" class="status-pill lobby">lobby</span>
@@ -144,15 +209,17 @@
           <div class="item"><div class="label" data-i18n="host.kpi_voted">Hlasovalo</div><div class="value" id="kAnswered">0</div></div>
           <div class="item"><div class="label" data-i18n="host.kpi_players">Hráči</div><div class="value" id="kPlayers">0</div></div>
           <div class="item"><div class="label" data-i18n="host.kpi_phase">Fáze</div><div class="value" id="kPhase">Lobby</div></div>
-          <div class="item timer"><div class="label" data-i18n="host.kpi_countdown">Odpočet</div><div class="value" id="kTimer">-</div></div>
+          <div class="item timer" id="kTimerItem"><div class="label" data-i18n="host.kpi_countdown">Odpočet</div><div class="value" id="kTimer">-</div></div>
         </div>
 
         <p id="voteStatus" class="vote-status" data-i18n="host.waiting_for_start">Čekám na start kvízu.</p>
+        <div id="doubleBanner" class="double-banner hide">⚡ <span data-i18n="host.double_banner">OTÁZKA ZA DVOJNÁSOBEK</span> ⚡</div>
         <div id="questionBox" class="question" data-i18n="host.waiting_for_start">Čekám na start kvízu.</div>
         <img id="questionImage" class="hide" style="max-width:60%;max-height:300px;display:block;margin:12px auto;border-radius:12px;" />
         <div id="answerBig" class="big-answer hide"></div>
         <p id="explanation" class="muted"></p>
         <div id="options" class="options"></div>
+        <div id="suspenseOverlay" class="suspense-overlay hide" aria-hidden="true"><span>.</span><span>.</span><span>.</span></div>
       </div>
 
       <div class="card col-5">
@@ -174,10 +241,30 @@
   <div id="teamPodiumOverlay">
     <div class="team-podium-title" data-i18n="host.winning_team">Vitezny tym!</div>
     <button class="team-podium-close" id="teamPodiumClose" data-i18n="host.close">Zavrit</button>
+    <div id="teamPodiumAwards" class="awards-wrap"></div>
     <div class="team-podium-stage" id="teamPodiumStage"></div>
   </div>
 
+  <!-- Individual podium overlay (finished, non-team games) -->
+  <div id="podiumOverlay">
+    <div class="team-podium-title" data-i18n="host.podium_title">Nejlepší hráči</div>
+    <button class="team-podium-close" id="podiumClose" data-i18n="host.close">Zavrit</button>
+    <div id="podiumAwards" class="awards-wrap"></div>
+    <div class="team-podium-stage" id="podiumStage"></div>
+  </div>
+
+  <!-- Get-ready countdown overlay (visual only — never blocks host controls) -->
+  <div id="getReadyOverlay" class="hide" aria-hidden="true">
+    <div class="get-ready-label" data-i18n="host.get_ready">Připrav se!</div>
+    <div class="get-ready-num" id="getReadyNum">3</div>
+  </div>
+
+  <!-- Milestone toast -->
+  <div id="hostToast" class="host-toast hide" aria-live="polite"></div>
+
   <script src="/static/i18n.js"></script>
+  <script src="/static/sfx.js"></script>
+  <script src="/static/confetti.js"></script>
   <script>
     const AVATARS = [
       { id: 1,  emoji: '\uD83E\uDD8A', color: '#f97316' },
@@ -224,6 +311,21 @@
       activeLoopTrack: null,
       activeStingerTrack: null,
       musicGen: 0,       // generation counter — prevents stale async callbacks
+      // ── game-show layer state ──
+      usingSynth: false,        // built-in synth music is the active source
+      lastMp3StingerAt: 0,      // when an MP3 stinger actually started (SFX dedupe)
+      lastTickSec: -1,          // last second we ticked at (question end countdown)
+      doubleSfxForIndex: -1,    // double() cue played for this question index
+      suspense: false,          // reveal result temporarily hidden (drumroll window)
+      animateBars: false,       // one-shot: animate vote bars on next renderOptions
+      revealAnimHold: 0,        // timestamp until which reveal re-render is skipped
+      knownPlayers: null,       // Set of player names from previous poll
+      prevTotalPlayers: 0,
+      popNames: null,           // Set of names to pop-in in renderScores
+      lastState: null,          // latest polled state (for async dramaturgy)
+      finishedShown: false,     // finished-phase show already triggered
+      finishedTimers: [],       // podium/awards timeouts (cleared on leave)
+      getReady: { timer: null, deadline: 0, lastN: -1 },
     };
 
     function phaseLabel(phase) {
@@ -238,8 +340,32 @@
       return i18n.t('host.seconds_left', Math.max(0, Math.floor(value)));
     }
 
+    // i18n.t() with a graceful fallback while the JSON keys are not added yet.
+    // Once the key exists in i18n/*.json the translation wins automatically.
+    function tr(key, fallback, ...args) {
+      const s = i18n.t(key, ...args);
+      if (s !== key) return s;
+      return String(fallback).replace(/\{(\d+)\}/g, (_, i) => args[+i] ?? '');
+    }
+
+    // Promise-based drumroll that resolves on time even without SFX support.
+    function sfxDrumroll(ms) {
+      try {
+        if (window.SFX) return SFX.drumroll(ms);
+      } catch (_) {}
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     async function api(path, method='GET', body=null) {
-      const cfg = { method, headers: { 'Content-Type': 'application/json' } };
+      const headers = { 'Content-Type': 'application/json' };
+      // /api/state?host=1 only unlocks the privileged host view (correct
+      // answer during the question, live wordcloud, player ids) when the
+      // host token is proven. Send it as a header — never in the query
+      // string (it would leak into access logs). Before the token is
+      // entered the server silently serves the public view, so the
+      // lobby/QR screen keeps working without it.
+      if (hostToken) headers['X-Host-Token'] = hostToken;
+      const cfg = { method, headers };
       if (body) cfg.body = JSON.stringify(body);
       const res = await fetch(path, cfg);
       const data = await res.json();
@@ -332,6 +458,10 @@
       if (appState.stingerAudio) {
         appState.stingerAudio.volume = vol;
       }
+      // Built-in synth music follows the same slider (classrally_music_vol)
+      if (window.SFX) {
+        try { SFX.music.setVolume(vol); } catch (_) {}
+      }
     }
 
     // ── Audio stop helpers ──────────────────────────────────────────
@@ -345,6 +475,10 @@
       if (appState.stingerAudio) {
         try { appState.stingerAudio.pause(); appState.stingerAudio.currentTime = 0; } catch (_) {}
       }
+      if (window.SFX) {
+        try { SFX.music.stop(); } catch (_) {}
+      }
+      appState.usingSynth = false;
       appState.usingMp3 = false;
       appState.activeLoopTrack = null;
     }
@@ -385,6 +519,15 @@
         return;
       }
 
+      // Built-in synth music: explicit choice, or automatic fallback when the
+      // MP3 loop catalog is empty. Plays only through this opt-in path.
+      const synthAvailable = !!(window.SFX && SFX.supported);
+      const wantSynth = document.getElementById('musicSynth').checked;
+      if (synthAvailable && (wantSynth || appState.trackCatalog.loops.length === 0)) {
+        startSynthMusic();
+        return;
+      }
+
       if (appState.trackCatalog.loops.length > 0) {
         initMp3Players();
         const picked = forceNewTrack
@@ -420,11 +563,35 @@
         }
       }
 
-      // No MP3 tracks available
+      // No MP3 tracks available (and synth unsupported)
       setMusicState(i18n.t('host.mp3_not_found'), true);
       console.log('[music] startMusic: no MP3 tracks available');
     }
 
+    // Start the built-in WebAudio quiz loop (SFX.music). Called only from
+    // startMusic() — i.e. strictly via the existing opt-in music paths.
+    function startSynthMusic() {
+      if (!window.SFX || !SFX.supported) return;
+      try {
+        setMusicVolume();            // push slider value to SFX.music
+        SFX.music.setIntensity(0);
+        SFX.music.start();           // no-op until unlock(); render() retries
+      } catch (_) {}
+      appState.usingSynth = true;
+      appState.usingMp3 = false;
+      appState.musicOn = true;
+      setTrackInfo(tr('host.track_synth', 'Vestavěný syntezátor'));
+      if (!SFX.enabled) {
+        setMusicState(tr('host.synth_needs_sfx', 'Vestavěná hudba hraje jen se zapnutými zvukovými efekty.'), true);
+      } else {
+        setMusicState(tr('host.music_synth', 'Hudba: vestavěná (syntezátor).'));
+      }
+      console.log('[music] built-in synth music started');
+    }
+
+    // opts.prefer: RegExp — prefer MP3 stingers whose name matches (e.g. /end|gong/i)
+    // opts.sfxFallback: name of an SFX effect ('gong', …) played when no MP3
+    // stinger is available/playable — one path decides, no double sounds.
     async function playStinger(opts={}) {
       const label = opts.label || 'Stinger';
       const volumeScale = Number.isFinite(opts.volumeScale) ? opts.volumeScale : 1;
@@ -437,9 +604,14 @@
       await loadTrackCatalog();
 
       // If another audio function ran during await, bail out
-      if (gen !== appState.musicGen) return;
+      if (gen !== appState.musicGen) return false;
 
-      const picked = randomItem(getStingerTracks());
+      let pool = getStingerTracks();
+      if (opts.prefer instanceof RegExp) {
+        const preferred = pool.filter((t) => t && t.name && opts.prefer.test(t.name));
+        if (preferred.length > 0) pool = preferred;
+      }
+      const picked = randomItem(pool);
       if (appState.stingerAudio && picked && picked.url) {
         try {
           appState.activeStingerTrack = picked;
@@ -449,14 +621,20 @@
           appState.stingerAudio.volume = Math.max(0.05, Math.min(1, baseVol * volumeScale));
           appState.stingerAudio.currentTime = 0;
           await appState.stingerAudio.play();
+          appState.lastMp3StingerAt = Date.now();
           setTrackInfo(`${label}: ${picked.name || picked.url}`);
           setMusicState(`${label}: MP3.`);
           setTimeout(() => setMusicVolume(), 150);
-          return;
+          return true;
         } catch (err) {
           console.warn('[music] stinger play() failed:', err);
         }
       }
+      // MP3 has priority; SFX is the fallback (silent no-op until unlocked)
+      if (opts.sfxFallback && window.SFX && typeof SFX[opts.sfxFallback] === 'function') {
+        try { SFX[opts.sfxFallback](); } catch (_) {}
+      }
+      return false;
     }
 
     function maybeAllAnsweredCue(state) {
@@ -490,7 +668,7 @@
         startMusic(true);
       } else if (phase === 'reveal') {
         stopLoop();
-        playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0 });
+        playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0, prefer: /end|gong|reveal/i, sfxFallback: 'gong' });
       } else if (phase === 'finished' || phase === 'lobby') {
         stopLoop();
       }
@@ -504,6 +682,10 @@
       const urls = Array.isArray(info?.play_urls) ? info.play_urls : [];
 
       const playUrl = urls.length > 0 ? urls[0] : fallback;
+      // Drop the data-i18n="host.loading" placeholder key — otherwise every
+      // i18n.apply() (init / language switch) would overwrite the real URL
+      // back to the "Loading..." text.
+      joinUrl.removeAttribute('data-i18n');
       joinUrl.textContent = playUrl;
 
       // Update QR code with correct play URL
@@ -534,7 +716,18 @@
     function renderOptions(state) {
       const box = document.getElementById('options');
       box.innerHTML = '';
+      box.classList.toggle('bar-animate', !!appState.animateBars);
       if (!state.question) return;
+
+      // Grow bars from 0 → target on the reveal flourish render
+      function setBarWidth(span, pct) {
+        if (appState.animateBars) {
+          span.style.width = '0%';
+          requestAnimationFrame(() => requestAnimationFrame(() => { span.style.width = pct + '%'; }));
+        } else {
+          span.style.width = pct + '%';
+        }
+      }
 
       const qType = state.question.type || 'choice';
 
@@ -600,7 +793,7 @@
           const barDiv = document.createElement('div');
           barDiv.className = 'vote-bar';
           const barSpan = document.createElement('span');
-          barSpan.style.width = pct + '%';
+          setBarWidth(barSpan, pct);
           barDiv.appendChild(barSpan);
           wrap.appendChild(barDiv);
           box.appendChild(wrap);
@@ -610,7 +803,7 @@
 
       // --- openended ---
       if (qType === 'openended') {
-        if (state.phase === 'reveal' || state.phase === 'finished') {
+        if ((state.phase === 'reveal' && !appState.suspense) || state.phase === 'finished') {
           const answers = state.open_answers || [];
           if (answers.length > 0) {
             const ul = document.createElement('ul');
@@ -646,8 +839,9 @@
         wrap.className = 'option-btn';
         const pct = Math.round((votes[i] || 0) / maxVotes * 100);
 
-        if (state.phase === 'reveal' && i === state.question.correct_index) {
+        if (state.phase === 'reveal' && !appState.suspense && i === state.question.correct_index) {
           wrap.classList.add('correct');
+          if (appState.animateBars) wrap.classList.add('correct-glow');
         }
 
         const textDiv = document.createElement('div');
@@ -666,7 +860,7 @@
         const barDiv = document.createElement('div');
         barDiv.className = 'vote-bar';
         const barSpan = document.createElement('span');
-        barSpan.style.width = pct + '%';
+        setBarWidth(barSpan, pct);
         barDiv.appendChild(barSpan);
         wrap.appendChild(barDiv);
 
@@ -680,6 +874,7 @@
       players.forEach(p => {
         const tr = document.createElement('tr');
         if (p.rank <= 3) tr.classList.add(`rank-${p.rank}`);
+        if (appState.popNames && appState.popNames.has(p.name)) tr.classList.add('player-pop');
         const tdRank = document.createElement('td');
         tdRank.textContent = p.rank;
         const tdName = document.createElement('td');
@@ -694,6 +889,7 @@
         tr.appendChild(tdScore);
         body.appendChild(tr);
       });
+      appState.popNames = null; // pop-in is one-shot
     }
 
     function renderVoteStatus(state) {
@@ -834,6 +1030,13 @@
         if (!slotsByRank[rank]) return;
         setTimeout(() => slotsByRank[rank].classList.add('rise'), delay);
       });
+
+      // Celebration when the winning team rises
+      setTimeout(() => {
+        if (!teamPodiumState.shown) return;
+        if (window.SFX) { try { SFX.fanfare(); } catch (_) {} }
+        if (window.Confetti) { try { Confetti.rain(4500); } catch (_) {} }
+      }, 1500);
     }
 
     function hideTeamPodium() {
@@ -843,7 +1046,362 @@
 
     document.getElementById('teamPodiumClose').addEventListener('click', hideTeamPodium);
 
+    // ═══ Game-show dramaturgy (edge-driven, fail-safe, silent until unlock) ═══
+
+    let toastTimer = null;
+    function showToast(text) {
+      const el = document.getElementById('hostToast');
+      el.textContent = text;
+      el.classList.remove('hide');
+      el.style.animation = 'none';
+      void el.offsetWidth;   // restart pop-in animation
+      el.style.animation = '';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hide'), 2600);
+    }
+
+    function showSuspense(on) {
+      document.getElementById('suspenseOverlay').classList.toggle('hide', !on);
+    }
+
+    // ── Get-ready 3-2-1 (local 100 ms ticker seeded from server clock) ──
+    function hideGetReady() {
+      const gr = appState.getReady;
+      if (gr.timer) { clearInterval(gr.timer); gr.timer = null; }
+      document.getElementById('getReadyOverlay').classList.add('hide');
+    }
+
+    function setupGetReady(state) {
+      hideGetReady();
+      const grs = Number(state.get_ready_sec) || 0;
+      const started = Number(state.question_started_at) || 0;
+      const serverNow = Number(state.server_time) || 0;
+      if (grs <= 0 || !started || !serverNow) return;
+      // Get-ready window = first get_ready_sec seconds of the question phase
+      const leftMs = (grs - (serverNow - started)) * 1000;
+      if (leftMs <= 150) return;
+      const numEl = document.getElementById('getReadyNum');
+      const gr = appState.getReady;
+      gr.deadline = performance.now() + leftMs;
+      gr.lastN = -1;
+      document.getElementById('getReadyOverlay').classList.remove('hide');
+      const step = () => {
+        const remain = gr.deadline - performance.now();
+        if (remain <= 0) {
+          hideGetReady();
+          if (window.SFX) SFX.blip(0);
+          return;
+        }
+        const n = Math.ceil(remain / 1000);
+        if (n !== gr.lastN) {
+          gr.lastN = n;
+          numEl.textContent = n;
+          numEl.style.animation = 'none';
+          void numEl.offsetWidth;   // restart the pop animation per digit
+          numEl.style.animation = '';
+          if (window.SFX) SFX.blip(n);
+        }
+      };
+      step();
+      gr.timer = setInterval(step, 100);
+    }
+
+    // ── Reveal: gong → 700 ms drumroll suspense → animated result ──
+    function handleRevealEdge(state) {
+      hideGetReady();
+      const q = state.question;
+      const qType = q ? (q.type || 'choice') : '';
+      // Time's-up gong. With music automation active the reveal sound already
+      // went through playStinger (MP3 priority, SFX.gong fallback) — one path.
+      const autoActive = document.getElementById('musicAuto').checked && !appState.userStopped;
+      if (qType && qType !== 'slide' && !autoActive && window.SFX) {
+        try { SFX.gong(); } catch (_) {}
+      }
+      const suspenseTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended', 'poll'];
+      if (!q || !suspenseTypes.includes(qType)) return;
+      appState.suspense = true;
+      const idx = state.current_index;
+      showSuspense(true);
+      // Resolves after 700 ms even when muted/locked → stable dramaturgy
+      sfxDrumroll(700).then(() => {
+        appState.suspense = false;
+        showSuspense(false);
+        const st = appState.lastState;
+        if (!st || st.phase !== 'reveal' || st.current_index !== idx) return;
+        appState.animateBars = true;
+        renderQuestionArea(st);
+        appState.animateBars = false;
+        appState.revealAnimHold = Date.now() + 1000; // let the bar transition finish
+        const correctTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended'];
+        const mp3Recent = appState.lastMp3StingerAt && (Date.now() - appState.lastMp3StingerAt < 2500);
+        if (!mp3Recent && correctTypes.includes(qType) && window.SFX) {
+          try { SFX.correct(); } catch (_) {}
+        }
+      });
+    }
+
+    // ── Lobby hype: join pop-ins + player-count milestones ──
+    function handleLobbyJoins(state) {
+      const names = (state.players || []).map(p => p.name);
+      const total = Number(state.total_players || 0);
+      const prevKnown = appState.knownPlayers;
+      const prevTotal = appState.prevTotalPlayers;
+      appState.knownPlayers = new Set(names);
+      appState.prevTotalPlayers = total;
+      if (!prevKnown) return;               // first poll: seed silently
+      if (state.phase !== 'lobby') return;
+      const newcomers = names.filter(n => !prevKnown.has(n));
+      if (newcomers.length === 0) return;
+      appState.popNames = new Set(newcomers);   // consumed by renderScores
+      if (window.SFX) {
+        if (newcomers.length > 4) {
+          SFX.join();                            // rush: a single pop per poll
+        } else {
+          newcomers.forEach((_, i) => setTimeout(() => { if (window.SFX) SFX.join(); }, i * 200));
+        }
+      }
+      [10, 20, 30].forEach(m => {
+        if (prevTotal < m && total >= m) {
+          showToast(tr('host.players_milestone', '🎉 Už {0} hráčů!', total));
+        }
+      });
+    }
+
+    // ── Finished: staggered individual podium + awards ──
+    function buildPodiumSlot(rank, p) {
+      const MEDAL_BG = {
+        1: 'linear-gradient(160deg, #f59e0b, #fbbf24)',
+        2: 'linear-gradient(160deg, #64748b, #cbd5e1)',
+        3: 'linear-gradient(160deg, #92400e, #d97706)',
+      };
+      const slot = document.createElement('div');
+      slot.className = 'team-podium-slot trank-' + rank;
+      const info = document.createElement('div');
+      info.className = 'team-podium-info';
+      if (rank === 1) {
+        const crown = document.createElement('span');
+        crown.className = 'team-podium-crown';
+        crown.textContent = '\u{1F3C6}';
+        info.appendChild(crown);
+      }
+      const avatarEmoji = getAvatarEmoji(p.avatar_id);
+      if (avatarEmoji) {
+        const av = document.createElement('span');
+        av.className = 'podium-avatar';
+        av.textContent = avatarEmoji;
+        info.appendChild(av);
+      }
+      const nameEl = document.createElement('div');
+      nameEl.className = 'team-podium-name';
+      nameEl.textContent = p.name;
+      info.appendChild(nameEl);
+      const scoreEl = document.createElement('div');
+      scoreEl.className = 'team-podium-score';
+      scoreEl.textContent = p.score + ' ' + i18n.t('host.points');
+      info.appendChild(scoreEl);
+      slot.appendChild(info);
+      const block = document.createElement('div');
+      block.className = 'team-podium-block';
+      block.style.background = MEDAL_BG[rank] || '#64748b';
+      block.textContent = rank;
+      slot.appendChild(block);
+      return slot;
+    }
+
+    function runPodiumShow(state) {
+      const stage = document.getElementById('podiumStage');
+      stage.innerHTML = '';
+      document.getElementById('podiumAwards').innerHTML = '';
+      const byRank = {};
+      (state.players || []).slice(0, 3).forEach(p => {
+        if (p.rank >= 1 && p.rank <= 3) byRank[p.rank] = buildPodiumSlot(p.rank, p);
+      });
+      if (!byRank[1] && !byRank[2] && !byRank[3]) return;
+      [2, 1, 3].filter(r => byRank[r]).forEach(r => stage.appendChild(byRank[r]));
+      document.getElementById('podiumOverlay').classList.add('visible');
+      const T = appState.finishedTimers;
+      if (byRank[3]) T.push(setTimeout(() => { byRank[3].classList.add('rise'); if (window.SFX) SFX.whoosh(); }, 900));
+      if (byRank[2]) T.push(setTimeout(() => { byRank[2].classList.add('rise'); if (window.SFX) SFX.whoosh(); }, 2300));
+      T.push(setTimeout(() => { sfxDrumroll(1200); }, 2600));
+      if (byRank[1]) {
+        T.push(setTimeout(() => {
+          byRank[1].classList.add('rise');
+          if (window.SFX) { try { SFX.fanfare(); } catch (_) {} }
+          if (window.Confetti) { try { Confetti.rain(4500); } catch (_) {} }
+        }, 3800));
+      }
+    }
+
+    const AWARD_EMOJI = { fastest_finger: '⚡', streak_master: '🔥', sharpshooter: '🎯', comeback: '📈' };
+    const AWARD_FALLBACK = {
+      fastest_finger: 'Nejrychlejší prst',
+      streak_master: 'Mistr sérií',
+      sharpshooter: 'Ostrostřelec',
+      comeback: 'Největší comeback',
+    };
+
+    function showAwards(state) {
+      if (!state) return;
+      const awards = Array.isArray(state.awards) ? state.awards : [];
+      if (awards.length === 0) return;
+      const target = document.getElementById(state.team_mode ? 'teamPodiumAwards' : 'podiumAwards');
+      if (!target) return;
+      target.innerHTML = '';
+      const title = document.createElement('div');
+      title.className = 'awards-title';
+      title.textContent = tr('host.awards_title', 'Ocenění');
+      target.appendChild(title);
+      const grid = document.createElement('div');
+      grid.className = 'awards-grid';
+      target.appendChild(grid);
+      awards.forEach((a, i) => {
+        const card = document.createElement('div');
+        card.className = 'award-card';
+        card.style.animationDelay = (i * 260) + 'ms';
+        const emoji = document.createElement('div');
+        emoji.className = 'award-emoji';
+        emoji.textContent = AWARD_EMOJI[a.key] || '\u{1F3C5}';
+        card.appendChild(emoji);
+        const nameEl = document.createElement('div');
+        nameEl.className = 'award-name';
+        nameEl.textContent = tr('awards.' + a.key, AWARD_FALLBACK[a.key] || a.key);
+        card.appendChild(nameEl);
+        const playerEl = document.createElement('div');
+        playerEl.className = 'award-player';
+        const avatarEmoji = getAvatarEmoji(a.avatar_id);
+        playerEl.textContent = (avatarEmoji ? avatarEmoji + ' ' : '') + (a.player || '');
+        card.appendChild(playerEl);
+        const valueEl = document.createElement('div');
+        valueEl.className = 'award-value';
+        valueEl.textContent = a.value || '';
+        card.appendChild(valueEl);
+        grid.appendChild(card);
+        appState.finishedTimers.push(setTimeout(() => { if (window.SFX) SFX.pop(); }, i * 260));
+      });
+    }
+
+    function clearFinishedTimers() {
+      (appState.finishedTimers || []).forEach(clearTimeout);
+      appState.finishedTimers = [];
+    }
+
+    function onFinishedEnter(state) {
+      appState.finishedShown = true;
+      clearFinishedTimers();
+      if (!state.team_mode && (state.players || []).length > 0) runPodiumShow(state);
+      // Awards land after the podium has settled (~5.5 s into finished)
+      appState.finishedTimers.push(setTimeout(() => showAwards(appState.lastState), 5500));
+    }
+
+    function onFinishedLeave() {
+      appState.finishedShown = false;
+      clearFinishedTimers();
+      document.getElementById('podiumOverlay').classList.remove('visible');
+      if (window.Confetti) { try { Confetti.stop(); } catch (_) {} }
+    }
+
+    document.getElementById('podiumClose').addEventListener('click', () => {
+      document.getElementById('podiumOverlay').classList.remove('visible');
+      if (window.Confetti) { try { Confetti.stop(); } catch (_) {} }
+    });
+
+    function resetGameShowFx() {
+      hideGetReady();
+      appState.suspense = false;
+      showSuspense(false);
+      appState.revealAnimHold = 0;
+      appState.lastTickSec = -1;
+      appState.doubleSfxForIndex = -1;
+      appState.knownPlayers = null;
+      appState.prevTotalPlayers = 0;
+      appState.popNames = null;
+      document.getElementById('doubleBanner').classList.add('hide');
+      onFinishedLeave();
+      // Reset path sets lastPhase='lobby' before the next render, so the
+      // lobby-return edge in gameShowFx won't fire — scroll to top here.
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
+    }
+
+    // Per-poll FX hook. prevPhase = phase seen on the previous poll.
+    // Wrapped in try/catch so an FX problem can never break the render loop.
+    function gameShowFx(state, prevPhase, questionChanged) {
+      try {
+        const phase = state.phase;
+
+        // Built-in music self-heal: already opted-in but not audible yet
+        // (unlock happened later / SFX toggle re-enabled). Never opts in itself.
+        if (appState.musicOn && appState.usingSynth && window.SFX &&
+            SFX.enabled && !SFX.music.playing) {
+          SFX.music.start();
+        }
+
+        // Question start edge: get-ready countdown + double-points cue
+        if (phase === 'question' && (questionChanged || prevPhase !== 'question')) {
+          appState.lastTickSec = -1;
+          setupGetReady(state);
+          if (state.question && state.question.double &&
+              appState.doubleSfxForIndex !== state.current_index) {
+            appState.doubleSfxForIndex = state.current_index;
+            if (window.SFX) SFX.double();
+          }
+        }
+        if (phase !== 'question') hideGetReady();
+
+        // Projector ergonomics (1280×800): when the game starts, bring the
+        // question section into view once; going back to lobby, scroll to top.
+        if (phase === 'question' && prevPhase === 'lobby') {
+          const card = document.getElementById('questionCard');
+          if (card && card.scrollIntoView) {
+            try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+          }
+        } else if (phase === 'lobby' && prevPhase !== 'lobby') {
+          try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
+        }
+
+        // Double-points banner (visible for the double question + its reveal)
+        const showDbl = !!(state.question && state.question.double &&
+          (phase === 'question' || phase === 'reveal'));
+        document.getElementById('doubleBanner').classList.toggle('hide', !showDbl);
+
+        // Last-5-seconds ticking + timer pulse + synth music intensity
+        const timerItem = document.getElementById('kTimerItem');
+        if (phase === 'question' && state.question) {
+          const tl = Number(state.phase_time_left);
+          const dur = Number(state.question_duration_sec) || 0;
+          if (appState.usingSynth && window.SFX && SFX.music.playing &&
+              Number.isFinite(tl) && dur > 0) {
+            SFX.music.setIntensity(Math.min(1, Math.max(0, 1 - tl / dur)));
+          }
+          const urgent = Number.isFinite(tl) && tl <= 5 && tl >= 1;
+          if (urgent && tl !== appState.lastTickSec) {
+            appState.lastTickSec = tl;
+            if (window.SFX) SFX.tick(tl <= 2);
+          }
+          if (timerItem) timerItem.classList.toggle('timer-pulse', urgent);
+        } else if (timerItem) {
+          timerItem.classList.remove('timer-pulse');
+        }
+
+        // Reveal edge: gong + drumroll suspense + animated result
+        if (phase === 'reveal' && prevPhase === 'question') handleRevealEdge(state);
+
+        // Lobby hype
+        handleLobbyJoins(state);
+
+        // Finished edges: podium show + awards
+        const isFinished = phase === 'finished';
+        if (isFinished && !teamPodiumState.lastFinished && !appState.finishedShown) {
+          onFinishedEnter(state);
+        }
+        if (!isFinished && appState.finishedShown) onFinishedLeave();
+      } catch (e) {
+        console.warn('[fx] error:', e);
+      }
+    }
+
     function render(state) {
+      appState.lastState = state;
+      const prevPhase = appState.lastPhase;   // phase seen on the previous poll
       const questionChanged = state.current_index !== appState.lastQuestionIndex;
       if (state.current_index !== appState.lastQuestionIndex) {
         appState.lastQuestionIndex = state.current_index;
@@ -868,6 +1426,9 @@
       }
       maybeAllAnsweredCue(state);
 
+      // Game-show FX layer — must run before the DOM below is (re)rendered
+      gameShowFx(state, prevPhase, questionChanged);
+
       document.getElementById('phasePill').textContent = phaseLabel(state.phase);
       document.getElementById('phasePill').className = `status-pill ${state.phase}`;
       document.getElementById('kPhase').textContent = phaseLabel(state.phase);
@@ -878,10 +1439,34 @@
 
       renderVoteStatus(state);
 
+      // Skip re-rendering the question area briefly after the reveal flourish
+      // so the animated bar growth is not wiped by the next poll re-render.
+      const holdReveal = state.phase === 'reveal' && Date.now() < (appState.revealAnimHold || 0);
+      if (!holdReveal) renderQuestionArea(state);
+
+      renderScores(state.players || []);
+      renderTeamScores(state);
+
+      // Team podium on finish
+      const isFinished = state.phase === 'finished';
+      if (isFinished && !teamPodiumState.lastFinished && !teamPodiumState.shown && state.team_mode) {
+        showTeamPodium(state);
+      }
+      if (!isFinished && teamPodiumState.shown) {
+        hideTeamPodium();
+      }
+      teamPodiumState.lastFinished = isFinished;
+    }
+
+    // Question prompt, image, big answer and options. Extracted from render()
+    // so the reveal dramaturgy can re-render it after the drumroll suspense.
+    function renderQuestionArea(state) {
       const qBox = document.getElementById('questionBox');
       const ansBig = document.getElementById('answerBig');
       const exp = document.getElementById('explanation');
       const qImg = document.getElementById('questionImage');
+      // While the drumroll suspense runs, keep the result hidden
+      const suspense = appState.suspense && state.phase === 'reveal';
 
       if (!state.question) {
         qBox.textContent = state.phase === 'finished' ? i18n.t('host.quiz_finished') : i18n.t('host.waiting_for_start');
@@ -899,7 +1484,7 @@
           qImg.classList.add('hide');
           qImg.src = '';
         }
-        if (state.phase === 'reveal' || state.phase === 'finished') {
+        if ((state.phase === 'reveal' && !suspense) || state.phase === 'finished') {
           const qType = state.question.type || 'choice';
           if (qType === 'poll' || qType === 'wordcloud' || qType === 'slide') {
             ansBig.classList.add('hide');
@@ -934,18 +1519,6 @@
       }
 
       renderOptions(state);
-      renderScores(state.players || []);
-      renderTeamScores(state);
-
-      // Team podium on finish
-      const isFinished = state.phase === 'finished';
-      if (isFinished && !teamPodiumState.lastFinished && !teamPodiumState.shown && state.team_mode) {
-        showTeamPodium(state);
-      }
-      if (!isFinished && teamPodiumState.shown) {
-        hideTeamPodium();
-      }
-      teamPodiumState.lastFinished = isFinished;
     }
 
     async function refresh() {
@@ -974,6 +1547,7 @@
           appState.lastPhase = 'lobby';
           appState.lastQuestionIndex = -1;
           appState.allAnsweredCueForIndex = -1;
+          resetGameShowFx();
         }
         await refresh();
       } catch (e) {
@@ -992,7 +1566,7 @@
       startMusic();
     });
     document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
-    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: i18n.t('host.stinger_label'), volumeScale: 1.0 }));
+    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: i18n.t('host.stinger_label'), volumeScale: 1.0, sfxFallback: 'gong' }));
     document.getElementById('btnRandomLoop').addEventListener('click', () => {
       appState.userStopped = false;
       try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
@@ -1002,6 +1576,38 @@
       setMusicVolume();
       localStorage.setItem('classrally_music_vol', document.getElementById('musicVol').value);
     });
+
+    // Zvukové efekty (SFX) — default ON, persistováno; hudba tím NENÍ dotčena
+    // (zůstává plně opt-in). Nic nezazní před prvním user gestem: SFX.unlock()
+    // se volá capture-listenerem na první click/keydown kdekoli v dokumentu.
+    (function initSfxPrefs() {
+      const sfxCb = document.getElementById('sfxToggle');
+      const synthCb = document.getElementById('musicSynth');
+
+      const sfxOn = localStorage.getItem('classrally_sfx') !== '0'; // default ON
+      sfxCb.checked = sfxOn;
+      if (window.SFX) { try { SFX.setEnabled(sfxOn); } catch (_) {} }
+      sfxCb.addEventListener('change', () => {
+        localStorage.setItem('classrally_sfx', sfxCb.checked ? '1' : '0');
+        if (window.SFX) {
+          try {
+            SFX.setEnabled(sfxCb.checked);
+            if (sfxCb.checked) SFX.unlock(); // the change itself is a user gesture
+          } catch (_) {}
+        }
+      });
+
+      synthCb.checked = localStorage.getItem('classrally_music_synth') === '1';
+      synthCb.addEventListener('change', () => {
+        localStorage.setItem('classrally_music_synth', synthCb.checked ? '1' : '0');
+        // Switch the source only when music is already opted-in and playing
+        if (appState.musicOn && !appState.userStopped) startMusic(true);
+      });
+
+      const unlockOnGesture = () => { if (window.SFX) { try { SFX.unlock(); } catch (_) {} } };
+      document.addEventListener('click', unlockOnGesture, true);
+      document.addEventListener('keydown', unlockOnGesture, true);
+    })();
 
     // Auto-hudba je OPT-IN (výchozí vypnuto) a volba i hlasitost se pamatují mezi načteními.
     // Tím se odstraňuje samovolné spouštění hudby při otevření /host nebo při běžící hře.

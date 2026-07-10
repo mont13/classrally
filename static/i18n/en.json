@@ -85,7 +85,42 @@
     "sp_next_question": "Next question →",
     "sp_show_results": "Show results",
     "sp_done": "Done!",
-    "sp_restart": "Play again"
+    "sp_restart": "Play again",
+    "get_ready": "Get ready!",
+    "sound_toggle": "Sound on/off",
+    "vibrate_toggle": "Vibration on/off",
+    "double_chip": "⚡×2 POINTS",
+    "rank_place": "Rank #{0}",
+    "rank_leader": "You're in the lead! 👑",
+    "rank_behind": "{0} pts behind {1} 🎯",
+    "streak_popup": "🔥 Streak {0}! (+{1}% points)",
+    "streak_lost": "Streak gone 💔",
+    "finish_congrats": "Congratulations!",
+    "finish_encourage": "Great run — next time even higher! 💪",
+    "awards_mine_title": "Your awards",
+    "awards_all_title": "Awards",
+    "award_fastest_finger": "Fastest Finger",
+    "award_streak_master": "Streak Master",
+    "award_sharpshooter": "Sharpshooter",
+    "award_comeback": "Comeback Kid",
+    "avatar_pick": "Pick your avatar:"
+  },
+
+  "fun": {
+    "correct": {
+      "0": "🚀 Rocket speed!",
+      "1": "🧠 Big brain!",
+      "2": "🎯 Bullseye!",
+      "3": "⭐ Superstar!",
+      "4": "🏆 You're crushing it!"
+    },
+    "wrong": {
+      "0": "💪 You'll get the next one!",
+      "1": "🙈 So close!",
+      "2": "🍀 Better luck next time!",
+      "3": "🤓 Mistakes make masters!",
+      "4": "🔁 Shake it off — next one!"
+    }
   },
 
   "host": {
@@ -163,7 +198,24 @@
     "correct_order": "Correct order is shown below.",
     "correct": "Correct",
     "tracks_available": "Available: {0} loop, {1} stinger",
-    "enter_token": "Enter the access token (shown at server startup or in Teacher Portal > Settings):"
+    "enter_token": "Enter the access token (shown at server startup or in Teacher Portal > Settings):",
+    "sfx_toggle": "Sound effects",
+    "builtin_music": "Built-in music (no MP3)",
+    "track_synth": "Built-in synthesizer",
+    "music_synth": "Music: built-in (synthesizer).",
+    "synth_needs_sfx": "Built-in music plays only with sound effects enabled.",
+    "get_ready": "Get ready!",
+    "double_banner": "DOUBLE POINTS QUESTION",
+    "players_milestone": "🎉 {0} players in!",
+    "podium_title": "Top players",
+    "awards_title": "Awards"
+  },
+
+  "awards": {
+    "fastest_finger": "Fastest Finger",
+    "streak_master": "Streak Master",
+    "sharpshooter": "Sharpshooter",
+    "comeback": "Comeback Kid"
   },
 
   "admin": {
@@ -464,7 +516,14 @@
     "qr_class_alt": "Class QR code",
 
     "auth_required": "Login required",
-    "error": "Error"
+    "error": "Error",
+
+    "q_double_label": "⚡ Double points",
+    "timing_get_ready_label": "Get-ready countdown (s)",
+    "final_double_label": "Final question worth double points",
+    "badge_free": "Free, no limits",
+    "badge_open_license": "Open license",
+    "tab_exam": "Exam"
   },
 
   "profile": {

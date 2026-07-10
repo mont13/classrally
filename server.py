@@ -16,6 +16,7 @@ import argparse
 import base64
 import csv
 import hashlib
+import hmac
 import io
 import ipaddress
 import json
@@ -51,6 +52,7 @@ HISTORY_DIR = BASE_DIR / "history"
 DEFAULT_QUESTIONS_FILE = "default.json"
 QUESTION_DURATION_SEC = 20
 REVEAL_DURATION_SEC = 5
+GET_READY_SEC = 3  # "Get ready" countdown before answers show (0 = off)
 # Atypical high port (avoids clashes on shared machines); override via QUIZ_PORT.
 DEFAULT_PORT = int(os.environ.get("QUIZ_PORT", "48217"))
 
@@ -262,6 +264,11 @@ def _validate_question(q: dict, idx: int) -> None:
     if "image_url" in q:
         if not isinstance(q["image_url"], str):
             raise RuntimeError(f"question {idx} image_url must be a string")
+
+    # Optional double-points flag (all question types)
+    if "double" in q:
+        if not isinstance(q["double"], bool):
+            raise RuntimeError(f"question {idx} double must be a boolean")
 
 
 def load_questions_from_file(filename: str) -> list[dict[str, Any]]:
@@ -713,6 +720,11 @@ BOT_FAST_ANSWER_SEC = 0.3   # answers faster than this are suspicious
 BOT_FAST_ANSWER_POINTS = 2  # points per ultra-fast answer
 BOT_FAST_STREAK_POINTS = 1  # additional point per consecutive fast answer
 
+# End-of-game award thresholds
+AWARD_FASTEST_MIN_CORRECT = 3    # fastest_finger needs at least this many correct answers
+AWARD_STREAK_MIN = 3             # streak_master needs at least this max_streak
+AWARD_COMEBACK_MIN_RANKS = 2     # comeback needs to climb at least this many ranks
+
 
 TEAM_NAMES_DEFAULT: list[str] = ["Modri", "Cerveni", "Zeleni", "Zluti", "Fialovi", "Oranzovi"]
 TEAM_COLORS: list[str] = ["#1d4ed8", "#dc2626", "#16a34a", "#ca8a04", "#7c3aed", "#ea580c"]
@@ -733,6 +745,11 @@ class Player:
     bot_score: int = 0                                    # accumulated suspicion
     answer_times: list = field(default_factory=list)      # per-question elapsed seconds
     fast_answer_streak: int = 0                           # consecutive ultra-fast answers
+    # Award tracking fields
+    answered_count: int = 0                               # scored questions this player answered
+    correct_count: int = 0                                # scored questions answered correctly
+    correct_times: list = field(default_factory=list)     # effective elapsed sec of correct answers
+    midgame_rank: int | None = None                       # rank recorded at mid-game reveal
 
 
 class QuizState:
@@ -744,10 +761,15 @@ class QuizState:
         self.current_index = -1
         self.question_duration_sec = QUESTION_DURATION_SEC
         self.reveal_duration_sec = REVEAL_DURATION_SEC
+        self.get_ready_sec = GET_READY_SEC
+        self.final_double: bool = False
         self.question_started_at = 0.0
         self.reveal_started_at = 0.0
         self.answers: dict[str, dict[str, Any]] = {}
         self.scored_question_index: int | None = None
+        self.scored_question_count = 0
+        self._awards_cache: list[dict[str, Any]] | None = None
+        self._ws_marker: tuple[str, int] = ("lobby", -1)  # last (phase, index) broadcast over WS
         self._active_bank: str | None = None
         self._class_id: int | None = None
         self.team_mode: bool = False
@@ -764,6 +786,8 @@ class QuizState:
             self.reveal_started_at = 0.0
             self.answers = {}
             self.scored_question_index = None
+            self.scored_question_count = 0
+            self._awards_cache = None
             for player in self.players.values():
                 player.score = 0
                 player.streak = 0
@@ -771,14 +795,23 @@ class QuizState:
                 player.bot_score = 0
                 player.answer_times = []
                 player.fast_answer_streak = 0
+                player.answered_count = 0
+                player.correct_count = 0
+                player.correct_times = []
+                player.midgame_rank = None
                 player.team = None
 
-    def set_timing(self, question_sec: int | None = None, reveal_sec: int | None = None) -> None:
+    def set_timing(self, question_sec: int | None = None, reveal_sec: int | None = None,
+                   get_ready_sec: int | None = None, final_double: bool | None = None) -> None:
         with self._lock:
             if question_sec is not None:
                 self.question_duration_sec = max(5, min(120, question_sec))
             if reveal_sec is not None:
                 self.reveal_duration_sec = max(2, min(30, reveal_sec))
+            if get_ready_sec is not None:
+                self.get_ready_sec = max(0, min(10, get_ready_sec))
+            if final_double is not None:
+                self.final_double = bool(final_double)
 
     def set_team_mode(self, enabled: bool, num_teams: int = 2, team_names: list[str] | None = None) -> None:
         with self._lock:
@@ -797,14 +830,23 @@ class QuizState:
                 for player in self.players.values():
                     player.team = None
 
-    def register_player(self, name: str, user_id: int | None = None) -> dict[str, Any]:
+    def register_player(self, name: str, user_id: int | None = None, avatar_id: Any = 0) -> dict[str, Any]:
         clean = " ".join(name.strip().split())[:24]
         if not clean:
             raise ValueError("Jmeno je povinne")
         if not _is_nickname_clean(clean):
             raise ValueError("Prezdivka obsahuje nevhodne slovo")
-        # Fetch avatar_id from user profile if logged in
-        avatar_id = 0  # 0 means random (client picks)
+        # Requested avatar (accept int or numeric string, range 1-20 like
+        # /api/auth/update-avatar). Registration is a critical path, so any
+        # invalid value silently falls back to 0 (= random, client picks).
+        try:
+            avatar_id = int(avatar_id)
+        except (TypeError, ValueError):
+            avatar_id = 0
+        if avatar_id < 1 or avatar_id > 20:
+            avatar_id = 0
+        # Profile avatar of a logged-in user wins over the requested one
+        # (unless the profile has no avatar set).
         if user_id is not None:
             user_data = user_db.get_user(user_id)
             if user_data and user_data.get("avatar_id"):
@@ -819,6 +861,7 @@ class QuizState:
                 team_idx = player_count % len(self.team_names)
                 assigned_team = self.team_names[team_idx]
             self.players[player_id] = Player(name=clean, secret=player_secret, user_id=user_id, avatar_id=avatar_id, team=assigned_team)
+            self._mark_ws_state_locked()
         # Notify WS clients about new player
         _ws_notify()
         result: dict[str, Any] = {"player_id": player_id, "player_secret": player_secret, "name": clean, "avatar_id": avatar_id}
@@ -841,6 +884,7 @@ class QuizState:
                 raise ValueError("Neznamy player_id")
             del self.players[player_id]
             self.answers.pop(player_id, None)
+            self._mark_ws_state_locked()
         _ws_notify()
         return {"ok": True}
 
@@ -857,6 +901,7 @@ class QuizState:
                 self.reveal_started_at = 0.0
                 self.answers = {}
                 self.scored_question_index = None
+                self._awards_cache = None
             elif action == "reveal":
                 if self.phase != "question":
                     raise ValueError("Reveal je mozne jen ve fazi question")
@@ -874,6 +919,8 @@ class QuizState:
                 self.reveal_started_at = 0.0
                 self.answers = {}
                 self.scored_question_index = None
+                self.scored_question_count = 0
+                self._awards_cache = None
                 for player in self.players.values():
                     player.score = 0
                     player.streak = 0
@@ -881,6 +928,10 @@ class QuizState:
                     player.bot_score = 0
                     player.answer_times = []
                     player.fast_answer_streak = 0
+                    player.answered_count = 0
+                    player.correct_count = 0
+                    player.correct_times = []
+                    player.midgame_rank = None
             elif action == "save_history":
                 if self.phase == "finished" or len(self.players) > 0:
                     record = save_game_history(self)
@@ -888,9 +939,12 @@ class QuizState:
                 raise ValueError("Zadni hraci nebo hra neskoncila")
             else:
                 raise ValueError("Neznamy action")
-            # Notify WS clients about state change
-            _ws_notify()
-            return {"ok": True}
+            self._mark_ws_state_locked()
+        # Notify WS clients about the state change AFTER releasing the lock:
+        # the broadcast state getter calls public_state(), which re-acquires
+        # it — notifying under the lock would deadlock the server.
+        _ws_notify()
+        return {"ok": True}
 
     def submit_answer(self, player_id: str, player_secret: str, choice: Any) -> dict[str, Any]:
         now = time.time()
@@ -962,6 +1016,7 @@ class QuizState:
                     player.bot_score += BOT_FAST_STREAK_POINTS
             else:
                 player.fast_answer_streak = 0
+            self._mark_ws_state_locked()
 
         # Notify WS clients about new answer
         _ws_notify()
@@ -979,19 +1034,25 @@ class QuizState:
         # No scoring for engagement-only types
         if q_type in ("poll", "wordcloud", "slide"):
             self.scored_question_index = self.current_index
+            self._record_midgame_rank_locked()
             return
 
         started = self.question_started_at or time.time()
+        double_active = self._question_is_double_locked(self.current_index)
 
         # Track who answered for streak reset
         answered_pids = set(self.answers.keys())
 
         for player_id, answer in self.answers.items():
-            points = self._calculate_points(question, q_type, answer, started)
+            points = self._calculate_points(question, q_type, answer, started, self.get_ready_sec)
             is_correct = points > 0
             player = self.players[player_id]
+            player.answered_count += 1
 
             if is_correct:
+                elapsed = max(0.0, answer["time"] - started)
+                player.correct_times.append(max(0.0, elapsed - self.get_ready_sec))
+                player.correct_count += 1
                 player.streak += 1
                 player.max_streak = max(player.max_streak, player.streak)
                 # Streak multiplier
@@ -1004,6 +1065,9 @@ class QuizState:
                 else:
                     multiplier = 1.0
                 points = int(points * multiplier)
+                # Double points apply after the streak multiplier
+                if double_active:
+                    points *= 2
             else:
                 player.streak = 0
 
@@ -1015,12 +1079,36 @@ class QuizState:
                 player.streak = 0
 
         self.scored_question_index = self.current_index
+        self.scored_question_count += 1
+        self._record_midgame_rank_locked()
+
+    def _question_is_double_locked(self, index: int) -> bool:
+        """True when the question at index scores double points. Must hold self._lock."""
+        if index < 0 or index >= len(self.questions):
+            return False
+        if bool(self.questions[index].get("double", False)):
+            return True
+        return self.final_double and index == len(self.questions) - 1
+
+    def _record_midgame_rank_locked(self) -> None:
+        """Record each player's rank at the mid-game reveal. Must hold self._lock."""
+        if self.current_index != len(self.questions) // 2:
+            return
+        ordered = sorted(self.players.values(), key=lambda p: (-p.score, p.name.lower()))
+        for rank, player in enumerate(ordered, start=1):
+            player.midgame_rank = rank
 
     @staticmethod
-    def _calculate_points(question: dict, q_type: str, answer: dict, started: float) -> int:
-        """Calculate raw points for an answer (before streak multiplier)."""
+    def _calculate_points(question: dict, q_type: str, answer: dict, started: float,
+                          get_ready_sec: int = 0) -> int:
+        """Calculate raw points for an answer (before streak multiplier).
+
+        The "get ready" countdown is subtracted from elapsed time so the
+        speed bonus only starts ticking once answers are visible.
+        """
         elapsed = max(0.0, answer["time"] - started)
-        speed_bonus = max(0, 40 - int(elapsed))
+        effective_elapsed = max(0.0, elapsed - get_ready_sec)
+        speed_bonus = max(0, 40 - int(effective_elapsed))
 
         if q_type in ("choice", "truefalse"):
             correct = question["correct_index"]
@@ -1083,6 +1171,7 @@ class QuizState:
         if self.current_index + 1 >= len(self.questions):
             self.phase = "finished"
             self.reveal_started_at = 0.0
+            self._awards_cache = self._compute_awards_locked()
             # Auto-save game results
             try:
                 save_game_history(self, class_id=self._class_id)
@@ -1126,6 +1215,36 @@ class QuizState:
                     self._advance_to_next_question_locked(self.reveal_started_at + self.reveal_duration_sec)
                     continue
             break
+
+    def _mark_ws_state_locked(self) -> None:
+        """Remember the (phase, index) that WS clients are being told about.
+
+        Must be called with self._lock held by every mutator that broadcasts
+        after releasing the lock. Keeps tick_and_notify() from re-sending a
+        state an explicit action has already broadcast.
+        """
+        self._ws_marker = (self.phase, self.current_index)
+
+    def tick_and_notify(self) -> bool:
+        """Advance timer-driven transitions and broadcast them over WS.
+
+        Called periodically by the ticker thread (_quiz_ticker_loop). Timer
+        transitions (question timeout -> reveal -> next question -> finished)
+        otherwise reach clients only through polling, and WS clients stop
+        polling once connected. Notifies only when (phase, current_index)
+        actually changed, and only AFTER releasing the lock — the broadcast
+        state getter re-acquires it.
+        """
+        now = time.time()
+        with self._lock:
+            self._sync_timers_locked(now)
+            marker = (self.phase, self.current_index)
+            changed = marker != self._ws_marker
+            if changed:
+                self._ws_marker = marker
+        if changed:
+            _ws_notify()
+        return changed
 
     def _phase_time_left_locked(self, now: float) -> int | None:
         if self.phase == "question" and self.question_started_at > 0:
@@ -1193,6 +1312,109 @@ class QuizState:
             if player.user_id is not None
         }
 
+    def _rank_and_rival_locked(self, player_id: str) -> tuple[int, dict[str, Any] | None]:
+        """Return (1-based rank, player directly above me with point gap).
+
+        Uses the same stable ordering as the leaderboard. The second value is
+        None for the leader. Must be called with self._lock held.
+        """
+        ordered = sorted(self.players.items(), key=lambda kv: (-kv[1].score, kv[1].name.lower()))
+        rank = 1
+        for i, (pid, _) in enumerate(ordered, start=1):
+            if pid == player_id:
+                rank = i
+                break
+        if rank <= 1:
+            return rank, None
+        above = ordered[rank - 2][1]
+        gap = above.score - self.players[player_id].score
+        return rank, {"name": above.name, "gap": gap}
+
+    def _compute_awards_locked(self) -> list[dict[str, Any]]:
+        """Compute end-of-game awards. Must be called with self._lock held.
+
+        Awards are assigned in priority order and each player receives at
+        most one. Ties prefer players outside the top 3 so the podium does
+        not sweep everything. Entries keep "player_id" for the personal
+        view; public_state strips it.
+        """
+        ordered = sorted(self.players.items(), key=lambda kv: (-kv[1].score, kv[1].name.lower()))
+        final_ranks = {pid: rank for rank, (pid, _) in enumerate(ordered, start=1)}
+        awards: list[dict[str, Any]] = []
+        awarded: set[str] = set()
+
+        def _grant(key: str, pid: str, player: Player, value: str) -> None:
+            awards.append({
+                "key": key,
+                "player": player.name,
+                "avatar_id": player.avatar_id,
+                "value": value,
+                "player_id": pid,
+            })
+            awarded.add(pid)
+
+        def _best(candidates: list[tuple[str, Player]], metric) -> tuple[str, Player] | None:
+            """Pick the not-yet-awarded candidate with the lowest metric(pid, player).
+
+            Ties prefer players outside the top 3, then sort by name for
+            deterministic results.
+            """
+            pool = [
+                (metric(pid, p), final_ranks[pid] <= 3, p.name.lower(), pid, p)
+                for pid, p in candidates
+                if pid not in awarded
+            ]
+            if not pool:
+                return None
+            pool.sort(key=lambda row: row[:3])
+            _, _, _, pid, player = pool[0]
+            return pid, player
+
+        # fastest_finger: lowest average time of correct answers (min 3 correct)
+        best = _best(
+            [(pid, p) for pid, p in self.players.items()
+             if len(p.correct_times) >= AWARD_FASTEST_MIN_CORRECT],
+            lambda pid, p: sum(p.correct_times) / len(p.correct_times),
+        )
+        if best:
+            pid, player = best
+            avg = sum(player.correct_times) / len(player.correct_times)
+            _grant("fastest_finger", pid, player, f"{avg:.1f} s")
+
+        # streak_master: highest max_streak (min 3)
+        best = _best(
+            [(pid, p) for pid, p in self.players.items() if p.max_streak >= AWARD_STREAK_MIN],
+            lambda pid, p: -p.max_streak,
+        )
+        if best:
+            pid, player = best
+            _grant("streak_master", pid, player, f"série {player.max_streak}")
+
+        # sharpshooter: answered every scored question, all of them correctly
+        total = self.scored_question_count
+        best = _best(
+            [(pid, p) for pid, p in self.players.items()
+             if total > 0 and p.answered_count == total and p.correct_count == total],
+            lambda pid, p: 0,
+        )
+        if best:
+            pid, player = best
+            _grant("sharpshooter", pid, player, f"{player.correct_count}/{total}")
+
+        # comeback: biggest rank improvement between mid-game and finish (min 2)
+        best = _best(
+            [(pid, p) for pid, p in self.players.items()
+             if p.midgame_rank is not None
+             and p.midgame_rank - final_ranks[pid] >= AWARD_COMEBACK_MIN_RANKS],
+            lambda pid, p: -(p.midgame_rank - final_ranks[pid]),
+        )
+        if best:
+            pid, player = best
+            improvement = player.midgame_rank - final_ranks[pid]
+            _grant("comeback", pid, player, f"+{improvement} míst")
+
+        return awards
+
     def _vote_counts(self) -> list[int]:
         if self.current_index < 0:
             return []
@@ -1243,6 +1465,8 @@ class QuizState:
                 "reveal_started_at": self.reveal_started_at,
                 "question_duration_sec": self.question_duration_sec,
                 "reveal_duration_sec": self.reveal_duration_sec,
+                "get_ready_sec": self.get_ready_sec,
+                "final_double": self.final_double,
                 "phase_time_left": self._phase_time_left_locked(now),
                 "auto_advance": True,
                 "active_bank": self._active_bank,
@@ -1255,15 +1479,30 @@ class QuizState:
             if self.team_mode and self.team_names:
                 response["team_scores"] = self._team_scores_locked()
 
+            if self.phase == "finished":
+                if self._awards_cache is None:
+                    self._awards_cache = self._compute_awards_locked()
+                response["awards"] = [
+                    {"key": a["key"], "player": a["player"], "avatar_id": a["avatar_id"], "value": a["value"]}
+                    for a in self._awards_cache
+                ]
+
             if player_id and player_id in self.players:
                 p = self.players[player_id]
+                my_rank, behind = self._rank_and_rival_locked(player_id)
                 me_data: dict[str, Any] = {
                     "name": p.name,
                     "score": p.score,
                     "streak": p.streak,
                     "max_streak": p.max_streak,
                     "avatar_id": p.avatar_id,
+                    "rank": my_rank,
+                    "behind": behind,
                 }
+                if self.phase == "finished":
+                    me_data["awards"] = [
+                        a["key"] for a in (self._awards_cache or []) if a["player_id"] == player_id
+                    ]
                 if p.team is not None:
                     me_data["team"] = p.team
                     # Include team color
@@ -1286,6 +1525,7 @@ class QuizState:
                     "id": q["id"],
                     "prompt": q["prompt"],
                     "type": q_type,
+                    "double": self._question_is_double_locked(self.current_index),
                 }
 
                 # Optional image
@@ -1927,6 +2167,45 @@ def _ws_heartbeat_loop() -> None:
             WS_MANAGER.ping_all()
         except Exception:
             pass
+
+
+# Game ticker: drives timer-based phase transitions for WS clients.
+TICK_INTERVAL_ACTIVE_SEC = 0.3  # question/reveal: a timeout may fire any moment
+TICK_INTERVAL_IDLE_SEC = 1.0    # lobby/finished: nothing is time-driven
+
+_ticker_thread: threading.Thread | None = None
+_ticker_thread_lock = threading.Lock()
+
+
+def _quiz_ticker_loop() -> None:
+    """Background thread: broadcast timer-driven phase changes over WS.
+
+    Without it, auto transitions would only happen when some client polls
+    /api/state — and WS clients stop polling, so they would hang on a stale
+    phase (host tabs in background get throttled by the browser too).
+    """
+    while True:
+        try:
+            QUIZ.tick_and_notify()
+            busy = QUIZ.phase in ("question", "reveal")
+        except Exception:
+            busy = False
+        time.sleep(TICK_INTERVAL_ACTIVE_SEC if busy else TICK_INTERVAL_IDLE_SEC)
+
+
+def start_quiz_ticker() -> None:
+    """Start the game ticker thread (idempotent).
+
+    Started lazily from main() — never at import time — so importing this
+    module (e.g. in tests) creates no background activity by itself.
+    """
+    global _ticker_thread
+    with _ticker_thread_lock:
+        if _ticker_thread is None or not _ticker_thread.is_alive():
+            _ticker_thread = threading.Thread(target=_quiz_ticker_loop, daemon=True, name="quiz-ticker")
+            _ticker_thread.start()
+
+
 SERVER_INFO: dict[str, Any] = {
     "bind_host": "0.0.0.0",
     "port": DEFAULT_PORT,
@@ -2327,7 +2606,13 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         q = parse_qs(parsed.query)
         player_id = q.get("player_id", [None])[0]
-        is_host = q.get("host", ["0"])[0] == "1"
+        # host=1 over WebSocket is privileged too (broadcast_state sends the
+        # host view to is_host connections). Require the host token from the
+        # handshake headers (X-Host-Token / Authorization: Bearer); without it
+        # silently degrade to a public (non-host) connection. Shipped pages
+        # never open a host WebSocket (host.html polls /api/state), so this
+        # only affects non-browser clients, which can send headers.
+        is_host = q.get("host", ["0"])[0] == "1" and self._has_host_token()
 
         # Send 101 response
         response = ws_handshake_response(client_key)
@@ -2351,10 +2636,30 @@ class Handler(BaseHTTPRequestHandler):
         # This prevents the handler from closing the socket
         WS_MANAGER.read_loop(ws_conn)
 
-    def _require_host_token(self) -> bool:
-        """Verify host token from Authorization header."""
+    def _has_host_token(self) -> bool:
+        """Silently check whether the request carries a valid host token.
+
+        Accepts the ``X-Host-Token`` header (preferred — never put the token
+        into the query string, it would leak into access logs) or the legacy
+        ``Authorization: Bearer <token>`` form. Constant-time comparison.
+        Never writes a response — callers decide how to degrade.
+        """
+        candidates = []
+        x_token = self.headers.get("X-Host-Token", "")
+        if x_token:
+            candidates.append(x_token)
         auth = self.headers.get("Authorization", "")
-        if auth.startswith("Bearer ") and auth[7:] == HOST_TOKEN:
+        if auth.startswith("Bearer "):
+            candidates.append(auth[7:])
+        expected = HOST_TOKEN.encode("utf-8")
+        return any(
+            hmac.compare_digest(tok.encode("utf-8"), expected)
+            for tok in candidates
+        )
+
+    def _require_host_token(self) -> bool:
+        """Verify host token; reject the request with 403 when invalid."""
+        if self._has_host_token():
             return True
         self._json_response({"error": "Invalid host token"}, status=403)
         return False
@@ -2402,7 +2707,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             q = parse_qs(parsed.query)
             player_id = q.get("player_id", [None])[0]
-            host_view = q.get("host", ["0"])[0] == "1"
+            # Host view is privileged: it exposes player_id of every player,
+            # the correct answer already during the question phase and bot
+            # scores. Grant it only with a valid host token; otherwise degrade
+            # silently to the public view (no error) so the host page keeps
+            # working before the token has been entered (lobby/QR screen).
+            host_view = q.get("host", ["0"])[0] == "1" and self._has_host_token()
             self._json_response(QUIZ.public_state(player_id=player_id, host_view=host_view))
             return
 
@@ -2797,7 +3107,7 @@ class Handler(BaseHTTPRequestHandler):
                     user_token = data.get("user_token") or self._get_user_token()
                     if user_token:
                         user_id = user_db.validate_session(user_token)
-                    self._json_response(QUIZ.register_player(name, user_id=user_id))
+                    self._json_response(QUIZ.register_player(name, user_id=user_id, avatar_id=data.get("avatar_id", 0)))
                 return
 
             # --- Exam (písemka) student API ---
@@ -3008,11 +3318,21 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 q_sec = data.get("question_duration_sec")
                 r_sec = data.get("reveal_duration_sec")
+                g_sec = data.get("get_ready_sec")
+                f_double = data.get("final_double")
                 QUIZ.set_timing(
                     question_sec=int(q_sec) if q_sec is not None else None,
                     reveal_sec=int(r_sec) if r_sec is not None else None,
+                    get_ready_sec=int(g_sec) if g_sec is not None else None,
+                    final_double=bool(f_double) if f_double is not None else None,
                 )
-                self._json_response({"ok": True, "question_duration_sec": QUIZ.question_duration_sec, "reveal_duration_sec": QUIZ.reveal_duration_sec})
+                self._json_response({
+                    "ok": True,
+                    "question_duration_sec": QUIZ.question_duration_sec,
+                    "reveal_duration_sec": QUIZ.reveal_duration_sec,
+                    "get_ready_sec": QUIZ.get_ready_sec,
+                    "final_double": QUIZ.final_double,
+                })
                 return
 
             if path == "/api/admin/team-mode":
@@ -3591,6 +3911,8 @@ def main() -> None:
     # Start WebSocket heartbeat thread
     ws_heartbeat = threading.Thread(target=_ws_heartbeat_loop, daemon=True)
     ws_heartbeat.start()
+    # Start the game ticker (pushes timer-driven phase changes to WS clients)
+    start_quiz_ticker()
 
     ThreadingHTTPServer.allow_reuse_address = True
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)

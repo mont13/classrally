@@ -20,8 +20,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# Database location — overridable for testing
-_DB_DIR = Path(__file__).resolve().parent / "data"
+# Database location — overridable via QUIZ_DATA_DIR env (e.g. isolated smoke
+# test runs) or set_db_path() for tests
+_DB_DIR = Path(os.environ["QUIZ_DATA_DIR"]).resolve() if os.environ.get("QUIZ_DATA_DIR") else Path(__file__).resolve().parent / "data"
 _DB_PATH: Path = _DB_DIR / "classrally.db"
 
 # Session TTL: 8 hours
