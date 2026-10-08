@@ -103,7 +103,13 @@
     "award_streak_master": "Mistr sérií",
     "award_sharpshooter": "Ostrostřelec",
     "award_comeback": "Velký návrat",
-    "avatar_pick": "Vyber si avatara:"
+    "avatar_pick": "Vyber si avatara:",
+    "pin_label": "PIN hry",
+    "pin_placeholder": "123 456",
+    "pin_hint": "PIN ukazuje učitel na projektoru.",
+    "pin_unknown": "Hra s tímto PINem neexistuje. Zkontroluj PIN.",
+    "pin_required": "Zadej PIN hry.",
+    "pin_guesses": "Příliš mnoho pokusů o PIN. Zkus to za pár minut."
   },
 
   "fun": {
@@ -140,7 +146,7 @@
     "qr_code": "QR kód",
     "loading": "Načítám...",
     "wifi_hint": "Mobily musí být ve stejné Wi-Fi/LAN. Použij URL výše.",
-    "loopback_warning": "Server běží jen na localhostu. Spusť: python3 server.py --host 0.0.0.0 --port 8765",
+    "loopback_warning": "Server běží jen na localhostu. Spusť: python3 server.py --host 0.0.0.0 --port 48217",
     "btn_start": "Start",
     "btn_reveal": "Vyhodnotit",
     "btn_next": "Další otázka",
@@ -210,7 +216,12 @@
     "podium_title": "Nejlepší hráči",
     "awards_title": "Ocenění",
     "forgot_link": "Zapomenuté heslo?",
-    "music_credit": "Hudba: {0}"
+    "music_credit": "Hudba: {0}",
+    "pin_label": "PIN hry:",
+    "internet_hint": "Žáci otevřou odkaz nebo naskenují QR kód – stačí jim připojení k internetu.",
+    "new_pin": "Nový PIN",
+    "new_pin_title": "Další hodina: prázdná čekárna a PIN, který předchozí třída nezná",
+    "new_pin_confirm": "Vytvořit nový PIN? Hráči z čekárny i z rozehrané hry se odpojí a připojí se znovu s novým PINem."
   },
 
   "exam": {
@@ -566,7 +577,15 @@
     "invite_text": "Kolegovi přijde e-mail s odkazem na založení učitelského účtu. Odkaz platí 7 dní.",
     "invite_email_label": "E-mail kolegy",
     "invite_btn": "Poslat pozvánku",
-    "invite_sent": "Pozvánka odeslána na {0}."
+    "invite_sent": "Pozvánka odeslána na {0}.",
+    "hw_mine_title": "Moje úkoly",
+    "hw_mine_empty": "Zatím žádné aktivní úkoly.",
+    "hw_mine_counts": "dokončilo {0} z {1}",
+    "hw_mine_open": "Výsledky a odkaz",
+    "bank_scope_mine": "moje",
+    "bank_scope_shared": "sdílená",
+    "bank_copy_hint": "Toto je sdílená sada. Vaše úpravy se uloží jako vlastní kopie, originál zůstane beze změny.",
+    "bank_saved_as_copy": "Uloženo jako vaše kopie: {0}"
   },
 
   "profile": {

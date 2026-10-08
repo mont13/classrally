@@ -102,7 +102,13 @@
     "award_streak_master": "Serienmeister",
     "award_sharpshooter": "Scharfschütze",
     "award_comeback": "Großes Comeback",
-    "avatar_pick": "Wähl deinen Avatar:"
+    "avatar_pick": "Wähl deinen Avatar:",
+    "pin_label": "Spiel-PIN",
+    "pin_placeholder": "123 456",
+    "pin_hint": "Die PIN zeigt die Lehrkraft am Beamer.",
+    "pin_unknown": "Es gibt kein Spiel mit dieser PIN. Prüfe die PIN.",
+    "pin_required": "Gib die Spiel-PIN ein.",
+    "pin_guesses": "Zu viele PIN-Versuche. Versuche es in ein paar Minuten erneut."
   },
   "fun": {
     "correct": {
@@ -137,7 +143,7 @@
     "qr_code": "QR-Code",
     "loading": "Laden...",
     "wifi_hint": "Handys müssen im selben Wi-Fi/LAN sein. Verwenden Sie die URL oben.",
-    "loopback_warning": "Server läuft nur auf localhost. Starten Sie: python3 server.py --host 0.0.0.0 --port 8765",
+    "loopback_warning": "Server läuft nur auf localhost. Starten Sie: python3 server.py --host 0.0.0.0 --port 48217",
     "btn_start": "Start",
     "btn_reveal": "Auswerten",
     "btn_next": "Nächste Frage",
@@ -207,7 +213,12 @@
     "podium_title": "Top-Spieler",
     "awards_title": "Auszeichnungen",
     "forgot_link": "Passwort vergessen?",
-    "music_credit": "Musik: {0}"
+    "music_credit": "Musik: {0}",
+    "pin_label": "Spiel-PIN:",
+    "internet_hint": "Die Schüler öffnen den Link oder scannen den QR-Code – jede Internetverbindung genügt.",
+    "new_pin": "Neue PIN",
+    "new_pin_title": "Nächste Stunde: leere Lobby und eine PIN, die die vorige Klasse nicht kennt",
+    "new_pin_confirm": "Neue PIN erstellen? Spieler in der Lobby und im laufenden Spiel werden entfernt und treten mit der neuen PIN wieder bei."
   },
   "exam": {
     "page_title": "ClassRally - Klassenarbeit",
@@ -524,7 +535,15 @@
     "invite_text": "Ihre Kollegin bzw. Ihr Kollege erhält eine E-Mail mit einem Link zum Anlegen eines Lehrerkontos. Der Link ist 7 Tage gültig.",
     "invite_email_label": "E-Mail der Lehrkraft",
     "invite_btn": "Einladung senden",
-    "invite_sent": "Einladung an {0} gesendet."
+    "invite_sent": "Einladung an {0} gesendet.",
+    "hw_mine_title": "Meine Hausaufgaben",
+    "hw_mine_empty": "Noch keine aktiven Hausaufgaben.",
+    "hw_mine_counts": "{0} von {1} fertig",
+    "hw_mine_open": "Ergebnisse und Link",
+    "bank_scope_mine": "eigene",
+    "bank_scope_shared": "gemeinsam",
+    "bank_copy_hint": "Dies ist ein gemeinsamer Fragensatz. Ihre Änderungen werden als eigene Kopie gespeichert, das Original bleibt unverändert.",
+    "bank_saved_as_copy": "Als eigene Kopie gespeichert: {0}"
   },
   "profile": {
     "page_title": "ClassRally – Mein Profil",

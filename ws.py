@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import socket
 import struct
 import threading
 import time
@@ -148,11 +149,13 @@ class WSConnection:
     """Represents a single WebSocket connection."""
 
     def __init__(self, sock: Any, conn_id: str,
-                 player_id: str | None = None, is_host: bool = False):
+                 player_id: str | None = None, is_host: bool = False,
+                 room: str | None = None):
         self.sock = sock
         self.conn_id = conn_id
         self.player_id = player_id
         self.is_host = is_host
+        self.room = room  # key of the game room this client follows
         self.alive = True
         self.last_pong = time.time()
         self._send_lock = threading.Lock()
@@ -195,8 +198,19 @@ class WSConnection:
         self.alive = False
 
     def close(self) -> None:
-        """Close the underlying socket."""
+        """End the connection for good.
+
+        shutdown() first: the HTTP handler holds its own file object on the
+        socket, so close() alone would leave the TCP connection open and the
+        handler thread blocked in recv.
+        """
         self.alive = False
+        if self.sock is None:
+            return
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         try:
             self.sock.close()
         except OSError:
@@ -212,7 +226,7 @@ class WSConnectionManager:
         self._state_getter: Any = None  # Callable to get game state
 
     def set_state_getter(self, getter: Any) -> None:
-        """Set function to get current game state: (player_id, host_view) -> dict."""
+        """Set function to get current game state: (player_id, host_view[, room]) -> dict."""
         self._state_getter = getter
 
     def register(self, conn: WSConnection) -> None:
@@ -227,13 +241,13 @@ class WSConnectionManager:
             if conn:
                 conn.close()
 
-    def broadcast_state(self) -> None:
-        """Push current state to all connected clients."""
+    def broadcast_state(self, room: str | None = None) -> None:
+        """Push current state to the clients of one room (or to all clients)."""
         if not self._state_getter:
             return
 
         with self._lock:
-            conns = list(self._connections.values())
+            conns = [c for c in self._connections.values() if room is None or c.room == room]
 
         dead = []
         for conn in conns:
@@ -241,10 +255,10 @@ class WSConnectionManager:
                 dead.append(conn.conn_id)
                 continue
             try:
-                state = self._state_getter(
-                    player_id=conn.player_id,
-                    host_view=conn.is_host,
-                )
+                kwargs: dict[str, Any] = {"player_id": conn.player_id, "host_view": conn.is_host}
+                if conn.room is not None:
+                    kwargs["room"] = conn.room
+                state = self._state_getter(**kwargs)
                 if not conn.send_json(state):
                     dead.append(conn.conn_id)
             except Exception:

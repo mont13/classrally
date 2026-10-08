@@ -224,6 +224,7 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 | `QUIZ_BASE_URL` | _(prazdne)_ | Verejna adresa za proxy (QR kody a odkazy), napr. `https://classrally.example.com` |
 | `QUIZ_TRUSTED_PROXIES` | _(privatni rozsahy)_ | IP/CIDR proxy, ktere smi nastavit `X-Forwarded-For` |
 | `QUIZ_DATA_DIR` | `data/` | Slozka SQLite databaze (ucty, tridy) |
+| `QUIZ_ROOMS` | `single` | `multi` = vice ucitelu na jednom serveru: kazdy ma mistnost s PINem a oddelena data (hry, ukoly, tridy, zaci, vlastni sady) |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | _(Ollama)_ | OpenAI-kompatibilni AI API pro generovani otazek (nastavene na serveru = zamcene, klic se neposila do prohlizece) |
 | `MAIL_MODE` | `log` | Odchozi posta: `off`, `log` (jen ulozit do `data/outbox`), `live` (SMTP) |
 | `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD` | — | SMTP pro obnovu hesla, overeni e-mailu a pozvanky ucitelu |

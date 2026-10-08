@@ -222,6 +222,18 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 1")
             conn.commit()
 
+        # Migration: data ownership (several teachers on one server) and the
+        # homework player secret (only its hash is stored)
+        game_cols = [row[1] for row in conn.execute("PRAGMA table_info(games)").fetchall()]
+        if "owner_id" not in game_cols:
+            conn.execute("ALTER TABLE games ADD COLUMN owner_id INTEGER")
+        sp_cols = [row[1] for row in conn.execute("PRAGMA table_info(selfpaced_sessions)").fetchall()]
+        if "owner_id" not in sp_cols:
+            conn.execute("ALTER TABLE selfpaced_sessions ADD COLUMN owner_id INTEGER")
+        spr_cols = [row[1] for row in conn.execute("PRAGMA table_info(selfpaced_results)").fetchall()]
+        if "secret_hash" not in spr_cols:
+            conn.execute("ALTER TABLE selfpaced_results ADD COLUMN secret_hash TEXT")
+
         # Migration: optional e-mail (password reset, invitations)
         if "email" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
@@ -548,6 +560,24 @@ def list_user_classes(user_id: int) -> list[dict]:
         conn.close()
 
 
+def can_view_class(class_id: int, user_id: int, teacher_only: bool = False) -> bool:
+    """The class teacher and (unless teacher_only) the class members may see a class."""
+    conn = get_conn()
+    try:
+        if teacher_only:
+            row = conn.execute("SELECT 1 FROM classes WHERE id = ? AND teacher_id = ?",
+                               (class_id, user_id)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT 1 FROM classes c WHERE c.id = ? AND (c.teacher_id = ? OR EXISTS "
+                "(SELECT 1 FROM class_members m WHERE m.class_id = c.id AND m.user_id = ?))",
+                (class_id, user_id, user_id),
+            ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def get_class_members(class_id: int) -> list[dict]:
     """Get class members with their stats."""
     conn = get_conn()
@@ -795,6 +825,50 @@ def list_all_users() -> list[dict]:
             "FROM users ORDER BY role DESC, nickname COLLATE NOCASE"
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_users_for_teacher(teacher_id: int) -> list[dict]:
+    """The teacher and the students in their classes (multi-teacher servers)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, nickname, role, total_score, games_played, avatar_id FROM users u "
+            "WHERE u.id = ? OR EXISTS (SELECT 1 FROM class_members m JOIN classes c "
+            "ON c.id = m.class_id WHERE m.user_id = u.id AND c.teacher_id = ?) "
+            "ORDER BY role DESC, nickname COLLATE NOCASE",
+            (teacher_id, teacher_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def is_only_student_of(student_id: int, teacher_id: int) -> bool:
+    """The account sits in this teacher's classes and in no class of another teacher.
+
+    On multi-teacher servers only then may the teacher reset its password, delete
+    it or change its role — a student shared with a colleague is not theirs alone.
+    """
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT c.teacher_id FROM class_members m JOIN classes c ON c.id = m.class_id "
+            "WHERE m.user_id = ?", (student_id,),
+        ).fetchall()
+        return {r["teacher_id"] for r in rows} == {teacher_id}
+    finally:
+        conn.close()
+
+
+def is_student_of(student_id: int, teacher_id: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM class_members m JOIN classes c ON c.id = m.class_id "
+            "WHERE m.user_id = ? AND c.teacher_id = ?", (student_id, teacher_id),
+        ).fetchone() is not None
     finally:
         conn.close()
 
@@ -1098,8 +1172,8 @@ def save_game_to_db(game_record: dict, class_id: int | None = None,
 
         conn.execute(
             "INSERT INTO games (id, class_id, bank_name, total_questions, "
-            "question_duration_sec, player_count, played_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "question_duration_sec, player_count, played_at, owner_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 game_id,
                 class_id,
@@ -1108,6 +1182,7 @@ def save_game_to_db(game_record: dict, class_id: int | None = None,
                 game_record.get("question_duration_sec", 20),
                 game_record.get("player_count", 0),
                 game_record.get("timestamp", datetime.now().isoformat()),
+                game_record.get("owner_id"),
             ),
         )
 
@@ -1172,17 +1247,17 @@ def get_user_game_history(user_id: int, limit: int = 50) -> list[dict]:
 SELFPACED_SESSION_TTL = 7 * 24 * 3600
 
 
-def create_selfpaced_session(bank_name: str, questions: list) -> str:
+def create_selfpaced_session(bank_name: str, questions: list, owner_id: int | None = None) -> str:
     """Create a new self-paced session. Returns session_id."""
     session_id = uuid.uuid4().hex[:12]
     now = time.time()
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO selfpaced_sessions (id, bank_name, questions, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO selfpaced_sessions (id, bank_name, questions, created_at, expires_at, owner_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (session_id, bank_name, json.dumps(questions, ensure_ascii=False),
-             now, now + SELFPACED_SESSION_TTL),
+             now, now + SELFPACED_SESSION_TTL, owner_id),
         )
         conn.commit()
         return session_id
@@ -1195,7 +1270,7 @@ def get_selfpaced_session(session_id: str) -> dict | None:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, bank_name, questions, created_at, expires_at "
+            "SELECT id, bank_name, questions, created_at, expires_at, owner_id "
             "FROM selfpaced_sessions WHERE id = ?",
             (session_id,),
         ).fetchone()
@@ -1209,6 +1284,7 @@ def get_selfpaced_session(session_id: str) -> dict | None:
             "questions": json.loads(row["questions"]),
             "created_at": row["created_at"],
             "expires_at": row["expires_at"],
+            "owner_id": row["owner_id"],
         }
     finally:
         conn.close()
@@ -1281,6 +1357,51 @@ def get_selfpaced_progress(session_id: str, player_id: str) -> dict | None:
         }
     finally:
         conn.close()
+
+
+def list_selfpaced_sessions(owner_id: int | None = None) -> list[dict]:
+    """Homework links that have not expired yet, newest first (all or one teacher's)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT s.id, s.bank_name, s.created_at, s.expires_at, s.owner_id, "
+            "(SELECT COUNT(*) FROM selfpaced_results r WHERE r.session_id = s.id) AS players, "
+            "(SELECT COUNT(*) FROM selfpaced_results r WHERE r.session_id = s.id "
+            " AND r.finished_at IS NOT NULL) AS finished "
+            "FROM selfpaced_sessions s WHERE s.expires_at > ? AND (? IS NULL OR s.owner_id = ?) "
+            "ORDER BY s.created_at DESC",
+            (time.time(), owner_id, owner_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def set_selfpaced_secret(session_id: str, player_id: str, secret: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE selfpaced_results SET secret_hash = ? WHERE session_id = ? AND player_id = ?",
+                     (hashlib.sha256(secret.encode("utf-8")).hexdigest(), session_id, player_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def selfpaced_secret_ok(session_id: str, player_id: str, secret: str | None) -> bool:
+    """True when the homework player's secret matches (sessions from before the
+    secret existed have none stored and stay usable by player_id alone)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT secret_hash FROM selfpaced_results WHERE session_id = ? AND player_id = ?",
+                           (session_id, player_id)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return False
+    if row["secret_hash"] is None:
+        return True
+    return bool(secret) and hmac.compare_digest(
+        row["secret_hash"], hashlib.sha256(secret.encode("utf-8")).hexdigest())
 
 
 def list_selfpaced_results(session_id: str) -> list[dict]:

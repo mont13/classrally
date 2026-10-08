@@ -102,7 +102,13 @@
     "award_streak_master": "Majster sérií",
     "award_sharpshooter": "Ostrostrelec",
     "award_comeback": "Veľký návrat",
-    "avatar_pick": "Vyber si avatara:"
+    "avatar_pick": "Vyber si avatara:",
+    "pin_label": "PIN hry",
+    "pin_placeholder": "123 456",
+    "pin_hint": "PIN ukazuje učiteľ na projektore.",
+    "pin_unknown": "Hra s týmto PINom neexistuje. Skontroluj PIN.",
+    "pin_required": "Zadaj PIN hry.",
+    "pin_guesses": "Príliš veľa pokusov o PIN. Skús to o pár minút."
   },
   "fun": {
     "correct": {
@@ -137,7 +143,7 @@
     "qr_code": "QR kód",
     "loading": "Načítavam...",
     "wifi_hint": "Mobily musia byť v rovnakej Wi-Fi/LAN. Použi URL vyššie.",
-    "loopback_warning": "Server beží len na localhoste. Spusti: python3 server.py --host 0.0.0.0 --port 8765",
+    "loopback_warning": "Server beží len na localhoste. Spusti: python3 server.py --host 0.0.0.0 --port 48217",
     "btn_start": "Štart",
     "btn_reveal": "Vyhodnotiť",
     "btn_next": "Ďalšia otázka",
@@ -207,7 +213,12 @@
     "podium_title": "Najlepší hráči",
     "awards_title": "Ocenenia",
     "forgot_link": "Zabudnuté heslo?",
-    "music_credit": "Hudba: {0}"
+    "music_credit": "Hudba: {0}",
+    "pin_label": "PIN hry:",
+    "internet_hint": "Žiaci otvoria odkaz alebo naskenujú QR kód – stačí im pripojenie na internet.",
+    "new_pin": "Nový PIN",
+    "new_pin_title": "Ďalšia hodina: prázdna čakáreň a PIN, ktorý predchádzajúca trieda nepozná",
+    "new_pin_confirm": "Vytvoriť nový PIN? Hráči z čakárne aj z rozohranej hry sa odpoja a pripoja sa znova s novým PINom."
   },
   "exam": {
     "page_title": "ClassRally - Písomka",
@@ -524,7 +535,15 @@
     "invite_text": "Kolegovi príde e-mail s odkazom na založenie učiteľského účtu. Odkaz platí 7 dní.",
     "invite_email_label": "E-mail kolegu",
     "invite_btn": "Poslať pozvánku",
-    "invite_sent": "Pozvánka odoslaná na {0}."
+    "invite_sent": "Pozvánka odoslaná na {0}.",
+    "hw_mine_title": "Moje úlohy",
+    "hw_mine_empty": "Zatiaľ žiadne aktívne úlohy.",
+    "hw_mine_counts": "dokončilo {0} z {1}",
+    "hw_mine_open": "Výsledky a odkaz",
+    "bank_scope_mine": "moja",
+    "bank_scope_shared": "zdieľaná",
+    "bank_copy_hint": "Toto je zdieľaná sada. Vaše úpravy sa uložia ako vlastná kópia, originál zostane bez zmeny.",
+    "bank_saved_as_copy": "Uložené ako vaša kópia: {0}"
   },
   "profile": {
     "page_title": "ClassRally – Môj profil",

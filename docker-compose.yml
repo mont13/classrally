@@ -27,6 +27,7 @@ services:
       - QUIZ_TEACHER_CODE=${QUIZ_TEACHER_CODE:-}
       - QUIZ_BASE_URL=${QUIZ_BASE_URL:-}
       - QUIZ_TRUSTED_PROXIES=${QUIZ_TRUSTED_PROXIES:-}
+      - QUIZ_ROOMS=${QUIZ_ROOMS:-single}
       - MAIL_MODE=${MAIL_MODE:-log}
       - MAIL_FROM=${MAIL_FROM:-}
       - SMTP_HOST=${SMTP_HOST:-}

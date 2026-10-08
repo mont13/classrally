@@ -102,7 +102,13 @@
     "award_streak_master": "Майстер серій",
     "award_sharpshooter": "Влучний стрілець",
     "award_comeback": "Велике повернення",
-    "avatar_pick": "Обери аватар:"
+    "avatar_pick": "Обери аватар:",
+    "pin_label": "PIN гри",
+    "pin_placeholder": "123 456",
+    "pin_hint": "PIN показує вчитель на проєкторі.",
+    "pin_unknown": "Гри з таким PIN не існує. Перевір PIN.",
+    "pin_required": "Введи PIN гри.",
+    "pin_guesses": "Забагато спроб ввести PIN. Спробуй за кілька хвилин."
   },
   "fun": {
     "correct": {
@@ -137,7 +143,7 @@
     "qr_code": "QR-код",
     "loading": "Завантажую...",
     "wifi_hint": "Телефони мають бути в одній Wi-Fi/LAN мережі. Використовуйте URL вище.",
-    "loopback_warning": "Сервер працює лише на localhost. Запустіть: python3 server.py --host 0.0.0.0 --port 8765",
+    "loopback_warning": "Сервер працює лише на localhost. Запустіть: python3 server.py --host 0.0.0.0 --port 48217",
     "btn_start": "Старт",
     "btn_reveal": "Оцінити",
     "btn_next": "Наступне питання",
@@ -207,7 +213,12 @@
     "podium_title": "Найкращі гравці",
     "awards_title": "Нагороди",
     "forgot_link": "Забули пароль?",
-    "music_credit": "Музика: {0}"
+    "music_credit": "Музика: {0}",
+    "pin_label": "PIN гри:",
+    "internet_hint": "Учні відкривають посилання або сканують QR-код – вистачить будь-якого інтернету.",
+    "new_pin": "Новий PIN",
+    "new_pin_title": "Наступний урок: порожнє лобі та PIN, якого попередній клас не знає",
+    "new_pin_confirm": "Створити новий PIN? Гравців у лобі та в поточній грі буде від'єднано, вони приєднаються знову з новим PIN."
   },
   "exam": {
     "page_title": "ClassRally - Контрольна робота",
@@ -524,7 +535,15 @@
     "invite_text": "Колега отримає e-mail з посиланням для створення облікового запису вчителя. Посилання дійсне 7 днів.",
     "invite_email_label": "E-mail колеги",
     "invite_btn": "Надіслати запрошення",
-    "invite_sent": "Запрошення надіслано на {0}."
+    "invite_sent": "Запрошення надіслано на {0}.",
+    "hw_mine_title": "Мої завдання",
+    "hw_mine_empty": "Поки немає активних завдань.",
+    "hw_mine_counts": "завершили {0} з {1}",
+    "hw_mine_open": "Результати й посилання",
+    "bank_scope_mine": "моя",
+    "bank_scope_shared": "спільна",
+    "bank_copy_hint": "Це спільний набір. Ваші зміни буде збережено як власну копію, оригінал залишиться без змін.",
+    "bank_saved_as_copy": "Збережено як вашу копію: {0}"
   },
   "profile": {
     "page_title": "ClassRally – Мій профіль",

@@ -12,6 +12,9 @@
   <script src="/static/confetti.js"></script>
   <meta name="theme-color" content="#0284c7" />
   <style>
+    #pinRow { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    #pinRow.hide { display: none; }
+    #pinInput { font-size: 1.6rem; letter-spacing: 6px; text-align: center; font-weight: 800; }
     .countdown-bar { width: 100%; height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 10px 0 16px; }
     .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
       background: linear-gradient(90deg, #14b8a6, #2563eb); }
@@ -247,6 +250,11 @@
             <span class="hero-badge" data-i18n="common.hero_badge_colors">Barevné volby</span>
             <span class="hero-badge" data-i18n="common.hero_badge_score">Okamžité skóre</span>
           </div>
+          <div id="pinRow" class="hide">
+            <label for="pinInput" style="font-weight:800;" data-i18n="play.pin_label">PIN hry</label>
+            <input id="pinInput" class="input" inputmode="numeric" pattern="[0-9]*" maxlength="7" autocomplete="off" data-i18n-placeholder="play.pin_placeholder" placeholder="123 456" />
+            <p class="muted" style="margin:0;font-size:0.9rem;" data-i18n="play.pin_hint">PIN ukazuje učitel na projektoru.</p>
+          </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <input id="nameInput" class="input" data-i18n-placeholder="play.name_placeholder" placeholder="např. Tereza" maxlength="24" autofocus style="flex:1;" />
             <button id="randomNickBtn" class="btn ghost" data-i18n-title="play.random_nick_title" title="Náhodná přezdívka" style="padding:10px 14px;font-size:1.3rem;flex-shrink:0;" data-i18n-aria="play.random_nick_aria" aria-label="Vygeneruj náhodnou přezdívku">&#x1F3B2;</button>
@@ -273,6 +281,11 @@
       <div id="qrJoin" style="text-align:center;margin:30px 0 10px 0;">
         <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;" data-i18n="play.qr_hint">QR kód pro připojení:</p>
         <img id="qrImg" src="/api/qr" alt="QR kód" style="width:min(80vw,400px);height:auto;border:3px solid #e2e8f0;border-radius:12px;" />
+        <script>
+          // share the room: the QR on this page carries the PIN as well
+          if (localStorage.getItem('quiz_room_pin')) document.getElementById('qrImg').src =
+            '/api/qr?url=' + encodeURIComponent(location.origin + '/play?pin=' + localStorage.getItem('quiz_room_pin'));
+        </script>
       </div>
     </section>
 
@@ -369,10 +382,46 @@
   </main>
 
   <script>
+    // Room PIN (servers with a room per teacher): from ?pin= (QR code) or typed in.
+    // PIN_KEY holds the room of the stored player (or the last PIN typed in).
+    const PIN_KEY = 'quiz_room_pin';
+    const urlParamsPin = new URLSearchParams(location.search);
+    const urlPin = (urlParamsPin.get('pin') || '').replace(/\D/g, '');
+    // A QR code of another room (another teacher, or a new PIN for the next
+    // lesson) starts over there instead of resuming the old game.
+    function forgetPlayer() {
+      ['quiz_player_id', 'quiz_player_secret', 'quiz_player_team'].forEach(k => localStorage.removeItem(k));
+    }
+    // A message shown before the translations have loaded: data-i18n lets
+    // i18n.apply() translate it as soon as they arrive.
+    function setJoinMessage(key) {
+      const el = document.getElementById('joinErr');
+      el.setAttribute('data-i18n', key);
+      el.textContent = i18n.t(key);
+    }
+    if (urlPin) {
+      if (localStorage.getItem('quiz_player_id') && localStorage.getItem(PIN_KEY) !== urlPin) forgetPlayer();
+      localStorage.setItem(PIN_KEY, urlPin);
+    }
+    function roomPin() { return localStorage.getItem(PIN_KEY) || ''; }
+    function pinQuery(prefix) { return roomPin() ? `${prefix}pin=${encodeURIComponent(roomPin())}` : ''; }
+
     // If the teacher switched to exam (písemka) mode, send students to the test UI.
-    fetch('/api/mode').then(r => r.json()).then(m => {
-      if (m && m.mode === 'exam') location.replace('/exam');
-    }).catch(() => {});
+    // Homework links (?hw=) are self-paced and never redirected.
+    if (!urlParamsPin.get('hw')) {
+      fetch('/api/mode' + pinQuery('?')).then(r => r.json()).then(m => {
+        if (m && m.code === 'pin_guesses') {
+          setJoinMessage('play.pin_guesses');
+          return;
+        }
+        if (m && m.mode === 'exam' && !m.pin_required) location.replace('/exam' + pinQuery('?'));
+        if (m && m.pin_required) {
+          if (m.pin_unknown) localStorage.removeItem(PIN_KEY);
+          document.getElementById('pinRow').classList.remove('hide');
+          if (m.pin_unknown) setJoinMessage('play.pin_unknown');
+        }
+      }).catch(() => {});
+    }
 
     const AVATARS = [
       { id: 1,  emoji: '\uD83E\uDD8A', color: '#f97316' },
@@ -429,7 +478,11 @@
       if (body) cfg.body = JSON.stringify(body);
       const res = await fetch(path, cfg);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || i18n.t('play.request_failed'));
+      if (!res.ok) {
+        const err = new Error(data.error || i18n.t('play.request_failed'));
+        err.code = data.code;
+        throw err;
+      }
       return data;
     }
 
@@ -1459,6 +1512,12 @@
         }
         render(state, playerId);
       } catch (e) {
+        if (e.code === 'player_unknown' || e.code === 'pin_required') {
+          // the server restarted, the room closed or got a new PIN: join again
+          forgetPlayer();
+          location.reload();
+          return;
+        }
         console.error(e);
       }
     }
@@ -1491,14 +1550,43 @@
     async function join() {
       const name = document.getElementById('nameInput').value.trim();
       const err = document.getElementById('joinErr');
+      err.removeAttribute('data-i18n');
       err.textContent = '';
       try {
         const userToken = localStorage.getItem('quiz_user_token') || '';
+        const typedPin = document.getElementById('pinInput').value.replace(/\D/g, '');
+        if (typedPin && typedPin !== roomPin()) {
+          // a typed PIN may point to a room that runs an exam: check before joining
+          const m = await fetch('/api/mode?pin=' + encodeURIComponent(typedPin)).then(r => r.json()).catch(() => ({}));
+          if (m.code === 'pin_guesses') { err.textContent = i18n.t('play.pin_guesses'); return; }
+          if (m.pin_unknown) { err.textContent = i18n.t('play.pin_unknown'); return; }
+          localStorage.setItem(PIN_KEY, typedPin);
+          if (m.mode === 'exam') { location.replace('/exam' + pinQuery('?')); return; }
+        }
         const regBody = { name, user_token: userToken };
+        if (roomPin()) regBody.pin = roomPin();
         // Locally picked avatar for anonymous players. The server currently
         // ignores unknown fields, so this is forward-compatible and harmless.
         if (!isLoggedIn && pickedAvatarId) regBody.avatar_id = pickedAvatarId;
-        const data = await api('/api/register', 'POST', regBody);
+        let data;
+        try {
+          data = await api('/api/register', 'POST', regBody);
+        } catch (e) {
+          if (e.code === 'pin_guesses') { err.textContent = i18n.t('play.pin_guesses'); return; }
+          if (e.code === 'pin_required' || e.code === 'pin_unknown') {
+            localStorage.removeItem(PIN_KEY);
+            document.getElementById('pinRow').classList.remove('hide');
+            document.getElementById('pinInput').focus();
+            err.textContent = i18n.t(e.code === 'pin_unknown' ? 'play.pin_unknown' : 'play.pin_required');
+            return;
+          }
+          throw e;
+        }
+        if (data.pin) localStorage.setItem(PIN_KEY, data.pin);
+        if (data.mode === 'exam') {  // the room runs an exam: continue on the test UI
+          location.replace('/exam' + pinQuery('?'));
+          return;
+        }
         localStorage.setItem(KEY, data.player_id);
         localStorage.setItem(SECRET_KEY, data.player_secret);
         if (data.team) {
@@ -1548,7 +1636,7 @@
       btn.classList.add('spin-once');
       btn.disabled = true;
       try {
-        const data = await api('/api/random-nickname');
+        const data = await api('/api/random-nickname' + pinQuery('?'));
         document.getElementById('nameInput').value = data.nickname || '';
       } catch (e) {
         // silently ignore — the field keeps its current value
@@ -1658,7 +1746,10 @@
         ws.onmessage = (ev) => {
           try {
             const state = JSON.parse(ev.data);
+            // no "me": the player was removed (kick, new PIN) — refresh() asks the
+            // server and sends the device back to the join screen
             if (state.me) render(state, playerId);
+            else refresh();
           } catch {}
         };
         ws.onopen = () => {
@@ -1716,7 +1807,9 @@
 
       const SP_KEY = 'sp_player_id_' + hwSessionId;
       const SP_NAME_KEY = 'sp_player_name_' + hwSessionId;
+      const SP_SECRET_KEY = 'sp_player_secret_' + hwSessionId;
       let spPlayerId = localStorage.getItem(SP_KEY);
+      let spSecret = localStorage.getItem(SP_SECRET_KEY) || '';
       let spPlayerName = localStorage.getItem(SP_NAME_KEY) || '';
       let spState = null; // last fetched state
 
@@ -1777,7 +1870,9 @@
           if (!res.ok) throw new Error(data.error || i18n.t('play.sp_error'));
           spPlayerId = data.player_id;
           spPlayerName = data.name;
+          spSecret = data.player_secret || '';
           localStorage.setItem(SP_KEY, spPlayerId);
+          localStorage.setItem(SP_SECRET_KEY, spSecret);
           localStorage.setItem(SP_NAME_KEY, spPlayerName);
           document.getElementById('spBankName').textContent = data.bank_name ? data.bank_name.replace('.json','').replace(/_/g,' ') : '';
           document.getElementById('spJoinPane').classList.add('hide');
@@ -1791,7 +1886,7 @@
       async function loadSpState() {
         if (!spPlayerId) return;
         try {
-          const res = await fetch(`/api/selfpaced/state?session_id=${encodeURIComponent(hwSessionId)}&player_id=${encodeURIComponent(spPlayerId)}`);
+          const res = await fetch(`/api/selfpaced/state?session_id=${encodeURIComponent(hwSessionId)}&player_id=${encodeURIComponent(spPlayerId)}&secret=${encodeURIComponent(spSecret)}`);
           const data = await res.json();
           if (!res.ok) {
             if (res.status === 404 && data.error && data.error.includes('not registered')) {
@@ -1956,7 +2051,7 @@
           const res = await fetch('/api/selfpaced/answer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: hwSessionId, player_id: spPlayerId, choice }),
+            body: JSON.stringify({ session_id: hwSessionId, player_id: spPlayerId, secret: spSecret, choice }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || i18n.t('play.sp_error'));

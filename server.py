@@ -165,10 +165,35 @@ def _migrate_legacy_questions() -> None:
         shutil.copy2(legacy, target)
 
 
-def list_question_banks() -> list[dict[str, Any]]:
-    _migrate_legacy_questions()
+# Question banks: questions/*.json is the shared library. On multi-teacher
+# servers each teacher also has private banks in questions/users/<id>/, which the
+# API names "moje/<file>.json"; a teacher's edit of a shared bank is saved as a
+# private copy, so nobody overwrites or deletes someone else's work.
+PRIVATE_BANK_PREFIX = "moje/"
+
+
+def _bank_path(filename: str, owner_id: int | None = None) -> tuple[Path, str]:
+    """(path, canonical name) of a bank reference; private refs need the owner."""
+    private = filename.startswith(PRIVATE_BANK_PREFIX)
+    name = Path(filename[len(PRIVATE_BANK_PREFIX):] if private else filename).name
+    if not name.endswith(".json"):
+        name += ".json"
+    if name.startswith("."):  # "", "/", ".json": no bank name at all
+        raise ValueError("Neplatny nazev sady otazek")
+    if len(name) > 120:
+        raise ValueError("Nazev sady otazek je prilis dlouhy")
+    if private:
+        if owner_id is None:
+            raise FileNotFoundError(f"Question bank '{filename}' not found")
+        return QUESTIONS_DIR / "users" / str(int(owner_id)) / name, PRIVATE_BANK_PREFIX + name
+    return QUESTIONS_DIR / name, name
+
+
+def _bank_entries(folder: Path, prefix: str, scope: str, editable: bool) -> list[dict[str, Any]]:
     banks = []
-    for f in sorted(QUESTIONS_DIR.iterdir()):
+    if not folder.is_dir():
+        return banks
+    for f in sorted(folder.iterdir()):
         if f.suffix == ".json" and f.is_file():
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
@@ -176,10 +201,25 @@ def list_question_banks() -> list[dict[str, Any]]:
             except Exception:
                 count = 0
             banks.append({
-                "filename": f.name,
+                "filename": prefix + f.name,
                 "name": f.stem.replace("_", " ").title(),
                 "question_count": count,
+                "scope": scope,
+                "editable": editable,
             })
+    return banks
+
+
+def list_question_banks(owner_id: int | None = None) -> list[dict[str, Any]]:
+    """Shared banks, plus the teacher's private ones when owner_id is given.
+
+    With an owner (multi-teacher server) shared banks are read-only for them.
+    """
+    _migrate_legacy_questions()
+    banks = []
+    if owner_id is not None:
+        banks += _bank_entries(QUESTIONS_DIR / "users" / str(int(owner_id)), PRIVATE_BANK_PREFIX, "mine", True)
+    banks += _bank_entries(QUESTIONS_DIR, "", "shared", owner_id is None)
     return banks
 
 
@@ -272,9 +312,8 @@ def _validate_question(q: dict, idx: int) -> None:
             raise RuntimeError(f"question {idx} double must be a boolean")
 
 
-def load_questions_from_file(filename: str) -> list[dict[str, Any]]:
-    safe_name = Path(filename).name
-    path = QUESTIONS_DIR / safe_name
+def load_questions_from_file(filename: str, owner_id: int | None = None) -> list[dict[str, Any]]:
+    path, safe_name = _bank_path(filename, owner_id)
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(f"Question bank '{safe_name}' not found")
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -285,22 +324,43 @@ def load_questions_from_file(filename: str) -> list[dict[str, Any]]:
     return raw
 
 
-def save_questions_to_file(filename: str, questions: list[dict[str, Any]]) -> None:
-    safe_name = Path(filename).name
-    if not safe_name.endswith(".json"):
-        safe_name += ".json"
+def save_questions_to_file(filename: str, questions: list[dict[str, Any]],
+                           owner_id: int | None = None) -> str:
+    """Save a bank; returns its canonical name.
+
+    With an owner (teacher on a multi-teacher server) the bank always lands in
+    the teacher's private folder — editing a shared bank creates a private copy.
+    """
+    if owner_id is not None and not filename.startswith(PRIVATE_BANK_PREFIX):
+        filename = _free_private_name(filename, owner_id)
+    path, safe_name = _bank_path(filename, owner_id)
     # Validate before saving
     if not isinstance(questions, list):
         raise ValueError("questions must be a list")
     for i, q in enumerate(questions):
         _validate_question(q, i)
-    path = QUESTIONS_DIR / safe_name
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(questions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return safe_name
 
 
-def delete_question_bank(filename: str) -> None:
-    safe_name = Path(filename).name
-    path = QUESTIONS_DIR / safe_name
+def _free_private_name(filename: str, owner_id: int) -> str:
+    """Private name for a copy of a shared bank (or a new bank) that does not
+    overwrite one of the teacher's own banks: x.json, x-2.json, x-3.json, ..."""
+    stem = Path(filename).name
+    stem = stem[:-5] if stem.endswith(".json") else stem
+    candidate, n = f"{PRIVATE_BANK_PREFIX}{stem}.json", 1
+    while _bank_path(candidate, owner_id)[0].exists():
+        n += 1
+        candidate = f"{PRIVATE_BANK_PREFIX}{stem}-{n}.json"
+    return candidate
+
+
+def delete_question_bank(filename: str, owner_id: int | None = None) -> None:
+    """Delete a bank. A teacher (owner_id) may delete only private banks."""
+    if owner_id is not None and not filename.startswith(PRIVATE_BANK_PREFIX):
+        raise PermissionError("Sdilenou sadu muze smazat jen spravce serveru.")
+    path, _ = _bank_path(filename, owner_id)
     if path.exists():
         path.unlink()
 
@@ -460,6 +520,7 @@ def save_game_history(quiz_state: QuizState, class_id: int | None = None) -> dic
         "players": quiz_state._ranked_players_with_ids(),
         "player_count": len(quiz_state.players),
         "bank_name": quiz_state._active_bank or "",
+        "owner_id": quiz_state.owner_id,  # teacher whose room played it (None = default room)
     }
     # Save to JSON file (backward compat)
     filename = f"game_{record['id']}.json"
@@ -474,16 +535,28 @@ def save_game_history(quiz_state: QuizState, class_id: int | None = None) -> dic
     return record
 
 
-def list_game_history() -> list[dict[str, Any]]:
+def list_game_history(owner_id: int | None = None) -> list[dict[str, Any]]:
+    """All game records, or only one teacher's (owner_id) on multi-teacher servers."""
     history = []
     for f in sorted(HISTORY_DIR.iterdir(), reverse=True):
         if f.suffix == ".json" and f.is_file():
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
-                history.append(data)
             except Exception:
                 continue
+            if owner_id is None or data.get("owner_id") == owner_id:
+                history.append(data)
     return history
+
+
+def load_game_record(game_id: str) -> dict[str, Any] | None:
+    if not game_id or not GAME_ID_RE.match(game_id):
+        return None
+    path = HISTORY_DIR / f"game_{game_id}.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def delete_game_history(game_id: str) -> bool:
@@ -651,7 +724,7 @@ _NICK_ANIMALS = [
 ]
 
 
-def _generate_random_nickname() -> str:
+def _generate_random_nickname(players: dict[str, Any] | None = None) -> str:
     """Generate a random Czech adjective+animal nickname, e.g. 'RychlyOrel'.
 
     Checks against currently registered player names and appends a numeric
@@ -661,7 +734,7 @@ def _generate_random_nickname() -> str:
     adj = _random.choice(_NICK_ADJECTIVES)
     animal = _random.choice(_NICK_ANIMALS)
     base = adj + animal
-    existing_names = {p.name for p in QUIZ.players.values()}
+    existing_names = {p.name for p in (QUIZ.players if players is None else players).values()}
     if base not in existing_names:
         return base
     for _ in range(20):
@@ -780,6 +853,51 @@ VERIFY_MAIL_IP = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
 INVITE_LIMITER = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
 # Hard cap on all outgoing account e-mail of the server.
 GLOBAL_MAIL_LIMITER = _RegistrationRateLimiter(max_requests=200, window_sec=3600)
+class _GuessLimiter:
+    """Blocks a key after too many *different* wrong guesses in a window.
+
+    Repeating one wrong value counts once: after a restart or a new PIN, every
+    device of a school (one NAT address) still holds the same stale PIN.
+    """
+
+    def __init__(self, max_guesses: int, window_sec: int) -> None:
+        self._lock = threading.Lock()
+        self._guesses: dict[str, dict[str, float]] = {}
+        self.max_guesses = max_guesses
+        self.window_sec = window_sec
+
+    def _recent_locked(self, key: str, now: float) -> dict[str, float]:
+        recent = {g: t for g, t in self._guesses.get(key, {}).items() if now - t < self.window_sec}
+        if recent:
+            self._guesses[key] = recent
+        else:
+            self._guesses.pop(key, None)
+        return recent
+
+    def blocked(self, key: str) -> bool:
+        with self._lock:
+            return len(self._recent_locked(key, time.time())) >= self.max_guesses
+
+    def fail(self, key: str, guess: str) -> None:
+        """Record a wrong guess; callers pass it normalized (one value per real guess)."""
+        now = time.time()
+        with self._lock:
+            if len(self._guesses) >= _SWEEP_EVERY:  # bounded memory
+                for k in [k for k, g in self._guesses.items()
+                          if not g or now - max(g.values()) >= self.window_sec]:
+                    del self._guesses[k]
+            recent = self._recent_locked(key, now)
+            recent.setdefault(guess, now)
+            self._guesses[key] = recent
+
+
+# Unknown room PINs per address: 100 different ones in 10 minutes. Guessing all
+# 900 000 PINs from one address would take months.
+PIN_FAIL_IP = _GuessLimiter(max_guesses=100, window_sec=600)
+
+
+class _PinGuessBlocked(Exception):
+    """Too many unknown PINs from one address (answered with HTTP 429)."""
 
 
 # --- Quiz State ---
@@ -862,9 +980,20 @@ class QuizState:
         self._ws_marker: tuple[str, int] = ("lobby", -1)  # last (phase, index) broadcast over WS
         self._active_bank: str | None = None
         self._class_id: int | None = None
+        # Set when the game belongs to a room (see RoomRegistry): WS updates go
+        # only to that room's clients and history records carry the owner.
+        self.room_key: str | None = None
+        self.owner_id: int | None = None
         self.team_mode: bool = False
         self.num_teams: int = 2
         self.team_names: list[str] = TEAM_NAMES_DEFAULT[:2]
+
+    def _notify(self) -> None:
+        """Broadcast this game's state over WS (call only after releasing the lock)."""
+        if self.room_key is None:
+            _ws_notify()
+        else:
+            _ws_notify(self.room_key)
 
     def reload_questions(self, questions: list[dict[str, Any]], bank_name: str | None = None) -> None:
         with self._lock:
@@ -953,7 +1082,7 @@ class QuizState:
             self.players[player_id] = Player(name=clean, secret=player_secret, user_id=user_id, avatar_id=avatar_id, team=assigned_team)
             self._mark_ws_state_locked()
         # Notify WS clients about new player
-        _ws_notify()
+        self._notify()
         result: dict[str, Any] = {"player_id": player_id, "player_secret": player_secret, "name": clean, "avatar_id": avatar_id}
         if assigned_team is not None:
             result["team"] = assigned_team
@@ -965,7 +1094,7 @@ class QuizState:
             player = self.players.get(player_id)
             if not player:
                 return False
-            return player.secret == player_secret
+            return hmac.compare_digest(player.secret.encode(), str(player_secret).encode())
 
     def kick_player(self, player_id: str) -> dict[str, Any]:
         """Remove a player from the game (host action)."""
@@ -975,8 +1104,25 @@ class QuizState:
             del self.players[player_id]
             self.answers.pop(player_id, None)
             self._mark_ws_state_locked()
-        _ws_notify()
+        self._notify()
         return {"ok": True}
+
+    def clear_players(self) -> list[str]:
+        """New lesson: back to the lobby with no players; returns the removed ids."""
+        with self._lock:
+            gone = list(self.players)
+            self.players.clear()
+            self.phase = "lobby"
+            self.current_index = -1
+            self.question_started_at = 0.0
+            self.reveal_started_at = 0.0
+            self.answers = {}
+            self.scored_question_index = None
+            self.scored_question_count = 0
+            self._awards_cache = None
+            self._mark_ws_state_locked()
+        self._notify()
+        return gone
 
     def host_action(self, action: str) -> dict[str, Any]:
         now = time.time()
@@ -1033,7 +1179,7 @@ class QuizState:
         # Notify WS clients about the state change AFTER releasing the lock:
         # the broadcast state getter calls public_state(), which re-acquires
         # it — notifying under the lock would deadlock the server.
-        _ws_notify()
+        self._notify()
         return {"ok": True}
 
     def submit_answer(self, player_id: str, player_secret: str, choice: Any) -> dict[str, Any]:
@@ -1109,7 +1255,7 @@ class QuizState:
             self._mark_ws_state_locked()
 
         # Notify WS clients about new answer
-        _ws_notify()
+        self._notify()
         return {"ok": True}
 
     def _apply_scoring(self) -> None:
@@ -1333,7 +1479,7 @@ class QuizState:
             if changed:
                 self._ws_marker = marker
         if changed:
-            _ws_notify()
+            self._notify()
         return changed
 
     def _phase_time_left_locked(self, now: float) -> int | None:
@@ -2010,7 +2156,7 @@ class ExamState:
             student = self.students.get(player_id)
             if not student:
                 return {"phase": self.phase, "known": False}
-            if secret is not None and student.secret != secret:
+            if not secret or not hmac.compare_digest(student.secret.encode(), str(secret).encode()):
                 return {"phase": self.phase, "known": False}
             student.last_seen = now
             view: dict[str, Any] = {
@@ -2177,26 +2323,201 @@ def list_audio_tracks() -> dict[str, Any]:
             "effects": effects, "credits": credits}
 
 
-QUIZ = QuizState(load_default_questions())
-EXAM = ExamState()
+# --- Rooms -------------------------------------------------------------------
+# A room is one classroom session: its own live game, its own exam, its own host
+# token and a 6-digit PIN that students use to join.
+#
+# QUIZ_ROOMS=single (default): one room for the whole server — the classic local
+#   setup (one teacher, one class, no PIN needed).
+# QUIZ_ROOMS=multi: every teacher account gets its own room; students join with
+#   the room PIN (it is in the QR code), so teachers never disturb each other.
+ROOM_MODE = "multi" if os.environ.get("QUIZ_ROOMS", "single").strip().lower() == "multi" else "single"
+ROOM_IDLE_SEC = 12 * 3600  # rooms of teachers without activity are dropped
+ROOM_PIN_RE = re.compile(r"[0-9]{6}")  # room PINs: randrange(100000, 1000000)
+ROOM_OWNER_RECHECK_SEC = 30  # how often a host token re-checks its owner's role
 
-# Active app mode: "game" (live Kahoot-style) or "exam" (písemka). The student
-# join page adapts to this; the teacher switches it when activating a bank.
-_MODE_LOCK = threading.Lock()
-_APP_MODE = "game"
+
+@dataclass
+class Room:
+    pin: str
+    owner_id: int | None
+    quiz: "QuizState"
+    exam: "ExamState"
+    host_token: str
+    mode: str = "game"  # "game" (live Kahoot-style) | "exam" (písemka)
+    last_active: float = field(default_factory=time.time)
+    # Stable identity for WebSocket routing: the PIN changes with "new PIN".
+    key: str = field(default_factory=lambda: uuid.uuid4().hex)
+    owner_checked_at: float = 0.0  # last check that the owner is still a teacher
+
+    def touch(self) -> None:
+        self.last_active = time.time()
 
 
-def get_app_mode() -> str:
-    with _MODE_LOCK:
-        return _APP_MODE
+class RoomRegistry:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_pin: dict[str, Room] = {}
+        self._by_key: dict[str, Room] = {}
+        self._by_owner: dict[int, Room] = {}
+        self._by_token: dict[str, Room] = {}
+        self._by_player: dict[str, Room] = {}  # player/student id -> room
+
+    def _new_pin_locked(self) -> str:
+        while True:
+            pin = f"{random.SystemRandom().randrange(100000, 1000000)}"
+            if pin not in self._by_pin:
+                return pin
+
+    def _add_locked(self, room: Room) -> Room:
+        room.quiz.room_key = room.key
+        room.quiz.owner_id = room.owner_id
+        self._by_pin[room.pin] = room
+        self._by_key[room.key] = room
+        self._by_token[room.host_token] = room
+        if room.owner_id is not None:
+            self._by_owner[room.owner_id] = room
+        return room
+
+    def _forget_locked(self, room: Room) -> None:
+        if self._by_pin.get(room.pin) is room:
+            del self._by_pin[room.pin]
+        self._by_key.pop(room.key, None)
+        self._by_token.pop(room.host_token, None)
+        if room.owner_id is not None and self._by_owner.get(room.owner_id) is room:
+            del self._by_owner[room.owner_id]
+        for pid in [pid for pid, r in self._by_player.items() if r is room]:
+            del self._by_player[pid]
+
+    @staticmethod
+    def _blank(owner_id: int | None, quiz: "QuizState | None" = None,
+               exam: "ExamState | None" = None, host_token: str | None = None) -> Room:
+        # built outside the lock (loads the default bank); the PIN is assigned under it
+        return Room(pin="", owner_id=owner_id, quiz=quiz or QuizState(load_default_questions()),
+                    exam=exam or ExamState(), host_token=host_token or uuid.uuid4().hex)
+
+    def create(self, owner_id: int | None, quiz: "QuizState | None" = None,
+               exam: "ExamState | None" = None, host_token: str | None = None) -> Room:
+        room = self._blank(owner_id, quiz, exam, host_token)
+        with self._lock:
+            room.pin = self._new_pin_locked()
+            return self._add_locked(room)
+
+    def for_owner(self, owner_id: int) -> Room:
+        """The teacher's room (created on first use)."""
+        with self._lock:
+            room = self._by_owner.get(owner_id)
+        if room is None:
+            fresh = self._blank(owner_id)
+            with self._lock:
+                # two first requests of one teacher must not get two rooms
+                room = self._by_owner.get(owner_id)
+                if room is None:
+                    fresh.pin = self._new_pin_locked()
+                    room = self._add_locked(fresh)
+        room.touch()
+        return room
+
+    def by_pin(self, pin: str | None) -> Room | None:
+        if not pin:
+            return None
+        with self._lock:
+            return self._by_pin.get(str(pin).strip())
+
+    def by_key(self, key: str | None) -> Room | None:
+        if not key:
+            return None
+        with self._lock:
+            return self._by_key.get(key)
+
+    def by_token(self, token: str | None) -> Room | None:
+        if not token:
+            return None
+        with self._lock:
+            room = self._by_token.get(token)
+        # dict lookup by a random 128-bit token; compare once more in constant time
+        if room is not None and hmac.compare_digest(room.host_token.encode(), token.encode()):
+            return room
+        return None
+
+    def by_player(self, player_id: str | None) -> Room | None:
+        if not player_id:
+            return None
+        with self._lock:
+            return self._by_player.get(player_id)
+
+    def bind_player(self, player_id: str, room: Room) -> None:
+        with self._lock:
+            self._by_player[player_id] = room
+
+    def unbind_player(self, player_id: str) -> None:
+        with self._lock:
+            self._by_player.pop(player_id, None)
+
+    def renew(self, room: Room) -> str:
+        """Next lesson in the same room: a new PIN and an empty lobby.
+
+        The game players are forgotten (their devices see "unknown player" and
+        join again); students of a running exam keep their place.
+        """
+        gone = room.quiz.clear_players()
+        with self._lock:
+            if self._by_pin.get(room.pin) is room:
+                del self._by_pin[room.pin]
+            room.pin = self._new_pin_locked()
+            self._by_pin[room.pin] = room
+            for pid in gone:
+                if self._by_player.get(pid) is room:
+                    del self._by_player[pid]
+        room.touch()
+        return room.pin
+
+    def drop(self, room: Room) -> None:
+        with self._lock:
+            self._forget_locked(room)
+        _ws_notify(room.key)  # the state lookup fails -> its WebSocket clients are disconnected
+
+    def all(self) -> list[Room]:
+        with self._lock:
+            return list(self._by_key.values())
+
+    def drop_idle(self, keep: Room, now: float | None = None) -> int:
+        """Forget teacher rooms nobody has used for ROOM_IDLE_SEC.
+
+        Never the default room, and never a room whose exam still holds student
+        results (they live only in memory until the teacher exports them).
+        Players of an old game are dropped with their room: next lesson gets a
+        new PIN and nobody from yesterday's class sits in its lobby.
+        """
+        now = now or time.time()
+        with self._lock:
+            idle = [r for r in self._by_key.values()
+                    if r is not keep and now - r.last_active > ROOM_IDLE_SEC and not r.exam.students]
+            for room in idle:
+                self._forget_locked(room)
+        for room in idle:
+            _ws_notify(room.key)
+        return len(idle)
 
 
-def set_app_mode(mode: str) -> str:
-    global _APP_MODE
-    with _MODE_LOCK:
-        if mode in ("game", "exam"):
-            _APP_MODE = mode
-        return _APP_MODE
+ROOMS = RoomRegistry()
+# The default room: the only one in single mode; in multi mode it serves the
+# server administrator (admin password / open first-run access).
+DEFAULT_ROOM = ROOMS.create(None, quiz=QuizState(load_default_questions()), exam=ExamState(),
+                            host_token=HOST_TOKEN)
+QUIZ = DEFAULT_ROOM.quiz
+EXAM = DEFAULT_ROOM.exam
+
+
+def get_app_mode(room: Room | None = None) -> str:
+    return (room or DEFAULT_ROOM).mode
+
+
+def set_app_mode(mode: str, room: Room | None = None) -> str:
+    room = room or DEFAULT_ROOM
+    if mode in ("game", "exam"):
+        room.mode = mode
+    return room.mode
 
 
 
@@ -2287,10 +2608,10 @@ def _public_question_for_selfpaced(question: dict, reveal: bool = False) -> dict
     return q_public
 
 
-def _ws_notify() -> None:
-    """Notify all WebSocket clients about state change (fire and forget)."""
+def _ws_notify(room: str | None = None) -> None:
+    """Notify the WebSocket clients of a room (or all clients) about a state change."""
     try:
-        WS_MANAGER.broadcast_state()
+        WS_MANAGER.broadcast_state(room)
     except Exception:
         pass
 
@@ -2320,12 +2641,21 @@ def _quiz_ticker_loop() -> None:
     /api/state — and WS clients stop polling, so they would hang on a stale
     phase (host tabs in background get throttled by the browser too).
     """
+    last_sweep = time.time()
     while True:
-        try:
-            QUIZ.tick_and_notify()
-            busy = QUIZ.phase in ("question", "reveal")
-        except Exception:
-            busy = False
+        busy = False
+        for room in ROOMS.all():
+            try:
+                room.quiz.tick_and_notify()
+                busy = busy or room.quiz.phase in ("question", "reveal")
+            except Exception:
+                pass
+        if time.time() - last_sweep > 600:
+            last_sweep = time.time()
+            try:
+                ROOMS.drop_idle(keep=DEFAULT_ROOM)
+            except Exception:
+                pass
         time.sleep(TICK_INTERVAL_ACTIVE_SEC if busy else TICK_INTERVAL_IDLE_SEC)
 
 
@@ -2384,13 +2714,19 @@ AI_CONFIG: dict[str, Any] = {
 AI_CONFIG_LOCKED = False
 
 
-def ai_public_config() -> dict[str, Any]:
-    """AI settings that may be sent to the browser — never the API key itself."""
+def ai_public_config(shared_teacher: bool = False) -> dict[str, Any]:
+    """AI settings that may be sent to the browser — never the API key itself.
+
+    shared_teacher: a teacher on a multi-teacher server. The settings serve all
+    teachers, so only the server administrator changes them; the teacher picks
+    a model for each generation.
+    """
     return {
         "base_url": AI_CONFIG["base_url"],
         "model": AI_CONFIG["model"],
         "api_key_set": bool(AI_CONFIG["api_key"]),
-        "locked": AI_CONFIG_LOCKED,
+        "locked": AI_CONFIG_LOCKED or shared_teacher,
+        "model_locked": shared_teacher,
     }
 
 
@@ -2443,7 +2779,16 @@ def send_account_mail(kind: str, to: str, lang: str, **values: str) -> str:
 
 # WebSocket connection manager
 WS_MANAGER = WSConnectionManager()
-WS_MANAGER.set_state_getter(lambda player_id=None, host_view=False: QUIZ.public_state(player_id=player_id, host_view=host_view))
+def _ws_state(player_id: str | None = None, host_view: bool = False, room: str | None = None) -> dict[str, Any]:
+    target = ROOMS.by_key(room) if room else DEFAULT_ROOM
+    if target is None:
+        # the room was closed (idle or its teacher lost the role): the manager
+        # drops the connection and the client falls back to polling
+        raise LookupError("room closed")
+    return target.quiz.public_state(player_id=player_id, host_view=host_view)
+
+
+WS_MANAGER.set_state_getter(_ws_state)
 
 
 _DOCKER_BRIDGE_NET = ipaddress.ip_network("172.16.0.0/12")
@@ -2547,6 +2892,7 @@ def build_server_info(
             "host_urls": [f"{base_url}/host"],
             "play_urls": [f"{base_url}/play"],
             "loopback_only": False,
+            "public": True,  # reachable from the internet, not just the classroom Wi-Fi
         }
 
     # If external IP is provided (e.g. from Docker host), use it directly
@@ -2823,7 +3169,12 @@ class Handler(BaseHTTPRequestHandler):
         # silently degrade to a public (non-host) connection. Shipped pages
         # never open a host WebSocket (host.html polls /api/state), so this
         # only affects non-browser clients, which can send headers.
-        is_host = q.get("host", ["0"])[0] == "1" and self._has_host_token()
+        host_room = self._host_room() if q.get("host", ["0"])[0] == "1" else None
+        room = host_room or self._viewer_room(player_id, q.get("pin", [None])[0])
+        if room is None:
+            self._json_response({"error": "PIN required", "code": "pin_required"}, status=400)
+            return
+        is_host = host_room is not None
 
         # Send 101 response
         response = ws_handshake_response(client_key)
@@ -2833,12 +3184,12 @@ class Handler(BaseHTTPRequestHandler):
         # Hijack the socket
         conn_id = uuid.uuid4().hex[:12]
         raw_sock = self.request
-        ws_conn = WSConnection(raw_sock, conn_id, player_id=player_id, is_host=is_host)
+        ws_conn = WSConnection(raw_sock, conn_id, player_id=player_id, is_host=is_host, room=room.key)
         WS_MANAGER.register(ws_conn)
 
         # Send initial state
         try:
-            state = QUIZ.public_state(player_id=player_id, host_view=is_host)
+            state = room.quiz.public_state(player_id=player_id, host_view=is_host)
             ws_conn.send_json(state)
         except Exception:
             pass
@@ -2847,13 +3198,12 @@ class Handler(BaseHTTPRequestHandler):
         # This prevents the handler from closing the socket
         WS_MANAGER.read_loop(ws_conn)
 
-    def _has_host_token(self) -> bool:
-        """Silently check whether the request carries a valid host token.
+    def _host_room(self) -> Room | None:
+        """The room whose host token the request carries, silently (no response).
 
         Accepts the ``X-Host-Token`` header (preferred — never put the token
         into the query string, it would leak into access logs) or the legacy
-        ``Authorization: Bearer <token>`` form. Constant-time comparison.
-        Never writes a response — callers decide how to degrade.
+        ``Authorization: Bearer <token>`` form.
         """
         candidates = []
         x_token = self.headers.get("X-Host-Token", "")
@@ -2862,20 +3212,137 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             candidates.append(auth[7:])
-        expected = HOST_TOKEN.encode("utf-8")
-        return any(
-            hmac.compare_digest(tok.encode("utf-8"), expected)
-            for tok in candidates
-        )
+        for tok in candidates:
+            room = ROOMS.by_token(tok)
+            if room is not None:
+                return room if self._owner_still_teacher(room) else None
+        return None
 
-    def _require_host_token(self) -> bool:
-        """Verify host token; reject the request with 403 when invalid."""
-        if self._has_host_token():
+    @staticmethod
+    def _owner_still_teacher(room: Room) -> bool:
+        """A teacher who lost the role or the account (console) loses the room too."""
+        if room.owner_id is None:
             return True
-        self._json_response({"error": "Invalid host token"}, status=403)
+        now = time.time()
+        if now - room.owner_checked_at < ROOM_OWNER_RECHECK_SEC:
+            return True
+        user = user_db.get_user(room.owner_id)
+        if user and user["role"] == "teacher":
+            room.owner_checked_at = now
+            return True
+        ROOMS.drop(room)
         return False
 
+    def _pin_room(self, pin: Any) -> Room | None:
+        """Room of a PIN sent by a client; unknown PINs count as guesses (429 when too many).
+
+        The PIN is normalized once and the same value is looked up and counted:
+        padding a guess (spaces, "+") must not make different guesses look alike.
+        """
+        if not pin:
+            return None
+        ip = self._get_client_ip()
+        if PIN_FAIL_IP.blocked(ip):
+            raise _PinGuessBlocked()
+        pin = str(pin).strip()
+        if not ROOM_PIN_RE.fullmatch(pin):
+            PIN_FAIL_IP.fail(ip, "malformed")  # never a room, counted once
+            return None
+        room = ROOMS.by_pin(pin)
+        if room is None:
+            PIN_FAIL_IP.fail(ip, pin)
+        return room
+
+    def _has_host_token(self) -> bool:
+        return self._host_room() is not None
+
+    def _require_host_room(self) -> Room | None:
+        """Room of the host token; rejects the request with 403 when invalid."""
+        room = self._host_room()
+        if room is None:
+            self._json_response({"error": "Invalid host token"}, status=403)
+        return room
+
+    def _require_host_token(self) -> bool:
+        return self._require_host_room() is not None
+
+    def _join_room(self, pin: Any) -> Room | None:
+        """Room a new player joins: the PIN's room; in single mode the default room."""
+        room = self._pin_room(pin)
+        if room is None and ROOM_MODE == "single":
+            room = DEFAULT_ROOM
+        return room
+
+    def _teacher_room(self) -> Room | None:
+        """The logged-in teacher's own room (multi mode), else None."""
+        if ROOM_MODE != "multi":
+            return None
+        uid = self._get_user_id_from_token()
+        if uid is None:
+            return None
+        user = user_db.get_user(uid)
+        return ROOMS.for_owner(uid) if user and user["role"] == "teacher" else None
+
+    def _viewer_room(self, player_id: str | None, pin: Any = None) -> Room | None:
+        """Room for a read request: the player's room, the PIN's room, the
+        teacher's own room, or (single mode) the default room."""
+        return (ROOMS.by_player(player_id) or self._pin_room(pin)
+                or self._teacher_room() or (DEFAULT_ROOM if ROOM_MODE == "single" else None))
+
+    def _owner_scope(self) -> int | None:
+        """Teacher whose own data a request may see on a multi-teacher server.
+
+        None means everything: single mode, the server administrator (admin
+        password) or first-run open access.
+        """
+        if ROOM_MODE != "multi":
+            return None
+        uid = self._get_user_id_from_token()
+        if uid is None:
+            return None
+        user = user_db.get_user(uid)
+        return uid if user and user["role"] == "teacher" else None
+
+    @staticmethod
+    def _visible_users(teacher_id: int) -> list[dict[str, Any]]:
+        """All accounts (single mode) or teachers + the teacher's own students (multi)."""
+        if ROOM_MODE == "multi":
+            return user_db.list_users_for_teacher(teacher_id)
+        return user_db.list_all_users()
+
+    def _may_manage_account(self, target_id: int, teacher_id: int) -> bool:
+        """Multi-teacher server: a teacher manages only accounts of students who are
+        in their classes and nobody else's (sends 403 otherwise)."""
+        if ROOM_MODE != "multi" or user_db.is_only_student_of(target_id, teacher_id):
+            return True
+        msg = ("Zak je i ve tride jineho ucitele — muzete ho jen vyradit ze sve tridy."
+               if user_db.is_student_of(target_id, teacher_id) else "Spravovat muzete jen zaky svych trid.")
+        self._json_response({"error": msg}, status=403)
+        return False
+
+    def _owns(self, owner_id: int | None) -> bool:
+        scope = self._owner_scope()
+        return scope is None or owner_id == scope
+
+    def _player_exam(self, player_id: str) -> "ExamState":
+        """Exam of the room a student registered in (default room if unknown)."""
+        return (ROOMS.by_player(player_id) or DEFAULT_ROOM).exam
+
+    def _admin_room(self) -> Room:
+        """Room managed by an authorized teacher/admin request (after _require_admin)."""
+        return self._teacher_room() or DEFAULT_ROOM
+
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_get()
+        except _PinGuessBlocked:
+            self._pin_guess_response()
+
+    def _pin_guess_response(self) -> None:
+        self._json_response({"error": "Prilis mnoho pokusu o PIN, zkuste to za par minut",
+                             "code": "pin_guesses"}, status=429)
+
+    def _do_get(self) -> None:
         # WebSocket upgrade detection
         if self.headers.get("Upgrade", "").lower() == "websocket":
             self._handle_ws_upgrade()
@@ -2932,12 +3399,21 @@ class Handler(BaseHTTPRequestHandler):
             # scores. Grant it only with a valid host token; otherwise degrade
             # silently to the public view (no error) so the host page keeps
             # working before the token has been entered (lobby/QR screen).
-            host_view = q.get("host", ["0"])[0] == "1" and self._has_host_token()
-            self._json_response(QUIZ.public_state(player_id=player_id, host_view=host_view))
+            host_room = self._host_room() if q.get("host", ["0"])[0] == "1" else None
+            room = host_room or self._viewer_room(player_id, q.get("pin", [None])[0])
+            if room is None:
+                if player_id:
+                    # restart, a closed room or a new PIN: the device has to join again
+                    self._json_response({"error": "Unknown player", "code": "player_unknown"}, status=404)
+                else:
+                    self._json_response({"error": "PIN required", "code": "pin_required"}, status=400)
+                return
+            self._json_response(room.quiz.public_state(player_id=player_id, host_view=host_room is not None))
             return
 
         if path == "/api/random-nickname":
-            self._json_response({"nickname": _generate_random_nickname()})
+            room = self._join_room(parse_qs(parsed.query).get("pin", [None])[0]) or DEFAULT_ROOM
+            self._json_response({"nickname": _generate_random_nickname(room.quiz.players)})
             return
 
         if path == "/api/health":
@@ -2945,17 +3421,33 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/mode":
-            self._json_response({"mode": get_app_mode()})
+            pin = parse_qs(parsed.query).get("pin", [None])[0]
+            room = self._join_room(pin)
+            payload: dict[str, Any] = {"mode": room.mode if room else "game", "rooms": ROOM_MODE,
+                                       "pin_required": room is None}
+            if pin and room is None:
+                payload["pin_unknown"] = True
+            self._json_response(payload)
             return
 
         if path == "/api/exam/state":
             q = parse_qs(parsed.query)
             player_id = q.get("player_id", [None])[0]
             secret = q.get("secret", [None])[0]
+            pin = q.get("pin", [None])[0]
+            own = ROOMS.by_player(player_id)
+            if own is not None and pin:
+                linked = self._pin_room(pin)
+                if linked is not None and linked is not own:
+                    # a link of another room: the student starts over there. A stale
+                    # PIN of the own room (after "new PIN") keeps the test going.
+                    self._json_response({"phase": linked.exam.phase, "known": False, "other_room": True})
+                    return
+            room = own or self._viewer_room(None, pin) or DEFAULT_ROOM
             if not player_id:
-                self._json_response({"phase": EXAM.phase, "known": False})
+                self._json_response({"phase": room.exam.phase, "known": False})
                 return
-            self._json_response(EXAM.student_view(player_id, secret))
+            self._json_response(room.exam.student_view(player_id, secret))
             return
 
         if path == "/api/network":
@@ -2992,13 +3484,15 @@ class Handler(BaseHTTPRequestHandler):
             # If no teacher account exists yet (first-run), allow open access.
             if not self._require_admin():
                 return
-            self._json_response({"host_token": HOST_TOKEN})
+            room = self._admin_room()
+            self._json_response({"host_token": room.host_token, "pin": room.pin, "rooms": ROOM_MODE})
             return
 
         if path == "/api/host/exam/overview":
-            if not self._require_host_token():
+            room = self._require_host_room()
+            if room is None:
                 return
-            self._json_response(EXAM.overview())
+            self._json_response(room.exam.overview())
             return
 
         if path == "/api/setup-status":
@@ -3019,7 +3513,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/banks":
             if not self._require_admin():
                 return
-            self._json_response(list_question_banks())
+            self._json_response(list_question_banks(self._owner_scope()))
             return
 
         if path == "/api/admin/bank":
@@ -3031,7 +3525,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json_response({"error": "filename required"}, status=400)
                 return
             try:
-                questions = load_questions_from_file(filename)
+                questions = load_questions_from_file(filename, self._owner_scope())
                 self._json_response({"filename": filename, "questions": questions})
             except Exception as e:
                 self._json_response({"error": str(e)}, status=404)
@@ -3040,25 +3534,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/history":
             if not self._require_admin():
                 return
-            self._json_response(list_game_history())
+            self._json_response(list_game_history(self._owner_scope()))
             return
 
         if path == "/api/admin/exam/overview":
             if not self._require_admin():
                 return
-            self._json_response(EXAM.overview())
+            self._json_response(self._admin_room().exam.overview())
             return
 
         if path == "/api/admin/exam/config":
             if not self._require_admin():
                 return
-            self._json_response(EXAM.config.to_dict())
+            self._json_response(self._admin_room().exam.config.to_dict())
             return
 
         if path == "/api/admin/exam/results.csv":
             if not self._require_admin():
                 return
-            csv_text = EXAM.results_csv()
+            csv_text = self._admin_room().exam.results_csv()
             body = ("﻿" + csv_text).encode("utf-8")  # BOM for Excel
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
@@ -3072,13 +3566,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             models = list_ai_models(AI_CONFIG["base_url"], AI_CONFIG["api_key"])
-            self._json_response({"models": models, "config": ai_public_config()})
+            self._json_response({"models": models, "config": ai_public_config(self._owner_scope() is not None)})
             return
 
         if path == "/api/admin/ollama/config":
             if not self._require_admin():
                 return
-            self._json_response(ai_public_config())
+            self._json_response(ai_public_config(self._owner_scope() is not None))
             return
 
         if path == "/api/mail/status":
@@ -3104,8 +3598,7 @@ class Handler(BaseHTTPRequestHandler):
             tid = self._require_teacher()
             if tid is None:
                 return
-            users = user_db.list_all_users()
-            self._json_response({"users": users})
+            self._json_response({"users": self._visible_users(tid)})
             return
 
         # --- Classes API (GET) ---
@@ -3125,6 +3618,9 @@ class Handler(BaseHTTPRequestHandler):
             except (IndexError, ValueError):
                 self._json_response({"error": "Neplatne class_id"}, status=400)
                 return
+            if not user_db.can_view_class(class_id, uid):
+                self._json_response({"error": "Trida nenalezena"}, status=404)
+                return
             self._json_response(user_db.get_class_members(class_id))
             return
 
@@ -3137,6 +3633,9 @@ class Handler(BaseHTTPRequestHandler):
             except (IndexError, ValueError):
                 self._json_response({"error": "Neplatne class_id"}, status=400)
                 return
+            if not user_db.can_view_class(class_id, uid):
+                self._json_response({"error": "Trida nenalezena"}, status=404)
+                return
             self._json_response(user_db.get_class_history(class_id))
             return
 
@@ -3148,6 +3647,10 @@ class Handler(BaseHTTPRequestHandler):
                 class_id = int(path.split("/")[3])
             except (IndexError, ValueError):
                 self._json_response({"error": "Neplatne class_id"}, status=400)
+                return
+            # scores of every student: for the class teacher, not for classmates
+            if not user_db.can_view_class(class_id, uid, teacher_only=True):
+                self._json_response({"error": "Trida nenalezena"}, status=404)
                 return
             self._json_response(user_db.get_class_progress(class_id))
             return
@@ -3162,12 +3665,11 @@ class Handler(BaseHTTPRequestHandler):
             if not game_id or not GAME_ID_RE.match(game_id):
                 self._json_response({"error": "game_id required (12 hex chars)"}, status=400)
                 return
-            record_path = HISTORY_DIR / f"game_{game_id}.json"
-            if not record_path.exists():
+            record = load_game_record(game_id)
+            if record is None or not self._owns(record.get("owner_id")):
                 self._json_response({"error": "Game not found"}, status=404)
                 return
             try:
-                record = json.loads(record_path.read_text(encoding="utf-8"))
                 csv_text = game_results_to_csv(record)
             except Exception as e:
                 self._json_response({"error": str(e)}, status=500)
@@ -3191,7 +3693,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json_response({"error": "filename required"}, status=400)
                 return
             try:
-                questions = load_questions_from_file(filename)
+                questions = load_questions_from_file(filename, self._owner_scope())
                 csv_text = questions_to_csv(questions)
             except FileNotFoundError as e:
                 self._json_response({"error": str(e)}, status=404)
@@ -3219,7 +3721,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json_response({"error": "filename required"}, status=400)
                 return
             try:
-                questions = load_questions_from_file(filename)
+                questions = load_questions_from_file(filename, self._owner_scope())
             except FileNotFoundError as e:
                 self._json_response({"error": str(e)}, status=404)
                 return
@@ -3251,7 +3753,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json_response({"error": "Session not found or expired"}, status=404)
                 return
             progress = user_db.get_selfpaced_progress(session_id, player_id)
-            if not progress:
+            if not progress or not user_db.selfpaced_secret_ok(session_id, player_id, q.get("secret", [None])[0]):
                 self._json_response({"error": "Player not registered in this session"}, status=404)
                 return
             questions = session["questions"]
@@ -3290,6 +3792,12 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/selfpaced/mine":
+            if not self._require_admin():
+                return
+            self._json_response({"sessions": user_db.list_selfpaced_sessions(self._owner_scope())})
+            return
+
         if path == "/api/selfpaced/results":
             q = parse_qs(parsed.query)
             session_id = q.get("session_id", [None])[0]
@@ -3299,7 +3807,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             session = user_db.get_selfpaced_session(session_id)
-            if not session:
+            if not session or not self._owns(session.get("owner_id")):
                 self._json_response({"error": "Session not found or expired"}, status=404)
                 return
             results = user_db.list_selfpaced_results(session_id)
@@ -3326,16 +3834,29 @@ class Handler(BaseHTTPRequestHandler):
                         {"error": "Prilis mnoho registraci, zkuste to pozdeji"}, status=429,
                     )
                     return
+                room = self._join_room(data.get("pin"))
+                if room is None:
+                    unknown = bool(data.get("pin"))
+                    self._json_response(
+                        {"error": "Neznamy PIN hry" if unknown else "Zadejte PIN hry",
+                         "code": "pin_unknown" if unknown else "pin_required"}, status=400)
+                    return
                 name = str(data.get("name", ""))
-                if get_app_mode() == "exam":
-                    self._json_response(EXAM.register_student(name))
+                if room.mode == "exam":
+                    result = room.exam.register_student(name)
                 else:
                     # Optional: link to user account if user_token provided
                     user_id = None
                     user_token = data.get("user_token") or self._get_user_token()
                     if user_token:
                         user_id = user_db.validate_session(user_token)
-                    self._json_response(QUIZ.register_player(name, user_id=user_id, avatar_id=data.get("avatar_id", 0)))
+                    result = room.quiz.register_player(name, user_id=user_id, avatar_id=data.get("avatar_id", 0))
+                ROOMS.bind_player(result["player_id"], room)
+                room.touch()
+                result["mode"] = room.mode
+                if ROOM_MODE == "multi":
+                    result["pin"] = room.pin
+                self._json_response(result)
                 return
 
             # --- Exam (písemka) student API ---
@@ -3344,27 +3865,27 @@ class Handler(BaseHTTPRequestHandler):
                 secret = str(data.get("player_secret", ""))
                 qid = str(data.get("question_id", ""))
                 choice = int(data.get("choice", -1))
-                self._json_response(EXAM.save_answer(player_id, secret, qid, choice))
+                self._json_response(self._player_exam(player_id).save_answer(player_id, secret, qid, choice))
                 return
 
             if path == "/api/exam/position":
                 player_id = str(data.get("player_id", ""))
                 secret = str(data.get("player_secret", ""))
                 pos = int(data.get("position", 0))
-                self._json_response(EXAM.set_position(player_id, secret, pos))
+                self._json_response(self._player_exam(player_id).set_position(player_id, secret, pos))
                 return
 
             if path == "/api/exam/event":
                 player_id = str(data.get("player_id", ""))
                 secret = str(data.get("player_secret", ""))
                 event_type = str(data.get("type", ""))
-                self._json_response(EXAM.record_event(player_id, secret, event_type))
+                self._json_response(self._player_exam(player_id).record_event(player_id, secret, event_type))
                 return
 
             if path == "/api/exam/submit":
                 player_id = str(data.get("player_id", ""))
                 secret = str(data.get("player_secret", ""))
-                self._json_response(EXAM.submit(player_id, secret))
+                self._json_response(self._player_exam(player_id).submit(player_id, secret))
                 return
 
             if path == "/api/submit":
@@ -3374,38 +3895,60 @@ class Handler(BaseHTTPRequestHandler):
                 # For backward compat: if choice is a number string, convert to int
                 if isinstance(choice, (int, float)) and not isinstance(choice, bool):
                     choice = int(choice)
-                self._json_response(QUIZ.submit_answer(player_id, player_secret, choice))
+                room = ROOMS.by_player(player_id) or DEFAULT_ROOM
+                self._json_response(room.quiz.submit_answer(player_id, player_secret, choice))
                 return
 
             if path == "/api/host/kick":
-                if not self._require_host_token():
+                room = self._require_host_room()
+                if room is None:
                     return
                 player_id = str(data.get("player_id", ""))
-                self._json_response(QUIZ.kick_player(player_id))
+                result = room.quiz.kick_player(player_id)
+                if ROOMS.by_player(player_id) is room:
+                    ROOMS.unbind_player(player_id)
+                self._json_response(result)
+                return
+
+            if path == "/api/host/new-pin":
+                # next lesson: empty lobby and a PIN the previous class does not know
+                room = self._require_host_room()
+                if room is None:
+                    return
+                if ROOM_MODE != "multi":
+                    self._json_response({"error": "PIN mistnosti se pouziva jen pri QUIZ_ROOMS=multi"},
+                                        status=400)
+                    return
+                self._json_response({"ok": True, "pin": ROOMS.renew(room), "rooms": ROOM_MODE})
                 return
 
             if path == "/api/host/action":
-                if not self._require_host_token():
+                room = self._require_host_room()
+                if room is None:
                     return
+                room.touch()
                 action = str(data.get("action", ""))
-                self._json_response(QUIZ.host_action(action))
+                self._json_response(room.quiz.host_action(action))
                 return
 
             if path == "/api/host/exam-action":
-                if not self._require_host_token():
+                room = self._require_host_room()
+                if room is None:
                     return
+                room.touch()
+                exam = room.exam
                 action = str(data.get("action", ""))
                 if action == "open":
-                    EXAM.open_exam()
+                    exam.open_exam()
                 elif action == "end":
-                    EXAM.end_exam()
+                    exam.end_exam()
                 elif action == "extend":
-                    EXAM.extend(int(data.get("seconds", 300)))
+                    exam.extend(int(data.get("seconds", 300)))
                 elif action == "reset":
-                    EXAM.reset()
+                    exam.reset()
                 else:
                     raise ValueError("Neznamy action")
-                self._json_response({"ok": True, "phase": EXAM.phase})
+                self._json_response({"ok": True, "phase": exam.phase})
                 return
 
             # --- Admin API (POST) ---
@@ -3428,7 +3971,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json_response({"error": "filename required"}, status=400)
                     return
                 try:
-                    save_questions_to_file(filename, questions)
+                    filename = save_questions_to_file(filename, questions, self._owner_scope())
                 except (ValueError, RuntimeError) as e:
                     self._json_response({"error": str(e)}, status=400)
                     return
@@ -3486,7 +4029,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not questions:
                         self._json_response({"error": "No valid questions found in CSV"}, status=400)
                         return
-                    save_questions_to_file(filename, questions)
+                    filename = save_questions_to_file(filename, questions, self._owner_scope())
                 except (ValueError, RuntimeError) as e:
                     self._json_response({"error": str(e)}, status=400)
                     return
@@ -3500,7 +4043,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not filename:
                     self._json_response({"error": "filename required"}, status=400)
                     return
-                delete_question_bank(filename)
+                delete_question_bank(filename, self._owner_scope())
                 self._json_response({"ok": True})
                 return
 
@@ -3513,14 +4056,18 @@ class Handler(BaseHTTPRequestHandler):
                     self._json_response({"error": "filename required"}, status=400)
                     return
                 try:
-                    questions = load_questions_from_file(filename)
+                    questions = load_questions_from_file(filename, self._owner_scope())
+                    room = self._admin_room()
                     if mode == "exam":
-                        EXAM.reload_questions(questions, bank_name=filename)
-                        set_app_mode("exam")
+                        room.exam.reload_questions(questions, bank_name=filename)
+                        set_app_mode("exam", room)
                     else:
-                        QUIZ.reload_questions(questions, bank_name=filename)
-                        set_app_mode("game")
-                    self._json_response({"ok": True, "count": len(questions), "mode": get_app_mode()})
+                        room.quiz.reload_questions(questions, bank_name=filename)
+                        set_app_mode("game", room)
+                    room.touch()
+                    self._json_response({"ok": True, "count": len(questions), "mode": room.mode})
+                except FileNotFoundError as e:
+                    self._json_response({"error": str(e)}, status=404)
                 except Exception as e:
                     self._json_response({"error": str(e)}, status=400)
                 return
@@ -3532,13 +4079,13 @@ class Handler(BaseHTTPRequestHandler):
                 if mode not in ("game", "exam"):
                     self._json_response({"error": "mode must be game or exam"}, status=400)
                     return
-                self._json_response({"ok": True, "mode": set_app_mode(mode)})
+                self._json_response({"ok": True, "mode": set_app_mode(mode, self._admin_room())})
                 return
 
             if path == "/api/admin/exam/config":
                 if not self._require_admin():
                     return
-                self._json_response({"ok": True, "config": EXAM.update_config(data)})
+                self._json_response({"ok": True, "config": self._admin_room().exam.update_config(data)})
                 return
 
             if path == "/api/admin/timing":
@@ -3548,7 +4095,8 @@ class Handler(BaseHTTPRequestHandler):
                 r_sec = data.get("reveal_duration_sec")
                 g_sec = data.get("get_ready_sec")
                 f_double = data.get("final_double")
-                QUIZ.set_timing(
+                quiz = self._admin_room().quiz
+                quiz.set_timing(
                     question_sec=int(q_sec) if q_sec is not None else None,
                     reveal_sec=int(r_sec) if r_sec is not None else None,
                     get_ready_sec=int(g_sec) if g_sec is not None else None,
@@ -3556,10 +4104,10 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._json_response({
                     "ok": True,
-                    "question_duration_sec": QUIZ.question_duration_sec,
-                    "reveal_duration_sec": QUIZ.reveal_duration_sec,
-                    "get_ready_sec": QUIZ.get_ready_sec,
-                    "final_double": QUIZ.final_double,
+                    "question_duration_sec": quiz.question_duration_sec,
+                    "reveal_duration_sec": quiz.reveal_duration_sec,
+                    "get_ready_sec": quiz.get_ready_sec,
+                    "final_double": quiz.final_double,
                 })
                 return
 
@@ -3570,13 +4118,14 @@ class Handler(BaseHTTPRequestHandler):
                 num_teams = int(data.get("num_teams", 2))
                 team_names_raw = data.get("team_names")
                 team_names = [str(n) for n in team_names_raw] if isinstance(team_names_raw, list) else None
-                QUIZ.set_team_mode(enabled, num_teams=num_teams, team_names=team_names)
+                quiz = self._admin_room().quiz
+                quiz.set_team_mode(enabled, num_teams=num_teams, team_names=team_names)
                 self._json_response({
                     "ok": True,
-                    "team_mode": QUIZ.team_mode,
-                    "num_teams": QUIZ.num_teams,
-                    "team_names": QUIZ.team_names,
-                    "team_colors": TEAM_COLORS[:len(QUIZ.team_names)],
+                    "team_mode": quiz.team_mode,
+                    "num_teams": quiz.num_teams,
+                    "team_names": quiz.team_names,
+                    "team_colors": TEAM_COLORS[:len(quiz.team_names)],
                 })
                 return
 
@@ -3584,7 +4133,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not self._require_admin():
                     return
                 game_id = str(data.get("game_id", ""))
-                if delete_game_history(game_id):
+                record = load_game_record(game_id)
+                if record is not None and self._owns(record.get("owner_id")) and delete_game_history(game_id):
                     self._json_response({"ok": True})
                 else:
                     self._json_response({"error": "Not found"}, status=404)
@@ -3592,6 +4142,11 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/admin/ollama/config":
                 if not self._require_admin():
+                    return
+                if self._owner_scope() is not None:
+                    self._json_response({"error": "Nastaveni AI je spolecne pro vsechny ucitele, meni ho "
+                                                  "spravce serveru. Model zvolite primo u generovani."},
+                                        status=403)
                     return
                 if not AI_CONFIG_LOCKED:
                     if "base_url" in data:
@@ -3620,14 +4175,18 @@ class Handler(BaseHTTPRequestHandler):
                 language = str(data.get("language", "cs"))
                 source_text = str(data.get("source_text", ""))[:AI_SOURCE_TEXT_MAX]
                 base_url, api_key = AI_CONFIG["base_url"], AI_CONFIG["api_key"]
-                if not AI_CONFIG_LOCKED:
+                if not AI_CONFIG_LOCKED and self._owner_scope() is None:
                     # Local single-teacher setups may still point a request elsewhere.
+                    requested = ""
                     if data.get("base_url"):
-                        base_url = str(data["base_url"])
+                        requested = str(data["base_url"])
                     elif "host" in data or "port" in data:
                         host = str(data.get("host", "localhost"))
                         port = int(data.get("port", 11434))
-                        base_url = f"http://{host}:{port}"
+                        requested = f"http://{host}:{port}"
+                    if requested and requested.rstrip("/") != base_url.rstrip("/"):
+                        # the stored key belongs to the configured server, never to another address
+                        base_url, api_key = requested, ""
                     api_key = str(data.get("api_key") or api_key)
                 if not topic:
                     self._json_response({"error": "topic required"}, status=400)
@@ -3893,8 +4452,7 @@ class Handler(BaseHTTPRequestHandler):
                 tid = self._require_teacher()
                 if tid is None:
                     return
-                users = user_db.list_all_users()
-                self._json_response({"users": users})
+                self._json_response({"users": self._visible_users(tid)})
                 return
 
             m = re.match(r"^/api/users/(\d+)/set-role$", path)
@@ -3903,6 +4461,8 @@ class Handler(BaseHTTPRequestHandler):
                 if tid is None:
                     return
                 target_id = int(m.group(1))
+                if not self._may_manage_account(target_id, tid):
+                    return
                 new_role = str(data.get("role", ""))
                 try:
                     user_db.set_user_role(target_id, new_role, tid)
@@ -3917,6 +4477,8 @@ class Handler(BaseHTTPRequestHandler):
                 if tid is None:
                     return
                 target_id = int(m.group(1))
+                if not self._may_manage_account(target_id, tid):
+                    return
                 new_password = str(data.get("new_password", ""))
                 try:
                     user_db.teacher_reset_password(target_id, new_password, tid)
@@ -3931,6 +4493,8 @@ class Handler(BaseHTTPRequestHandler):
                 if tid is None:
                     return
                 target_id = int(m.group(1))
+                if not self._may_manage_account(target_id, tid):
+                    return
                 try:
                     user_db.delete_user_by_teacher(target_id, tid)
                     self._json_response({"ok": True})
@@ -3992,6 +4556,8 @@ class Handler(BaseHTTPRequestHandler):
                 except (IndexError, ValueError):
                     self._json_response({"error": "Neplatna URL"}, status=400)
                     return
+                if not self._may_manage_account(target_uid, teacher_id):
+                    return
                 new_password = str(data.get("new_password", ""))
                 try:
                     user_db.reset_user_password(target_uid, new_password, teacher_id)
@@ -4030,6 +4596,8 @@ class Handler(BaseHTTPRequestHandler):
                 except (IndexError, ValueError):
                     self._json_response({"error": "Neplatna URL"}, status=400)
                     return
+                if not self._may_manage_account(target_uid, teacher_id):
+                    return
                 try:
                     user_db.delete_user(target_uid, teacher_id)
                     self._json_response({"ok": True})
@@ -4047,14 +4615,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._json_response({"error": "filename required"}, status=400)
                     return
                 try:
-                    questions = load_questions_from_file(filename)
+                    questions = load_questions_from_file(filename, self._owner_scope())
                 except FileNotFoundError:
                     self._json_response({"error": f"Question bank not found: {filename}"}, status=404)
                     return
                 except Exception as e:
                     self._json_response({"error": str(e)}, status=400)
                     return
-                session_id = user_db.create_selfpaced_session(filename, questions)
+                session_id = user_db.create_selfpaced_session(filename, questions, owner_id=self._owner_scope())
                 self._json_response({
                     "ok": True,
                     "session_id": session_id,
@@ -4094,6 +4662,7 @@ class Handler(BaseHTTPRequestHandler):
                     answers=[],
                     finished=False,
                 )
+                user_db.set_selfpaced_secret(session_id, player_id, player_secret)
                 self._json_response({
                     "ok": True,
                     "player_id": player_id,
@@ -4121,7 +4690,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
                 progress = user_db.get_selfpaced_progress(session_id, player_id)
-                if not progress:
+                if not progress or not user_db.selfpaced_secret_ok(session_id, player_id, data.get("secret")):
                     self._json_response({"error": "Player not found"}, status=404)
                     return
 
@@ -4208,6 +4777,12 @@ class Handler(BaseHTTPRequestHandler):
         except _BodyTooLarge:
             self.close_connection = True  # the unread body stays in the socket
             self._json_response({"error": "Request too large"}, status=413)
+        except _PinGuessBlocked:
+            self._pin_guess_response()
+        except PermissionError as exc:
+            self._json_response({"error": str(exc)}, status=403)
+        except FileNotFoundError as exc:
+            self._json_response({"error": str(exc)}, status=404)
         except ValueError as exc:
             self._json_response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -4218,6 +4793,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    global QUESTION_DURATION_SEC, REVEAL_DURATION_SEC
     parser = argparse.ArgumentParser(description="Local classroom quiz web")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -4319,7 +4895,10 @@ def main() -> None:
     elif args.ollama_model != "gpt-oss:20b":
         AI_CONFIG["model"] = args.ollama_model
 
+    # CLI timing is the default for every room (QuizState reads these on creation)
+    QUESTION_DURATION_SEC, REVEAL_DURATION_SEC = args.question_time, args.reveal_time
     QUIZ.set_timing(question_sec=args.question_time, reveal_sec=args.reveal_time)
+    print(f"Rooms: {ROOM_MODE}" + (" (each teacher gets a room with a PIN)" if ROOM_MODE == "multi" else ""))
 
     # Configure trusted proxy networks for X-Forwarded-For handling
     global TRUSTED_PROXY_NETS

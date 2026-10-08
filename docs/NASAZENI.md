@@ -223,7 +223,9 @@ nemuze jiny ucitel resetovat, smazat ani sesadit — zmeni ho jen jeho majitel, 
 serveru prikazem `--set-password` (nize).
 
 Bez e-mailu: zaregistruje se jako zak a stavajici ucitel mu zmeni roli (stejne API slouzi
-i na reset hesla a smazani uctu):
+i na reset hesla a smazani uctu). Pri `QUIZ_ROOMS=multi` (kap. 2.8) spravuje ucitel jen zaky
+svych trid — budouci ucitel proto nejdriv vstoupi kodem do jeho tridy, nebo roli zmeni spravce
+serveru z konzole (`--set-role`, nize):
 
 ```bash
 B=http://127.0.0.1:48217
@@ -285,6 +287,36 @@ Generator vola OpenAI-kompatibilni API (napr. Ollama nebo jinou sluzbu): `AI_BAS
 - Ucitel muze zadat tema, pocet otazek, jazyk (cs, en, sk, de, uk) a volitelne podkladovy
   text (napr. odstavec z ucebnice) — otazky pak vzniknou jen z nej. Poradi odpovedi se po
   vygenerovani nahodne zamicha.
+
+### 2.8 Vice ucitelu na jednom serveru (mistnosti s PINem)
+
+Vychozi `QUIZ_ROOMS=single` je jedna spolecna hra — stejne jako na notebooku ve tride.
+Na verejnem serveru pro vic ucitelu nastavte `QUIZ_ROOMS=multi` (a restartujte):
+
+- Kazdy ucitel ma po otevreni `/host` **vlastni mistnost se sestimistnym PINem**. Zaci ho
+  zadaji pri pripojeni; QR kod a odkaz na obrazovce ucitele uz PIN obsahuji. Tlacitko
+  **Novy PIN** (dalsi hodina) vyprazdni cekarnu a da mistnosti PIN, ktery predchozi trida
+  nezna. Zak, ktery otevre odkaz jine mistnosti, zacina tam znovu (nepokracuje ve stare hre).
+- Ucitel vidi **jen sva data**: historii svych her, sve domaci ukoly a jejich vysledky,
+  sve tridy a zaky v nich. Ostatni ucitele a jejich zaci jsou oddeleni.
+- **Ucty zaku:** heslo resetuje, ucet smaze nebo roli zmeni ucitel jen u zaka, ktery je
+  vyhradne v jeho tridach. Zaka sdileneho s kolegou (napr. matematika u jednoho, fyzika
+  u druheho) muze jen vyradit ze sve tridy; heslo si zak obnovi e-mailem, pripadne pomuze
+  spravce serveru z konzole (`--set-password`).
+- **Sady otazek:** vlastni sady ucitele (`moje/…`, na disku `questions/users/<id>/`) muze
+  menit jen on. Spolecne sady ve `questions/` jsou pro ucitele jen ke cteni — kdyz nejakou
+  upravi, ulozi se mu jako vlastni kopie (s volnym nazvem, existujici vlastni sadu
+  neprepise). Spolecne sady spravuje heslo portalu (`QUIZ_ADMIN_PASSWORD`), ktere vidi vse
+  a hraje ve vychozi mistnosti.
+- **AI:** vychozi nastaveni AI (server, klic, model) je spolecne a meni ho jen heslo portalu;
+  ucitel voli model u kazdeho generovani.
+- **Hadani PINu:** po 100 ruznych neexistujicich PINech za 10 minut z jedne adresy server
+  dalsi pokusy z ni na chvili odmitne (HTTP 429). Stejny neplatny PIN (napr. stary PIN ve
+  vsech mobilech skoly po restartu) se pocita jen jednou.
+- Mistnosti jsou v pameti: restart serveru rozehrane hry ukonci. Mistnost, kterou 12 hodin
+  nikdo nepouzil, zanikne i s hraci (pristi hodina dostane novy PIN); necha se jen mistnost
+  s rozepsanou nebo neexportovanou pisemkou. Vysledky her, ukolu a ucty zustavaji
+  v databazi. Hry a ukoly z doby pred zapnutim `multi` (bez vlastnika) vidi jen heslo portalu.
 
 ## 3. Provoz
 
@@ -374,6 +406,7 @@ Doporuceni:
 - [ ] WebSocket `wss://…/api/ws` se pripoji (101)
 - [ ] proxy prepisuje `X-Forwarded-For`
 - [ ] konfigurace s hesly je mimo git s pravy 600/640
+- [ ] `QUIZ_ROOMS=multi`, pokud server pouziva vic ucitelu
 - [ ] `MAIL_MODE` odpovida zameru (`log` dokud neni SMTP overene), `QUIZ_BASE_URL` nastavene
 - [ ] obnova hesla vyzkousena (e-mail potvrzen, odkaz z `/reset` funguje)
 - [ ] zalohy bezi a hlida se jejich stari, obnova vyzkousena

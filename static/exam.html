@@ -364,6 +364,10 @@
             <button id="joinButton" class="btn good" data-i18n="exam.login_btn">Vstoupit do písemky</button>
             <div id="joinError" class="error-message hide"></div>
             <img src="/api/qr" alt="QR kód" class="qr-img" id="qrImage">
+            <script>
+                if (localStorage.getItem('quiz_room_pin')) document.getElementById('qrImage').src =
+                    '/api/qr?url=' + encodeURIComponent(location.origin + '/play?pin=' + localStorage.getItem('quiz_room_pin'));
+            </script>
         </section>
 
         <!-- Sekce WAIT -->
@@ -405,10 +409,21 @@
     </div>
 
     <script>
-        // If the app is in game mode, students belong on the live game UI.
-        fetch('/api/mode').then(r => r.json()).then(m => {
-            if (m && m.mode !== 'exam') location.replace('/play');
-        }).catch(() => {});
+        // Room PIN (servers with a room per teacher) comes along from /play.
+        const EXAM_PIN_KEY = 'quiz_room_pin';
+        const examUrlPin = (new URLSearchParams(location.search).get('pin') || '').replace(/\D/g, '');
+        if (examUrlPin) localStorage.setItem(EXAM_PIN_KEY, examUrlPin);
+        const examPin = localStorage.getItem(EXAM_PIN_KEY) || '';
+        const examPinQuery = examPin ? '?pin=' + encodeURIComponent(examPin) : '';
+
+        // If the app is in game mode, students belong on the live game UI. A student
+        // who is already writing the test skips this: the server knows the room even
+        // when the teacher has since given it a new PIN (see pollState).
+        if (!localStorage.getItem('exam_player_id')) {
+            fetch('/api/mode' + examPinQuery).then(r => r.json()).then(m => {
+                if (m && (m.mode !== 'exam' || m.pin_required)) location.replace('/play' + examPinQuery);
+            }).catch(() => {});
+        }
 
         (function() {
             // === DOM ELEMENTS ===
@@ -775,13 +790,19 @@
             }
 
             // === POLLING & PHASE MANAGEMENT ===
+            // The first poll also sends the PIN of the opened link: a link of another
+            // room makes the server answer "unknown" and the student starts over there.
+            let linkPinCheck = examUrlPin;
+
             async function pollState() {
                 if (!playerId || !playerSecret) return;
                 try {
-                    const state = await apiCall('/api/exam/state?player_id=' + encodeURIComponent(playerId) + '&secret=' + encodeURIComponent(playerSecret), 'GET');
+                    const state = await apiCall('/api/exam/state?player_id=' + encodeURIComponent(playerId) + '&secret=' + encodeURIComponent(playerSecret)
+                        + (linkPinCheck ? '&pin=' + encodeURIComponent(linkPinCheck) : ''), 'GET');
+                    linkPinCheck = '';
 
                     if (!state.known) {
-                        // Server restarted / unknown player — clear and rejoin
+                        // Server restarted / unknown player / another room's link — clear and rejoin
                         localStorage.removeItem('exam_player_id');
                         localStorage.removeItem('exam_player_secret');
                         stopTimers();
@@ -874,7 +895,10 @@
                     return;
                 }
                 try {
-                    const data = await apiCall('/api/register', 'POST', { name: name });
+                    const regBody = { name: name };
+                    if (examPin) regBody.pin = examPin;
+                    const data = await apiCall('/api/register', 'POST', regBody);
+                    if (data.mode && data.mode !== 'exam') { location.replace('/play' + examPinQuery); return; }
                     playerId = data.player_id;
                     playerSecret = data.player_secret;
                     localStorage.setItem('exam_player_id', playerId);

@@ -176,6 +176,11 @@
       display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0; }
     .dash-welcome-text h2 { margin: 0; font-size: 1.4rem; }
     .dash-welcome-text p { margin: 4px 0 0; opacity: 0.88; font-size: 0.95rem; }
+    .role-badge, .scope-badge { display: inline-block; padding: 2px 9px; border-radius: 99px;
+      font-size: 0.75rem; font-weight: 800; vertical-align: middle; white-space: nowrap; }
+    .role-badge.teacher, .scope-badge.mine { background: #dcfce7; color: #166534; }
+    .role-badge.student, .scope-badge.shared { background: #e0f2fe; color: #075985; }
+    .scope-badge { margin-left: 6px; }
     .dash-role-badge { display: inline-block; padding: 3px 10px; border-radius: 99px;
       background: rgba(255,255,255,0.25); font-size: 0.8rem; font-weight: 800;
       text-transform: uppercase; letter-spacing: 0.05em; margin-top: 6px; }
@@ -662,6 +667,11 @@
             </div>
             <div id="hwResultsList"></div>
           </div>
+
+          <div id="hwMineSection" style="margin-top:20px;">
+            <h3 data-i18n="admin.hw_mine_title">Moje ukoly</h3>
+            <div id="hwMineList" class="bank-list"></div>
+          </div>
         </div>
 
         <!-- USERS TAB -->
@@ -696,10 +706,18 @@
     // Legacy admin token — kept for backward compat with old admin password system
     let adminToken = localStorage.getItem('quiz_admin_token') || '';
     let hostToken = localStorage.getItem('quiz_host_token') || '';
+    let adminRoomPin = '';  // multi-room servers: PIN of the teacher's room
     const abc = ['A','B','C','D','E','F'];
     let editorQuestions = [];
     let editorFilename = '';
     let examOverviewTimer = null;
+
+    // Authorization for plain fetch() downloads — same precedence as api().
+    function authHeaders() {
+      if (userToken) return { 'Authorization': `UserToken ${userToken}` };
+      if (adminToken) return { 'Authorization': `Bearer ${adminToken}` };
+      return {};
+    }
 
     async function api(path, method='GET', body=null) {
       const headers = { 'Content-Type': 'application/json' };
@@ -815,6 +833,8 @@
         const box = document.getElementById('hostTokenBox');
         box.textContent = data.host_token;
         hostToken = data.host_token;
+        adminRoomPin = (data.rooms === 'multi' && data.pin) ? String(data.pin) : '';
+        loadNetworkInfo();
         // Also save to localStorage for host page
         localStorage.setItem('quiz_host_token', data.host_token);
       } catch {
@@ -834,12 +854,15 @@
       try {
         const info = await api('/api/network');
         const urls = Array.isArray(info.play_urls) ? info.play_urls : [];
-        const playUrl = urls.length > 0 ? urls[0] : `${location.origin}/play`;
+        const playUrl = (urls.length > 0 ? urls[0] : `${location.origin}/play`)
+          + (adminRoomPin ? `?pin=${adminRoomPin}` : '');
         const linkPlay = document.getElementById('linkPlay');
         linkPlay.href = playUrl;
         const bar = document.getElementById('playerUrlBar');
         const span = document.getElementById('playerUrl');
-        span.textContent = playUrl;
+        span.textContent = adminRoomPin
+          ? `${playUrl}  ·  ${i18n.t('host.pin_label')} ${adminRoomPin.replace(/(\d{3})(\d{3})/, '$1 $2')}`
+          : playUrl;
         bar.classList.remove('hide');
       } catch {}
     }
@@ -884,6 +907,13 @@
         detailSpan.className = 'muted';
         detailSpan.textContent = ` (${b.filename}) — ${b.question_count} ${i18n.t('admin.questions_suffix')}`;
         infoDiv.appendChild(detailSpan);
+        if (b.scope === 'mine' || b.editable === false) {
+          // multi-teacher servers: own banks vs. the shared (read-only) library
+          const scopeSpan = document.createElement('span');
+          scopeSpan.className = 'scope-badge ' + (b.scope === 'mine' ? 'mine' : 'shared');
+          scopeSpan.textContent = i18n.t(b.scope === 'mine' ? 'admin.bank_scope_mine' : 'admin.bank_scope_shared');
+          infoDiv.appendChild(scopeSpan);
+        }
         if (b.filename === activeBankName) {
           const activeSpan = document.createElement('span');
           activeSpan.style.cssText = 'color:#16a34a;font-weight:900;margin-left:6px;';
@@ -903,7 +933,7 @@
         deleteBtn.textContent = i18n.t('admin.btn_delete');
         deleteBtn.addEventListener('click', () => deleteBank(b.filename));
         actionsDiv.appendChild(activateBtn);
-        actionsDiv.appendChild(deleteBtn);
+        if (b.editable !== false) actionsDiv.appendChild(deleteBtn);
         div.appendChild(actionsDiv);
 
         list.appendChild(div);
@@ -982,6 +1012,8 @@
         const data = await api(`/api/admin/bank?filename=${encodeURIComponent(editorFilename)}`);
         editorQuestions = data.questions || [];
         renderEditor();
+        const meta = allBanks.find(b => b.filename === editorFilename);
+        if (meta && meta.editable === false) alert(i18n.t('admin.bank_copy_hint'));
       } catch (e) { alert(e.message); }
     });
 
@@ -989,9 +1021,16 @@
       if (!editorFilename) { alert(i18n.t('admin.load_bank_first')); return; }
       collectEditorData();
       try {
-        await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
-        alert(i18n.t('admin.saved'));
-        loadBanks();
+        const saved = await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
+        // a shared bank is saved as the teacher's own copy ("moje/...")
+        if (saved.filename && saved.filename !== editorFilename) {
+          editorFilename = saved.filename;
+          alert(i18n.t('admin.bank_saved_as_copy', saved.filename));
+        } else {
+          alert(i18n.t('admin.saved'));
+        }
+        await loadBanks();
+        document.getElementById('editorBank').value = editorFilename;
       } catch (e) { alert(e.message); }
     });
 
@@ -1017,9 +1056,8 @@
       const filename = sel.value || editorFilename;
       if (!filename) { alert(i18n.t('admin.select_or_load_bank')); return; }
       try {
-        const authHeader = adminToken ? `Bearer ${adminToken}` : '';
         const res = await fetch(`/api/admin/bank/export/json?filename=${encodeURIComponent(filename)}`, {
-          headers: { 'Authorization': authHeader }
+          headers: authHeaders()
         });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Export failed'); }
         const text = await res.text();
@@ -1033,9 +1071,8 @@
       const filename = sel.value || editorFilename;
       if (!filename) { alert(i18n.t('admin.select_or_load_bank')); return; }
       try {
-        const authHeader = adminToken ? `Bearer ${adminToken}` : '';
         const res = await fetch(`/api/admin/bank/export/csv?filename=${encodeURIComponent(filename)}`, {
-          headers: { 'Authorization': authHeader }
+          headers: authHeaders()
         });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Export failed'); }
         const text = await res.text();
@@ -1078,6 +1115,7 @@
       const finalFilename = targetFilename.endsWith('.json') ? targetFilename : targetFilename + '.json';
 
       const text = await file.text();
+      let storedName = finalFilename;
 
       try {
         if (_importMode === 'json') {
@@ -1093,22 +1131,21 @@
             alert(i18n.t('admin.json_must_be_array'));
             return;
           }
-          await api('/api/admin/bank/save', 'POST', { filename: finalFilename, questions });
-          alert(i18n.t('admin.imported_questions', questions.length, finalFilename));
+          const saved = await api('/api/admin/bank/save', 'POST', { filename: finalFilename, questions });
+          storedName = saved.filename || finalFilename;
+          alert(i18n.t('admin.imported_questions', questions.length, storedName));
         } else {
           // CSV import — POST raw CSV to dedicated endpoint
           const result = await api('/api/admin/bank/import/csv', 'POST', {
             filename: finalFilename,
             csv: text,
           });
-          alert(i18n.t('admin.imported_questions', result.count, finalFilename));
+          storedName = result.filename || finalFilename;
+          alert(i18n.t('admin.imported_questions', result.count, storedName));
         }
-        loadBanks();
+        await loadBanks();
         // Auto-select in editor dropdown
-        setTimeout(() => {
-          const sel2 = document.getElementById('editorBank');
-          sel2.value = finalFilename;
-        }, 200);
+        document.getElementById('editorBank').value = storedName;
       } catch (err) {
         alert(i18n.t('admin.import_error') + ': ' + err.message);
       }
@@ -1688,6 +1725,10 @@
         for (const id of ['aiBaseUrl', 'aiApiKey', 'cfgAiBaseUrl', 'cfgAiApiKey']) {
           document.getElementById(id).disabled = !!cfg.locked;
         }
+        // multi-teacher server: the defaults serve everybody, a teacher picks the model per generation
+        for (const id of ['cfgOllamaModel', 'btnSaveOllama']) {
+          document.getElementById(id).disabled = !!cfg.model_locked;
+        }
         document.getElementById('aiLockedHint').classList.toggle('hide', !cfg.locked);
       } catch {}
     }
@@ -1767,8 +1808,8 @@
             saveName = sel.value;
           }
           try {
-            await api('/api/admin/bank/save', 'POST', { filename: saveName, questions: result.questions });
-            alert(i18n.t('admin.saved_as', saveName));
+            const saved = await api('/api/admin/bank/save', 'POST', { filename: saveName, questions: result.questions });
+            alert(i18n.t('admin.saved_as', saved.filename || saveName));
             loadBanks();
           } catch (e) { alert(e.message); }
         });
@@ -1784,8 +1825,8 @@
           try {
             const existing = await api(`/api/admin/bank?filename=${encodeURIComponent(sel.value)}`);
             const merged = [...(existing.questions || []), ...result.questions];
-            await api('/api/admin/bank/save', 'POST', { filename: sel.value, questions: merged });
-            alert(i18n.t('admin.appended_questions', result.questions.length, sel.value));
+            const saved = await api('/api/admin/bank/save', 'POST', { filename: sel.value, questions: merged });
+            alert(i18n.t('admin.appended_questions', result.questions.length, saved.filename || sel.value));
             loadBanks();
           } catch (e) { alert(e.message); }
         });
@@ -1968,10 +2009,9 @@
           exportBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
           exportBtn.textContent = i18n.t('admin.btn_export_csv');
           exportBtn.addEventListener('click', () => {
-            const authHeader = adminToken ? `Bearer ${adminToken}` : '';
             const url = `/api/admin/history/export?game_id=${encodeURIComponent(h.id)}`;
             // Fetch with auth header then trigger download
-            fetch(url, { headers: { 'Authorization': authHeader } })
+            fetch(url, { headers: authHeaders() })
               .then(res => {
                 if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Export failed'); });
                 return res.blob();
@@ -2244,6 +2284,54 @@
         opt.textContent = i18n.t('admin.no_banks');
         sel.appendChild(opt);
       }
+      loadMyHomework();
+    }
+
+    // Active homework links of this teacher (survive a page reload).
+    async function loadMyHomework() {
+      const list = document.getElementById('hwMineList');
+      list.textContent = '';
+      let sessions = [];
+      try { sessions = (await api('/api/selfpaced/mine')).sessions || []; } catch { return; }
+      if (!sessions.length) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = i18n.t('admin.hw_mine_empty');
+        list.appendChild(p);
+        return;
+      }
+      sessions.forEach(sess => {
+        const item = document.createElement('div');
+        item.className = 'bank-item';
+        const info = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = (sess.bank_name || '').replace(/^moje\//, '').replace(/\.json$/, '').replace(/_/g, ' ');
+        const meta = document.createElement('div');
+        meta.className = 'muted';
+        meta.textContent = `${new Date(sess.created_at * 1000).toLocaleString()} · ` +
+          i18n.t('admin.hw_mine_counts', sess.finished, sess.players);
+        info.appendChild(title);
+        info.appendChild(meta);
+        const open = document.createElement('button');
+        open.className = 'btn secondary';
+        open.textContent = i18n.t('admin.hw_mine_open');
+        open.addEventListener('click', () => openHomework(sess.id));
+        item.appendChild(info);
+        item.appendChild(open);
+        list.appendChild(item);
+      });
+    }
+
+    function openHomework(sessionId) {
+      _hwSessionId = sessionId;
+      document.getElementById('hwLinkBox').textContent =
+        `${location.origin}/play?hw=${encodeURIComponent(sessionId)}`;
+      document.getElementById('hwCreatedBox').classList.remove('hide');
+      document.getElementById('hwResultsSection').classList.remove('hide');
+      document.getElementById('hwQrBox').classList.add('hide');
+      if (_hwResultsInterval) clearInterval(_hwResultsInterval);
+      loadHwResults();
+      _hwResultsInterval = setInterval(loadHwResults, 5000);
     }
 
     // ===== EXAM (pisemka) =====
@@ -2354,7 +2442,7 @@
     document.getElementById('btnExamExport').addEventListener('click', async () => {
       try {
         const res = await fetch('/api/admin/exam/results.csv', {
-          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : {},
+          headers: authHeaders(),
         });
         if (!res.ok) throw new Error('Export selhal');
         const blob = await res.blob();
@@ -2471,6 +2559,7 @@
       try {
         const data = await api('/api/selfpaced/start', 'POST', { filename });
         _hwSessionId = data.session_id;
+        loadMyHomework();
 
         // Build the shareable URL
         const hwUrl = `${location.origin}/play?hw=${encodeURIComponent(_hwSessionId)}`;

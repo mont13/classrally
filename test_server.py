@@ -3488,5 +3488,538 @@ class TestEmailDotsAndConsole(_DBTestBase):
             db.admin_set_role("nobody", "student")
 
 
+
+class TestRoomsMulti(_AccountHTTPBase):
+    """QUIZ_ROOMS=multi: every teacher has an own room (game, exam, host token, PIN)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.orig_mode = server.ROOM_MODE
+        server.ROOM_MODE = "multi"
+        tmpq = cls.tmpdir / "questions"
+        tmpq.mkdir()
+        cls.orig_qdir = server.QUESTIONS_DIR
+        server.QUESTIONS_DIR = tmpq
+        server.save_questions_to_file("bank_a.json", [
+            {"id": "a1", "prompt": "A?", "options": ["x", "y"], "correct_index": 0}])
+        server.save_questions_to_file("bank_b.json", [
+            {"id": "b1", "prompt": "B?", "options": ["x", "y"], "correct_index": 1},
+            {"id": "b2", "prompt": "B2?", "options": ["x", "y"], "correct_index": 0}])
+        for nick in ("TeachA", "TeachB"):
+            cls.db.create_user(nick, f"{nick.lower()}-pass", "teacher")
+
+    @classmethod
+    def tearDownClass(cls):
+        server.ROOM_MODE = cls.orig_mode
+        server.QUESTIONS_DIR = cls.orig_qdir
+        super().tearDownClass()
+
+    def _login(self, nick):
+        code, r = self._post("/api/auth/login", {"nickname": nick, "password": f"{nick.lower()}-pass"})
+        self.assertEqual(code, 200, r)
+        return r["token"]
+
+    def _get_json(self, path, headers=None):
+        req = Request(f"{self.base_url}{path}")
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+        try:
+            with urlopen(req) as r:
+                return r.status, json.loads(r.read())
+        except HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def _host(self, user_token):
+        code, r = self._get_json("/api/host/token", {"Authorization": f"UserToken {user_token}"})
+        self.assertEqual(code, 200, r)
+        return r
+
+    def test_teachers_get_separate_rooms(self):
+        ta, tb = self._login("TeachA"), self._login("TeachB")
+        ha, hb = self._host(ta), self._host(tb)
+        self.assertEqual(ha["rooms"], "multi")
+        self.assertNotEqual(ha["pin"], hb["pin"])
+        self.assertNotEqual(ha["host_token"], hb["host_token"])
+        self.assertEqual(self._host(ta)["pin"], ha["pin"])  # stable per teacher
+
+        # each teacher loads a bank into their own room
+        self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "bank_a.json"}, token=ta)[0], 200)
+        self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "bank_b.json"}, token=tb)[0], 200)
+        sa = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
+        sb = self._get_json("/api/state?host=1", {"X-Host-Token": hb["host_token"]})[1]
+        self.assertEqual((sa["total_questions"], sb["total_questions"]), (1, 2))
+
+        # students: PIN required, then they land in that room only
+        code, r = self._post("/api/register", {"name": "NoPin"})
+        self.assertEqual((code, r.get("code")), (400, "pin_required"))
+        code, r = self._post("/api/register", {"name": "Bad", "pin": "000001"})
+        self.assertEqual((code, r.get("code")), (400, "pin_unknown"))
+        code, p1 = self._post("/api/register", {"name": "Eva", "pin": ha["pin"]})
+        self.assertEqual(code, 200, p1)
+        self.assertEqual(p1["pin"], ha["pin"])
+        sa = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
+        sb = self._get_json("/api/state?host=1", {"X-Host-Token": hb["host_token"]})[1]
+        self.assertEqual((sa["total_players"], sb["total_players"]), (1, 0))
+        me = self._get_json(f"/api/state?player_id={p1['player_id']}")[1]
+        self.assertEqual(me["total_questions"], 1)  # found via the player's room
+
+        # host actions only touch the own room; a token never controls another room
+        req = Request(f"{self.base_url}/api/host/action", data=json.dumps({"action": "start"}).encode(),
+                      headers={"Content-Type": "application/json", "X-Host-Token": ha["host_token"]}, method="POST")
+        with urlopen(req) as r:
+            self.assertEqual(r.status, 200)
+        sa = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
+        sb = self._get_json("/api/state?host=1", {"X-Host-Token": hb["host_token"]})[1]
+        self.assertNotEqual(sa["phase"], "lobby")
+        self.assertEqual(sb["phase"], "lobby")
+        self.assertFalse("player_id" in str(self._get_json(f"/api/state?pin={hb['pin']}")[1].get("players", [])))
+
+    def test_exam_in_one_room_does_not_switch_the_other(self):
+        ta, tb = self._login("TeachA"), self._login("TeachB")
+        ha, hb = self._host(ta), self._host(tb)
+        self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "bank_a.json", "mode": "exam"},
+                                    token=ta)[0], 200)
+        self._post("/api/admin/bank/activate", {"filename": "bank_b.json"}, token=tb)
+        self.assertEqual(self._get_json(f"/api/mode?pin={ha['pin']}")[1]["mode"], "exam")
+        self.assertEqual(self._get_json(f"/api/mode?pin={hb['pin']}")[1]["mode"], "game")
+        self.assertTrue(self._get_json("/api/mode")[1]["pin_required"])
+        code, st = self._post("/api/register", {"name": "Jan", "pin": ha["pin"]})
+        self.assertEqual(st["mode"], "exam")
+        # a student's exam view needs the student's secret
+        view = self._get_json(f"/api/exam/state?player_id={st['player_id']}")[1]
+        self.assertFalse(view["known"])
+        view = self._get_json(f"/api/exam/state?player_id={st['player_id']}&secret={st['player_secret']}")[1]
+        self.assertTrue(view["known"])
+
+    def test_new_pin_sends_old_players_to_join_again(self):
+        self.db.create_user("TeachNew", "teachnew-pass", "teacher")  # own room, game mode
+        ta = self._login("TeachNew")
+        ha = self._host(ta)
+        code, p1 = self._post("/api/register", {"name": "Lojza", "pin": ha["pin"]})
+        self.assertEqual(code, 200, p1)
+        req = Request(f"{self.base_url}/api/host/new-pin", data=b"{}", method="POST",
+                      headers={"Content-Type": "application/json", "X-Host-Token": ha["host_token"]})
+        with urlopen(req) as r:
+            renewed = json.loads(r.read())
+        self.assertNotEqual(renewed["pin"], ha["pin"])
+        self.assertEqual(self._host(ta)["pin"], renewed["pin"])
+        code, r = self._get_json(f"/api/state?player_id={p1['player_id']}")
+        self.assertEqual((code, r.get("code")), (404, "player_unknown"))
+        self.assertTrue(self._get_json(f"/api/mode?pin={ha['pin']}")[1].get("pin_unknown"))
+        self.assertEqual(self._post("/api/register", {"name": "Lojza", "pin": renewed["pin"]})[0], 200)
+        state = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
+        self.assertEqual(state["total_players"], 1)
+
+    def test_pin_guessing_is_limited_per_address(self):
+        orig = server.PIN_FAIL_IP
+        server.PIN_FAIL_IP = server._GuessLimiter(max_guesses=3, window_sec=600)
+        try:
+            ha = self._host(self._login("TeachB"))
+            for _ in range(10):  # every device of a school with the same stale PIN counts once
+                self.assertTrue(self._get_json("/api/mode?pin=000002")[1].get("pin_unknown"))
+            self.assertEqual(self._get_json(f"/api/mode?pin=%20%20{ha['pin']}")[1].get("pin_required"), False)
+            # padding does not make different guesses look alike
+            for guess in ("%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20000003", "++++++++++++++++000004"):
+                self.assertTrue(self._get_json(f"/api/mode?pin={guess}")[1].get("pin_unknown"))
+            code, r = self._get_json(f"/api/mode?pin={ha['pin']}")
+            self.assertEqual((code, r.get("code")), (429, "pin_guesses"))  # even the right PIN now
+            code, r = self._post("/api/register", {"name": "Hadac", "pin": ha["pin"]})
+            self.assertEqual((code, r.get("code")), (429, "pin_guesses"))
+            self.assertEqual(self._get_json(f"/api/state?pin={ha['pin']}")[0], 429)
+        finally:
+            server.PIN_FAIL_IP = orig
+
+    def test_teacher_without_the_role_loses_the_room(self):
+        self.db.create_user("TeachGone", "teachgone-pass", "teacher")
+        h = self._host(self._login("TeachGone"))
+        self.db.admin_set_role("TeachGone", "student")  # server console
+        orig = server.ROOM_OWNER_RECHECK_SEC
+        server.ROOM_OWNER_RECHECK_SEC = 0
+        try:
+            req = Request(f"{self.base_url}/api/host/action", data=json.dumps({"action": "start"}).encode(),
+                          headers={"Content-Type": "application/json", "X-Host-Token": h["host_token"]},
+                          method="POST")
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(req)
+            self.assertEqual(ctx.exception.code, 403)
+            self.assertIsNone(server.ROOMS.by_pin(h["pin"]))
+        finally:
+            server.ROOM_OWNER_RECHECK_SEC = orig
+
+    def test_exam_link_of_another_room_starts_over_but_new_pin_does_not(self):
+        for nick in ("TeachX", "TeachY"):
+            self.db.create_user(nick, f"{nick.lower()}-pass", "teacher")
+        tx, ty = self._login("TeachX"), self._login("TeachY")
+        hx, hy = self._host(tx), self._host(ty)
+        for tok in (tx, ty):
+            self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "bank_a.json", "mode": "exam"},
+                                        token=tok)[0], 200)
+        code, st = self._post("/api/register", {"name": "Pisar", "pin": hx["pin"]})
+        self.assertEqual((code, st["mode"]), (200, "exam"))
+        view = f"/api/exam/state?player_id={st['player_id']}&secret={st['player_secret']}"
+        self.assertTrue(self._get_json(view + f"&pin={hx['pin']}")[1]["known"])
+        other = self._get_json(view + f"&pin={hy['pin']}")[1]
+        self.assertEqual((other["known"], other.get("other_room")), (False, True))
+        # the teacher gives the room a new PIN: a reload with the old link keeps the test
+        req = Request(f"{self.base_url}/api/host/new-pin", data=b"{}", method="POST",
+                      headers={"Content-Type": "application/json", "X-Host-Token": hx["host_token"]})
+        with urlopen(req) as r:
+            new_pin = json.loads(r.read())["pin"]
+        self.assertTrue(self._get_json(view + f"&pin={hx['pin']}")[1]["known"])
+        self.assertTrue(self._get_json(view + f"&pin={new_pin}")[1]["known"])
+
+    def test_closed_room_disconnects_its_websocket_clients(self):
+        import socket as socketmod
+        from ws import WSConnection
+        server_side, client_side = socketmod.socketpair()
+        reader = server_side.makefile("rb")  # the HTTP handler keeps one like this
+        try:
+            room = server.ROOMS.create(owner_id=None)
+            server.WS_MANAGER.register(WSConnection(server_side, "gone-room-client", room=room.key))
+            server.ROOMS.drop(room)
+            client_side.settimeout(5)
+            self.assertEqual(client_side.recv(1), b"")  # EOF: the TCP connection really ended
+            self.assertNotIn("gone-room-client", server.WS_MANAGER._connections)
+        finally:
+            reader.close()
+            client_side.close()
+
+    def test_admin_password_session_uses_default_room(self):
+        server.ADMIN_AUTH.set_password("server-admin-1")
+        try:
+            code, r = self._post("/api/admin/login", {"password": "server-admin-1"})
+            req = Request(f"{self.base_url}/api/host/token", headers={"Authorization": f"Bearer {r['token']}"})
+            with urlopen(req) as resp:
+                data = json.loads(resp.read())
+            self.assertEqual(data["host_token"], server.DEFAULT_ROOM.host_token)
+        finally:
+            server.ADMIN_AUTH.set_password(None)
+
+
+class TestRoomRegistry(unittest.TestCase):
+    def test_idle_rooms_dropped_but_default_and_exams_kept(self):
+        reg = server.RoomRegistry()
+        keep = reg.create(None)
+        old = reg.for_owner(42)
+        played = reg.for_owner(43)
+        exam = reg.for_owner(44)
+        pid = played.quiz.register_player("Yesterday")["player_id"]
+        reg.bind_player(pid, played)
+        exam.exam.register_student("Writer")
+        for room in (keep, old, played, exam):
+            room.last_active = time.time() - server.ROOM_IDLE_SEC - 1
+        self.assertEqual(reg.drop_idle(keep=keep), 2)
+        self.assertIsNone(reg.by_pin(old.pin))
+        self.assertIsNone(reg.by_pin(played.pin))   # yesterday's players do not keep the PIN alive
+        self.assertIsNone(reg.by_player(pid))       # and their binding is gone
+        self.assertIsNotNone(reg.by_pin(exam.pin))  # exam results live only in memory
+        self.assertIsNotNone(reg.by_pin(keep.pin))
+        self.assertIsNot(reg.for_owner(42), old)  # a fresh room on next use
+
+    def test_renew_gives_new_pin_and_empty_lobby(self):
+        reg = server.RoomRegistry()
+        room = reg.for_owner(50)
+        old_pin, key = room.pin, room.key
+        pid = room.quiz.register_player("Old class")["player_id"]
+        reg.bind_player(pid, room)
+        sid = room.exam.register_student("Exam student")["player_id"]
+        reg.bind_player(sid, room)
+        room.quiz.host_action("start")
+        new_pin = reg.renew(room)
+        self.assertNotEqual(new_pin, old_pin)
+        self.assertIsNone(reg.by_pin(old_pin))
+        self.assertIs(reg.by_pin(new_pin), room)
+        self.assertIs(reg.by_key(key), room)      # WebSocket routing survives the new PIN
+        self.assertEqual((room.quiz.players, room.quiz.phase), ({}, "lobby"))
+        self.assertIsNone(reg.by_player(pid))
+        self.assertIs(reg.by_player(sid), room)   # a running exam keeps its students
+
+    def test_ws_state_of_closed_room_ends_connection(self):
+        with self.assertRaises(LookupError):
+            server._ws_state(room="no-such-room")
+
+    def test_secret_compare_accepts_any_characters(self):
+        exam = server.ExamState()
+        sid = exam.register_student("Eva")["player_id"]
+        self.assertFalse(exam.student_view(sid, "žluťoučký kůň")["known"])
+        quiz = server.QuizState([])
+        pid = quiz.register_player("Jan")["player_id"]
+        self.assertFalse(quiz.verify_player(pid, "příliš"))
+
+    def test_ws_broadcast_only_to_room(self):
+        from ws import WSConnection, WSConnectionManager
+        sent = []
+
+        class FakeConn(WSConnection):
+            def __init__(self, cid, room):
+                super().__init__(None, cid, room=room)
+            def send_json(self, data):
+                sent.append((self.conn_id, data["room"]))
+                return True
+
+        m = WSConnectionManager()
+        m.set_state_getter(lambda player_id=None, host_view=False, room=None: {"room": room})
+        m.register(FakeConn("a1", "111111"))
+        m.register(FakeConn("b1", "222222"))
+        m.broadcast_state("111111")
+        self.assertEqual(sent, [("a1", "111111")])
+
+    def test_for_owner_concurrent_first_use_gives_one_room(self):
+        reg = server.RoomRegistry()
+        got, start = [], threading.Barrier(8)
+
+        def first_request():
+            start.wait()
+            got.append(reg.for_owner(77))
+
+        threads = [threading.Thread(target=first_request) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len({id(r) for r in got}), 1)
+        self.assertEqual(len(reg.all()), 1)
+
+
+class TestMultiTeacherData(_AccountHTTPBase):
+    """QUIZ_ROOMS=multi: a teacher sees and changes only their own data."""
+
+    Q = [{"id": "q1", "prompt": "Q?", "options": ["x", "y"], "correct_index": 0}]
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.orig = (server.ROOM_MODE, server.QUESTIONS_DIR, server.HISTORY_DIR)
+        server.ROOM_MODE = "multi"
+        server.QUESTIONS_DIR = cls.tmpdir / "questions"
+        server.HISTORY_DIR = cls.tmpdir / "history"
+        server.QUESTIONS_DIR.mkdir()
+        server.HISTORY_DIR.mkdir()
+        server.save_questions_to_file("shared.json", cls.Q)
+        cls.uid = {nick: cls.db.create_user(nick, f"{nick.lower()}-pass", role)["id"]
+                   for nick, role in (("TeachC", "teacher"), ("TeachD", "teacher"),
+                                      ("PupilC", "student"), ("PupilD", "student"))}
+
+    @classmethod
+    def tearDownClass(cls):
+        server.ROOM_MODE, server.QUESTIONS_DIR, server.HISTORY_DIR = cls.orig
+        super().tearDownClass()
+
+    def _login(self, nick):
+        code, r = self._post("/api/auth/login", {"nickname": nick, "password": f"{nick.lower()}-pass"})
+        self.assertEqual(code, 200, r)
+        return r["token"]
+
+    def _get_json(self, path, token=None, bearer=None):
+        req = Request(f"{self.base_url}{path}")
+        if token:
+            req.add_header("Authorization", f"UserToken {token}")
+        if bearer:
+            req.add_header("Authorization", f"Bearer {bearer}")
+        try:
+            with urlopen(req) as r:
+                body = r.read()
+                return r.status, (json.loads(body) if r.headers.get_content_type() == "application/json" else body)
+        except HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def test_question_banks_private_and_shared(self):
+        tc, td = self._login("TeachC"), self._login("TeachD")
+        banks = {b["filename"]: b for b in self._get_json("/api/admin/banks", tc)[1]}
+        self.assertEqual((banks["shared.json"]["scope"], banks["shared.json"]["editable"]), ("shared", False))
+
+        # editing a shared bank stores the teacher's own copy; the original stays
+        code, r = self._post("/api/admin/bank/save", {"filename": "shared.json", "questions": self.Q * 2}, token=tc)
+        self.assertEqual((code, r.get("filename")), (200, "moje/shared.json"), r)
+        self.assertEqual(len(server.load_questions_from_file("shared.json")), 1)
+        self.assertTrue((server.QUESTIONS_DIR / "users" / str(self.uid["TeachC"]) / "shared.json").is_file())
+
+        # only the owner lists and opens it
+        def mine(tok):
+            return [b["filename"] for b in self._get_json("/api/admin/banks", tok)[1] if b["scope"] == "mine"]
+        self.assertIn("moje/shared.json", mine(tc))
+        self.assertEqual(mine(td), [])
+        code, r = self._get_json("/api/admin/bank?filename=moje/shared.json", tc)
+        self.assertEqual((code, len(r["questions"])), (200, 2))
+        self.assertEqual(self._get_json("/api/admin/bank?filename=moje/shared.json", td)[0], 404)
+        self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "moje/shared.json"}, token=td)[0], 404)
+        self.assertEqual(self._post("/api/admin/bank/activate", {"filename": "moje/shared.json"}, token=tc)[0], 200)
+
+        # names cannot leave the teacher's folder and must not be empty
+        code, r = self._post("/api/admin/bank/save", {"filename": "moje/../../x.json", "questions": self.Q}, token=tc)
+        self.assertEqual((code, r.get("filename")), (200, "moje/x.json"))
+        self.assertFalse((server.QUESTIONS_DIR / "x.json").exists())
+        self.assertEqual(self._post("/api/admin/bank/save", {"filename": "/", "questions": self.Q}, token=tc)[0], 400)
+
+        # a teacher deletes only own banks; the shared library belongs to the server admin
+        self.assertEqual(self._post("/api/admin/bank/delete", {"filename": "shared.json"}, token=td)[0], 403)
+        self.assertTrue((server.QUESTIONS_DIR / "shared.json").is_file())
+        self.assertEqual(self._post("/api/admin/bank/delete", {"filename": "moje/x.json"}, token=tc)[0], 200)
+        self.assertNotIn("moje/x.json", mine(tc))
+
+    def test_game_history_is_per_teacher(self):
+        tc, td = self._login("TeachC"), self._login("TeachD")
+        rec_c = server.save_game_history(server.ROOMS.for_owner(self.uid["TeachC"]).quiz)
+        rec_d = server.save_game_history(server.ROOMS.for_owner(self.uid["TeachD"]).quiz)
+        self.assertEqual(rec_c["owner_id"], self.uid["TeachC"])
+        ids_c = [g["id"] for g in self._get_json("/api/admin/history", tc)[1]]
+        self.assertIn(rec_c["id"], ids_c)
+        self.assertNotIn(rec_d["id"], ids_c)
+        self.assertEqual(self._get_json(f"/api/admin/history/export?game_id={rec_d['id']}", tc)[0], 404)
+        self.assertEqual(self._get_json(f"/api/admin/history/export?game_id={rec_c['id']}", tc)[0], 200)
+        self.assertEqual(self._post("/api/admin/history/delete", {"game_id": rec_d["id"]}, token=tc)[0], 404)
+        self.assertIsNotNone(server.load_game_record(rec_d["id"]))
+
+        # the server admin (portal password) sees every teacher's games
+        server.ADMIN_AUTH.set_password("server-admin-2")
+        try:
+            admin = self._post("/api/admin/login", {"password": "server-admin-2"})[1]["token"]
+            ids_all = [g["id"] for g in self._get_json("/api/admin/history", bearer=admin)[1]]
+            self.assertTrue({rec_c["id"], rec_d["id"]} <= set(ids_all))
+        finally:
+            server.ADMIN_AUTH.set_password(None)
+        self.assertEqual(self._post("/api/admin/history/delete", {"game_id": rec_d["id"]}, token=td)[0], 200)
+
+    def test_homework_is_per_teacher_and_needs_secret(self):
+        tc, td = self._login("TeachC"), self._login("TeachD")
+        code, s = self._post("/api/selfpaced/start", {"filename": "shared.json"}, token=tc)
+        self.assertEqual(code, 200, s)
+        sid = s["session_id"]
+        def mine(tok):
+            return [x["id"] for x in self._get_json("/api/selfpaced/mine", tok)[1]["sessions"]]
+        self.assertIn(sid, mine(tc))
+        self.assertNotIn(sid, mine(td))
+        self.assertEqual(self._get_json(f"/api/selfpaced/results?session_id={sid}", td)[0], 404)
+        self.assertEqual(self._get_json(f"/api/selfpaced/results?session_id={sid}", tc)[0], 200)
+
+        # a student's homework is read and answered only with the student's secret
+        code, p = self._post("/api/selfpaced/join", {"session_id": sid, "name": "Ema"})
+        self.assertEqual(code, 200, p)
+        state = f"/api/selfpaced/state?session_id={sid}&player_id={p['player_id']}"
+        self.assertEqual(self._get_json(state)[0], 404)
+        self.assertEqual(self._get_json(state + "&secret=wrong")[0], 404)
+        code, st = self._get_json(state + f"&secret={p['player_secret']}")
+        self.assertEqual((code, st.get("status")), (200, "question"))
+        answer = {"session_id": sid, "player_id": p["player_id"], "choice": 0}
+        self.assertEqual(self._post("/api/selfpaced/answer", answer)[0], 404)
+        code, r = self._post("/api/selfpaced/answer", dict(answer, secret=p["player_secret"]))
+        self.assertEqual(code, 200, r)
+
+    def test_classes_and_students_are_per_teacher(self):
+        tc, td = self._login("TeachC"), self._login("TeachD")
+        pc = self._login("PupilC")
+        cls_c = self._post("/api/classes/create", {"name": "6.A"}, token=tc)[1]["class"]
+        self.assertEqual(self._post("/api/classes/join", {"join_code": cls_c["join_code"]}, token=pc)[0], 200)
+
+        base = f"/api/classes/{cls_c['id']}"
+        for part in ("members", "history", "progress"):
+            self.assertEqual(self._get_json(f"{base}/{part}", tc)[0], 200, part)
+            self.assertEqual(self._get_json(f"{base}/{part}", td)[0], 404, part)
+        self.assertEqual(self._get_json(f"{base}/members", pc)[0], 200)
+        self.assertEqual(self._get_json(f"{base}/progress", pc)[0], 404)  # classmates' scores
+
+        # user list: the teachers plus the teacher's own students
+        def names(tok):
+            return {u["nickname"] for u in self._get_json("/api/users", tok)[1]["users"]}
+        self.assertTrue({"TeachC", "PupilC"} <= names(tc))
+        self.assertFalse({"TeachD", "PupilD"} & names(tc))
+        self.assertNotIn("PupilC", names(td))
+
+        # accounts are managed only by the teacher of the student's class
+        pupil, other_teacher = self.uid["PupilC"], self.uid["TeachC"]
+        for path, body in ((f"/api/users/{pupil}/reset-password", {"new_password": "nove-heslo-1"}),
+                           (f"/api/users/{pupil}/set-role", {"role": "teacher"}),
+                           (f"/api/users/{pupil}/delete", {}),
+                           (f"/api/users/{other_teacher}/reset-password", {"new_password": "nove-heslo-1"})):
+            self.assertEqual(self._post(path, body, token=td)[0], 403, path)
+        self.assertEqual(self.db.get_user(pupil)["role"], "student")
+        self.assertEqual(self._post(f"/api/users/{pupil}/reset-password",
+                                    {"new_password": "nove-heslo-1"}, token=tc)[0], 200)
+
+    def test_shared_student_is_managed_by_neither_teacher_alone(self):
+        tc, td = self._login("TeachC"), self._login("TeachD")
+        shared = self.db.create_user("PupilS", "pupils-pass", "student")["id"]
+        ts = self._login("PupilS")
+        cls_c = self._post("/api/classes/create", {"name": "Matematika"}, token=tc)[1]["class"]
+        cls_d = self._post("/api/classes/create", {"name": "Fyzika"}, token=td)[1]["class"]
+        for c in (cls_c, cls_d):
+            self.assertEqual(self._post("/api/classes/join", {"join_code": c["join_code"]}, token=ts)[0], 200)
+
+        for tok, cls in ((td, cls_d), (tc, cls_c)):
+            for path, body in ((f"/api/users/{shared}/reset-password", {"new_password": "cizi-heslo-1"}),
+                               (f"/api/users/{shared}/set-role", {"role": "teacher"}),
+                               (f"/api/users/{shared}/delete", {}),
+                               (f"/api/classes/{cls['id']}/members/{shared}/reset-password",
+                                {"new_password": "cizi-heslo-1"}),
+                               (f"/api/classes/{cls['id']}/members/{shared}/delete-account", {})):
+                code, r = self._post(path, body, token=tok)
+                self.assertEqual(code, 403, path)
+                self.assertIn("jineho ucitele", r["error"])
+        self.assertEqual(self._login("PupilS") and self.db.get_user(shared)["role"], "student")
+
+        # a teacher may still remove the student from their own class; then the other one owns it
+        self.assertEqual(self._post(f"/api/classes/{cls_d['id']}/members/{shared}/kick", {}, token=td)[0], 200)
+        self.assertEqual(self._post(f"/api/users/{shared}/reset-password",
+                                    {"new_password": "nove-heslo-2"}, token=tc)[0], 200)
+        self.assertEqual(self._post(f"/api/users/{shared}/reset-password",
+                                    {"new_password": "nove-heslo-3"}, token=td)[0], 403)
+
+    def test_copy_of_shared_bank_never_overwrites_own_bank(self):
+        tc = self._login("TeachC")
+        own = self.Q * 3
+        code, r = self._post("/api/admin/bank/save", {"filename": "moje/twin.json", "questions": own}, token=tc)
+        self.assertEqual((code, r.get("filename")), (200, "moje/twin.json"))
+        server.save_questions_to_file("twin.json", self.Q)  # shared bank of the same name
+        code, r = self._post("/api/admin/bank/save", {"filename": "twin.json", "questions": self.Q}, token=tc)
+        self.assertEqual((code, r.get("filename")), (200, "moje/twin-2.json"))
+        self.assertEqual(len(server.load_questions_from_file("moje/twin.json", self.uid["TeachC"])), 3)
+        code, r = self._post("/api/admin/bank/save", {"filename": "x" * 300, "questions": self.Q}, token=tc)
+        self.assertEqual(code, 400)
+        self.assertNotIn(str(server.QUESTIONS_DIR), r.get("error", ""))
+
+    def test_ai_settings_are_shared_and_the_key_stays_home(self):
+        calls = []
+        orig = (server.generate_questions_ai, dict(server.AI_CONFIG), server.AI_CONFIG_LOCKED)
+
+        def fake_generate(**kwargs):
+            calls.append(kwargs)
+            return [{"id": "g1", "prompt": "G?", "options": ["a", "b"], "correct_index": 0}]
+
+        server.generate_questions_ai = fake_generate
+        server.AI_CONFIG.update(base_url="http://ai.internal:11434", api_key="server-secret-key", model="m1")
+        server.AI_CONFIG_LOCKED = False
+        try:
+            tc = self._login("TeachC")
+            code, cfg = self._get_json("/api/admin/ollama/config", tc)
+            self.assertEqual((code, cfg["locked"], cfg["model_locked"]), (200, True, True))
+            self.assertNotIn("server-secret-key", json.dumps(cfg))
+            self.assertEqual(self._post("/api/admin/ollama/config", {"model": "m2"}, token=tc)[0], 403)
+            self.assertEqual(server.AI_CONFIG["model"], "m1")
+            # a teacher cannot point generation (and the key) elsewhere, only pick the model
+            code, r = self._post("/api/admin/ai/generate", {"topic": "T", "model": "m3",
+                                                            "base_url": "http://evil.example"}, token=tc)
+            self.assertEqual(code, 200, r)
+            self.assertEqual((calls[-1]["base_url"], calls[-1]["model"]), ("http://ai.internal:11434", "m3"))
+
+            # the server admin of an unlocked server may try another address — without the stored key
+            server.ADMIN_AUTH.set_password("server-admin-3")
+            try:
+                admin = self._post("/api/admin/login", {"password": "server-admin-3"})[1]["token"]
+                req = Request(f"{self.base_url}/api/admin/ai/generate", method="POST",
+                              data=json.dumps({"topic": "T", "base_url": "http://evil.example"}).encode(),
+                              headers={"Content-Type": "application/json", "Authorization": f"Bearer {admin}"})
+                with urlopen(req) as resp:
+                    self.assertEqual(resp.status, 200)
+                self.assertEqual((calls[-1]["base_url"], calls[-1]["api_key"]), ("http://evil.example", ""))
+            finally:
+                server.ADMIN_AUTH.set_password(None)
+        finally:
+            server.generate_questions_ai = orig[0]
+            server.AI_CONFIG.clear()
+            server.AI_CONFIG.update(orig[1])
+            server.AI_CONFIG_LOCKED = orig[2]
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

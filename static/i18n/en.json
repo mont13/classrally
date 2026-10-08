@@ -102,7 +102,13 @@
     "award_streak_master": "Streak Master",
     "award_sharpshooter": "Sharpshooter",
     "award_comeback": "Comeback Kid",
-    "avatar_pick": "Pick your avatar:"
+    "avatar_pick": "Pick your avatar:",
+    "pin_label": "Game PIN",
+    "pin_placeholder": "123 456",
+    "pin_hint": "Your teacher shows the PIN on the projector.",
+    "pin_unknown": "There is no game with this PIN. Check the PIN.",
+    "pin_required": "Enter the game PIN.",
+    "pin_guesses": "Too many PIN attempts. Try again in a few minutes."
   },
   "fun": {
     "correct": {
@@ -137,7 +143,7 @@
     "qr_code": "QR code",
     "loading": "Loading...",
     "wifi_hint": "Phones must be on the same Wi-Fi/LAN. Use the URL above.",
-    "loopback_warning": "Server is running on localhost only. Run: python3 server.py --host 0.0.0.0 --port 8765",
+    "loopback_warning": "Server is running on localhost only. Run: python3 server.py --host 0.0.0.0 --port 48217",
     "btn_start": "Start",
     "btn_reveal": "Reveal",
     "btn_next": "Next question",
@@ -207,7 +213,12 @@
     "podium_title": "Top players",
     "awards_title": "Awards",
     "forgot_link": "Forgot your password?",
-    "music_credit": "Music: {0}"
+    "music_credit": "Music: {0}",
+    "pin_label": "Game PIN:",
+    "internet_hint": "Students open the link or scan the QR code – any internet connection works.",
+    "new_pin": "New PIN",
+    "new_pin_title": "Next lesson: an empty lobby and a PIN the previous class does not know",
+    "new_pin_confirm": "Create a new PIN? Players in the lobby and in the current game are removed and join again with the new PIN."
   },
   "exam": {
     "page_title": "ClassRally - Test",
@@ -524,7 +535,15 @@
     "invite_text": "Your colleague gets an e-mail with a link to create a teacher account. The link is valid for 7 days.",
     "invite_email_label": "Colleague's e-mail",
     "invite_btn": "Send invitation",
-    "invite_sent": "Invitation sent to {0}."
+    "invite_sent": "Invitation sent to {0}.",
+    "hw_mine_title": "My homework",
+    "hw_mine_empty": "No active homework yet.",
+    "hw_mine_counts": "{0} of {1} finished",
+    "hw_mine_open": "Results and link",
+    "bank_scope_mine": "mine",
+    "bank_scope_shared": "shared",
+    "bank_copy_hint": "This is a shared bank. Your changes will be saved as your own copy; the original stays unchanged.",
+    "bank_saved_as_copy": "Saved as your copy: {0}"
   },
   "profile": {
     "page_title": "ClassRally – My Profile",
