@@ -1,0 +1,42 @@
+# ClassRally daily backup (backup.py create): the newest backup of each of the
+# last 7 days and the first of each of the last 12 months, in
+# /var/backups/classrally — ideally on another disk than the data.
+#
+# Runs as the account that owns the database ("classrally"), never as root.
+# As written for variants A and C (data in /opt/classrally). Variant B (Docker,
+# data in /srv/classrally): use "--data-root /srv/classrally" in ExecStart and
+# /srv/classrally/data in ReadWritePaths. Full guide: docs/NASAZENI.md
+#
+#   sudo install -d -m 700 -o classrally -g classrally /var/backups/classrally
+#   sudo cp deploy/systemd/classrally-backup*.service deploy/systemd/classrally-backup*.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now classrally-backup.timer classrally-backup-check.timer
+
+[Unit]
+Description=ClassRally - denni zaloha dat
+
+[Service]
+Type=oneshot
+User=classrally
+Group=classrally
+ExecStart=/usr/bin/python3 /opt/classrally/backup.py create --app-dir /opt/classrally --dest /var/backups/classrally
+Nice=10
+IOSchedulingClass=idle
+
+# Hardening: reads the data, writes only the backups (and SQLite's -wal/-shm
+# files next to the live database), no network
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/backups/classrally /opt/classrally/data
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native

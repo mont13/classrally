@@ -334,6 +334,7 @@ def save_questions_to_file(filename: str, questions: list[dict[str, Any]],
     if owner_id is not None and not filename.startswith(PRIVATE_BANK_PREFIX):
         filename = _free_private_name(filename, owner_id)
     path, safe_name = _bank_path(filename, owner_id)
+    _check_new_bank_name(path.name)
     # Validate before saving
     if not isinstance(questions, list):
         raise ValueError("questions must be a list")
@@ -342,6 +343,17 @@ def save_questions_to_file(filename: str, questions: list[dict[str, Any]],
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(questions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return safe_name
+
+
+def _check_new_bank_name(name: str) -> None:
+    """A saved bank's file name must be plain text: a backslash, control
+    characters or bytes that are not UTF-8 break backups and other systems."""
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("Neplatny nazev sady otazek") from None
+    if "\\" in name or any(ord(c) < 32 or ord(c) == 127 for c in name):
+        raise ValueError("Nazev sady nesmi obsahovat zpetne lomitko ani ridici znaky")
 
 
 def _free_private_name(filename: str, owner_id: int) -> str:

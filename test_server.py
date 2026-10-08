@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """Unit tests for ClassRally server."""
 
+import contextlib
+import gzip
+import hashlib
+import io
 import json
 import os
 import shutil
+import sqlite3
 import sys
+import tarfile
 import tempfile
 import threading
 import time
 import unittest
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -37,6 +46,8 @@ atexit.register(shutil.rmtree, _TEST_DATA_ROOT, True)
 
 import db as _db
 _db.PBKDF2_ITERATIONS = 1000  # keep the suite fast; production uses 600k
+
+import backup
 
 
 class TestQuizState(unittest.TestCase):
@@ -512,6 +523,19 @@ class TestQuestionBanks(unittest.TestCase):
         loaded = server.load_questions_from_file("test.json")
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0]["id"], "t1")
+
+    def test_odd_bank_names_are_refused_but_old_files_stay_usable(self):
+        q = [{"id": "a1", "prompt": "?", "options": ["A", "B"], "correct_index": 0}]
+        for name in ("fyzika\\opakovani.json", "tab\there.json", "\udcffzlomene.json"):
+            with self.assertRaises(ValueError):
+                server.save_questions_to_file(name, q)
+        self.assertEqual(list(Path(self.tmpdir).iterdir()), [])
+        # a file like that from before the check can still be opened and deleted
+        old = Path(self.tmpdir) / "stara\\sada.json"
+        old.write_text(json.dumps(q), encoding="utf-8")
+        self.assertEqual(len(server.load_questions_from_file("stara\\sada.json")), 1)
+        server.delete_question_bank("stara\\sada.json")
+        self.assertFalse(old.exists())
 
     def test_list_banks(self):
         q1 = [{"id": "a1", "prompt": "?", "options": ["A", "B"], "correct_index": 0}]
@@ -4019,6 +4043,501 @@ class TestMultiTeacherData(_AccountHTTPBase):
             server.AI_CONFIG.clear()
             server.AI_CONFIG.update(orig[1])
             server.AI_CONFIG_LOCKED = orig[2]
+
+
+class TestBackup(unittest.TestCase):
+    """backup.py: consistent copy, 7 daily + 12 monthly, checks, push, restore."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="classrally-backup-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.root = self.tmp / "src"
+        self._make_tree(self.root, uploads="uploads", audio="audio")
+        # live database in WAL mode whose rows so far exist only in the WAL
+        self.conn = sqlite3.connect(str(self.root / "data" / "classrally.db"))
+        self.addCleanup(self.conn.close)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA wal_autocheckpoint=0")
+        self.conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, nickname TEXT)")
+        self.conn.executemany("INSERT INTO users (nickname) VALUES (?)", [("ucitel",), ("zak1",), ("zak2",)])
+        self.conn.commit()
+        self.dest = self.tmp / "zalohy"
+
+    @staticmethod
+    def _make_tree(root, uploads, audio):
+        for d in ("data/outbox", "history", "questions/users/7", uploads, audio):
+            (root / d).mkdir(parents=True)
+        (root / "history" / "game_1.json").write_text('{"id": 1}', encoding="utf-8")
+        (root / "questions" / "sada.json").write_text("[]", encoding="utf-8")
+        (root / "questions" / "users" / "7" / "moje.json").write_text('[{"q": 1}]', encoding="utf-8")
+        (root / uploads / "obr.png").write_bytes(b"\x89PNG fake")
+        (root / audio / "hudba.mp3").write_bytes(b"ID3 fake")
+        (root / "data" / "outbox" / "reset.eml").write_text("one-time link", encoding="utf-8")
+
+    def _quiet_main(self, *argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            rc = backup.main(list(argv))
+        return rc, out.getvalue()
+
+    def _craft(self, members, manifest_files, tables=None):
+        path = self.tmp / "crafted.tar.gz"
+        manifest = {"files": manifest_files, "database": {"tables": tables}}
+        with tarfile.open(path, "w:gz") as tar:
+            for name, data in list(members.items()) + [("MANIFEST.json", json.dumps(manifest).encode())]:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        return path
+
+    def test_backup_is_consistent_and_leaves_out_the_outbox(self):
+        naive = self.tmp / "naive.db"  # what a plain copy of the live file would give
+        shutil.copy(self.root / "data" / "classrally.db", naive)
+        c = sqlite3.connect(str(naive))
+        with self.assertRaises(sqlite3.OperationalError):
+            c.execute("SELECT COUNT(*) FROM users")
+        c.close()
+
+        result = backup.create(self.root, self.dest)
+        archive = self.dest / result["archive"]
+        with tarfile.open(archive) as tar:
+            names = set(tar.getnames())
+            db_bytes = tar.extractfile("data/classrally.db").read()
+        self.assertEqual(names, {"MANIFEST.json", "data/classrally.db", "history/game_1.json",
+                                 "questions/sada.json", "questions/users/7/moje.json", "uploads/obr.png"})
+        copy = self.tmp / "copy.db"
+        copy.write_bytes(db_bytes)
+        c = sqlite3.connect(str(copy))
+        self.addCleanup(c.close)
+        self.assertEqual(c.execute("SELECT COUNT(*) FROM users").fetchone()[0], 3)
+        self.assertEqual(c.execute("PRAGMA journal_mode").fetchone()[0], "delete")
+        self.assertEqual(result["tables"], {"users": 3})
+        self.assertEqual(result["files"], 5)
+        sidecar = (archive.parent / (archive.name + ".sha256")).read_text().split()
+        self.assertEqual(sidecar, [hashlib.sha256(archive.read_bytes()).hexdigest(), archive.name])
+        self.assertTrue((self.dest / "monthly" / archive.name).is_file())
+        self.assertTrue(json.loads((self.dest / "last-run.json").read_text())["ok"])
+        if os.name == "posix":
+            self.assertEqual(archive.stat().st_mode & 0o777, 0o600)
+            self.assertEqual((self.dest / "daily").stat().st_mode & 0o777, 0o700)
+
+    def test_app_dir_layout_and_optional_audio(self):
+        app = self.tmp / "app"
+        self._make_tree(app, uploads="static/uploads", audio="static/audio")
+        db = sqlite3.connect(str(app / "data" / "classrally.db"))
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        db.commit()
+        db.close()
+        result = backup.create(app, self.dest, layout="app-dir", with_audio=True)
+        with tarfile.open(self.dest / result["archive"]) as tar:
+            names = set(tar.getnames())
+        self.assertTrue({"uploads/obr.png", "audio/hudba.mp3"} <= names)
+        back = self.tmp / "zpet"
+        backup.restore(self.dest / result["archive"], back, layout="app-dir")
+        self.assertEqual((back / "static" / "uploads" / "obr.png").read_bytes(), b"\x89PNG fake")
+        self.assertEqual((back / "static" / "audio" / "hudba.mp3").read_bytes(), b"ID3 fake")
+
+    def test_rotation_keeps_newest_of_7_days_and_first_of_12_months(self):
+        start = time.mktime((2025, 1, 1, 2, 40, 0, 0, 0, -1))
+        runs = [start + day * 86400 for day in range(0, 430, 3)]
+        last = runs[-1]
+        runs += [last + 3600, last + 7200]  # two more backups on the last day
+        (self.dest / "daily").mkdir(parents=True)
+        (self.dest / "daily" / "poznamka.txt").write_text("not a backup")
+        for t in runs:
+            backup.create(self.root, self.dest, now=t)
+
+        def name(t):  # archive names and day/month groups are UTC
+            return time.strftime("classrally-%Y%m%d-%H%M%SZ.tar.gz", time.gmtime(t))
+
+        by_day, by_month = {}, {}
+        for t in runs:
+            by_day[time.strftime("%Y%m%d", time.gmtime(t))] = t           # newest of the day
+            by_month.setdefault(time.strftime("%Y%m", time.gmtime(t)), t)  # first of the month
+        expect_daily = sorted(name(t) for t in sorted(by_day.values())[-7:])
+        expect_monthly = sorted(name(t) for t in sorted(by_month.values())[-12:])
+        self.assertEqual(backup._archives(self.dest / "daily"), expect_daily)
+        self.assertEqual(backup._archives(self.dest / "monthly"), expect_monthly)
+        self.assertEqual(sorted(p.name for p in (self.dest / "daily").glob("*.sha256")),
+                         [n + ".sha256" for n in expect_daily])
+        self.assertTrue((self.dest / "daily" / "poznamka.txt").exists())
+        ok, message = backup.check(self.dest, now=last + 7300, verify_all=True)
+        self.assertTrue(ok, message)
+        self.assertIn("dennich 7, mesicnich 12", message)
+
+    def test_check_notices_old_damaged_and_failed_backups(self):
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+        ok, message = backup.check(self.dest)
+        self.assertTrue(ok, message)
+        self.assertIn("uctu 3", message)
+
+        old = time.time() - 30 * 3600
+        os.utime(archive, (old, old))
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("stara 30", message)
+
+        good = archive.read_bytes()
+        archive.write_bytes(good[:len(good) // 2])
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("kontrolni soucet", message)
+        backup._write_sidecar(archive, hashlib.sha256(archive.read_bytes()).hexdigest())
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("nejde precist", message)
+
+        archive.write_bytes(good)
+        backup._write_sidecar(archive, hashlib.sha256(good).hexdigest())
+        self.assertTrue(backup.check(self.dest)[0])
+        rc, _ = self._quiet_main("create", "--data-root", str(self.tmp / "nic"), "--dest", str(self.dest))
+        self.assertEqual(rc, 1)
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("selhal", message)
+
+    def test_check_reports_to_push_monitor_without_printing_the_url(self):
+        hits = []
+
+        class Monitor(BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                known = "SPATNY" not in self.path
+                body = b'{"ok":true}' if known else b'{"ok":false,"msg":"Monitor not found or not active."}'
+                self.send_response(200 if known else 404)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Monitor)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        url_file = self.tmp / "push.url"
+        url_file.write_text(f"# Uptime Kuma\nhttp://127.0.0.1:{srv.server_port}/api/push/TAJNYTOKEN123\n")
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+
+        def last_query():
+            return urllib.parse.parse_qs(urllib.parse.urlsplit(hits[-1]).query)
+
+        rc, out = self._quiet_main("check", "--dest", str(self.dest), "--push-url-file", str(url_file))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(last_query()["status"], ["up"])
+        self.assertTrue(last_query()["msg"][0].startswith("OK"))
+        self.assertNotIn("TAJNYTOKEN123", out)
+
+        old = time.time() - 40 * 3600
+        os.utime(archive, (old, old))
+        rc, out = self._quiet_main("check", "--dest", str(self.dest), "--push-url-file", str(url_file))
+        self.assertEqual(rc, 1)
+        self.assertEqual(last_query()["status"], ["down"])
+
+        # pasted from Kuma's copy button, with its own ?status=up&msg=OK&ping=
+        url_file.write_text(f"http://127.0.0.1:{srv.server_port}/api/push/TAJNYTOKEN123?status=up&msg=OK&ping=\n")
+        rc, out = self._quiet_main("check", "--dest", str(self.dest), "--push-url-file", str(url_file))
+        self.assertEqual(rc, 1)
+        self.assertEqual(last_query()["status"], ["down"])
+        self.assertEqual(len(last_query()["msg"]), 1)
+
+        os.utime(archive, None)
+        url_file.write_text(f"http://127.0.0.1:{srv.server_port}/api/push/SPATNY\n")
+        rc, out = self._quiet_main("check", "--dest", str(self.dest), "--push-url-file", str(url_file))
+        self.assertEqual(rc, 2, out)
+        self.assertIn("404", out)
+        self.assertNotIn("SPATNY", out)
+
+    def test_restore_round_trip_and_never_over_existing_data(self):
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+        live = self.tmp / "provoz"
+        (live / "data").mkdir(parents=True)
+        (live / "data" / "classrally.db").write_bytes(b"live")
+        rc, out = self._quiet_main("restore", str(archive), "--into", str(live))
+        self.assertEqual(rc, 1)
+        self.assertIn("neni prazdna", out)
+        self.assertEqual((live / "data" / "classrally.db").read_bytes(), b"live")
+
+        target = self.tmp / "obnova"
+        result = backup.restore(archive, target)
+        self.assertEqual(result["tables"], {"users": 3})
+        for rel in ("history/game_1.json", "questions/users/7/moje.json", "uploads/obr.png"):
+            self.assertEqual((target / rel).read_bytes(), (self.root / rel).read_bytes())
+        self.assertFalse((target / "data" / "outbox").exists())
+        c = sqlite3.connect(str(target / "data" / "classrally.db"))
+        self.addCleanup(c.close)
+        self.assertEqual([r[0] for r in c.execute("SELECT nickname FROM users ORDER BY id")],
+                         ["ucitel", "zak1", "zak2"])
+
+    def test_restore_refuses_unsafe_or_tampered_archives(self):
+        self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        db_bytes = (self.root / "data" / "classrally.db").read_bytes()
+        good = {"data/classrally.db": db_bytes}
+        files = {n: {"sha256": hashlib.sha256(d).hexdigest()} for n, d in good.items()}
+        for members, listed in (
+                ({**good, "../utek.txt": b"x"}, {**files, "../utek.txt": {"sha256": hashlib.sha256(b"x").hexdigest()}}),
+                ({**good, "./history/a.json": b"x"}, {**files, "./history/a.json": {"sha256": hashlib.sha256(b"x").hexdigest()}}),
+                ({**good, "history/a.json": b"changed"}, {**files, "history/a.json": {"sha256": hashlib.sha256(b"x").hexdigest()}}),
+                ({"history/a.json": b"x"}, {"history/a.json": {"sha256": hashlib.sha256(b"x").hexdigest()}})):
+            archive = self._craft(members, listed)
+            target = self.tmp / "cil"
+            with self.assertRaises(backup.BackupError):
+                backup.restore(archive, target)
+            self.assertFalse(target.exists())
+            self.assertFalse((self.tmp / "utek.txt").exists())
+
+        archive = self._craft(good, files, tables={"users": 3})
+        backup.restore(archive, self.tmp / "spravne")  # the crafted archive itself is fine
+        garbage = {"data/classrally.db": b"not a database " * 300}
+        archive = self._craft(garbage, {n: {"sha256": hashlib.sha256(d).hexdigest()} for n, d in garbage.items()})
+        with self.assertRaisesRegex(backup.BackupError, "databaze v archivu je poskozena"):
+            backup.restore(archive, self.tmp / "cil")
+        archive = self._craft(good, files, tables={"users": 99})  # rows lost since the manifest
+        with self.assertRaisesRegex(backup.BackupError, "pocty radku"):
+            backup.restore(archive, self.tmp / "cil")
+        real = self.dest / backup.create(self.root, self.dest)["archive"]
+        sidecar = real.parent / (real.name + ".sha256")
+        sidecar.write_text("0" * 64 + "  " + real.name + "\n")
+        with self.assertRaisesRegex(backup.BackupError, "kontrolni soucet"):
+            backup.restore(real, self.tmp / "cil")
+        self.assertFalse((self.tmp / "cil").exists())
+
+        path = self.tmp / "odkaz.tar.gz"
+        with tarfile.open(path, "w:gz") as tar:
+            info = tarfile.TarInfo("history/odkaz")
+            info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
+            tar.addfile(info)
+        with self.assertRaises(backup.BackupError):
+            backup.restore(path, self.tmp / "cil")
+
+    def test_damaged_archive_is_reported_never_crashes(self):
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+        good = archive.read_bytes()
+        plain = gzip.decompress(good)
+        start = good.index(b"\0", 10) + 1 if good[3] & 0x08 else 10  # past the gzip header (file name)
+        seen = set()
+        for offset in range(start, len(good) - 8, max(1, len(good) // 60)):
+            damaged = bytearray(good)
+            damaged[offset] ^= 0x5A
+            try:
+                if gzip.decompress(bytes(damaged)) == plain:
+                    continue  # the flip hit bits that do not change the content
+            except Exception:
+                pass
+            archive.write_bytes(bytes(damaged))
+            # matching checksum, so the reader itself has to cope with the damage
+            backup._write_sidecar(archive, hashlib.sha256(bytes(damaged)).hexdigest())
+            ok, message = backup.check(self.dest)  # must never raise
+            if ok:
+                # the flip hit tar padding no file uses: everything must still restore intact
+                out = self.tmp / f"cela-{offset}"
+                backup.restore(archive, out)
+                self.assertEqual((out / "questions" / "users" / "7" / "moje.json").read_bytes(),
+                                 (self.root / "questions" / "users" / "7" / "moje.json").read_bytes())
+                continue
+            seen.add(message.split("(")[1].split(":")[0] if "nejde precist (" in message else message[:40])
+            with self.assertRaises(backup.BackupError):
+                backup.restore(archive, self.tmp / "cil")
+            self.assertFalse((self.tmp / "cil").exists())
+        self.assertGreater(len(seen), 1)  # several kinds of damage were exercised
+        archive.write_bytes(good)
+        backup._write_sidecar(archive, hashlib.sha256(good).hexdigest())
+        self.assertTrue(backup.check(self.dest)[0])
+
+    def test_bad_push_url_never_shows_its_secret(self):
+        backup.create(self.root, self.dest)
+        url_file = self.tmp / "push.url"
+        for url in ("http://127.0.0.1:1/api/push/TAJNY TOKEN",          # whitespace: InvalidURL
+                    "http://uzivatel:TAJNYTOKEN@127.0.0.1:abc/api/push/x",  # bad port
+                    "http://uzivatel:TAJNYTOKEN@127.0.0.1:1/api/push/x",    # nobody listening
+                    "https://[TAJNYTOKEN/api/push/x",                        # malformed IPv6 host
+                    "file:///etc/TAJNYTOKEN"):
+            url_file.write_text(url + "\n")
+            rc, out = self._quiet_main("check", "--dest", str(self.dest), "--push-url-file", str(url_file))
+            self.assertEqual(rc, 2, out)
+            self.assertNotIn("TAJNY", out)
+            self.assertNotIn("uzivatel", out)
+
+    def test_future_dated_newest_backup_is_an_error(self):
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+        future = time.time() + 5 * 3600
+        os.utime(archive, (future, future))
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("v budoucnosti", message)
+
+    def test_clock_going_back_never_deletes_the_new_backup(self):
+        now = time.time()
+        first = backup.create(self.root, self.dest, now=now)["archive"]
+        second = backup.create(self.root, self.dest, now=now - 3600)["archive"]  # sorts before `first`
+        self.assertTrue((self.dest / second).exists())
+        self.assertTrue((self.dest / first).exists())
+
+    def test_odd_file_names_are_left_out_and_reported_not_fatal(self):
+        bad = self.root / "questions" / "users" / "7"
+        (bad / "fyzika\\opakovani.json").write_text("[]", encoding="utf-8")
+        (bad / os.fsdecode(b"\xffzlomene.json")).write_text("[]", encoding="utf-8")
+        result = backup.create(self.root, self.dest)
+        with tarfile.open(self.dest / result["archive"]) as tar:
+            names = tar.getnames()
+        self.assertIn("questions/users/7/moje.json", names)
+        self.assertFalse(any("opakovani" in n or "zlomene" in n for n in names))
+        self.assertEqual(result["skipped_count"], 2)
+        self.assertTrue(any("\\xff" in item for item in result["skipped"]))
+        json.dumps(result)  # printable and storable despite the broken name
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("vynechala 2", message)
+        rc, out = self._quiet_main("create", "--data-root", str(self.root), "--dest", str(self.dest))
+        self.assertEqual(rc, 0)  # every other file is still backed up every night
+        self.assertIn("vynechano 2", out)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads everything")
+    def test_unreadable_folder_is_reported(self):
+        locked = self.root / "history" / "zamcena"
+        locked.mkdir()
+        (locked / "hra.json").write_text("{}", encoding="utf-8")
+        self.addCleanup(locked.chmod, 0o700)
+        # unreadable; listable but not enterable (chmod -R 644); enterable but not listable
+        for mode in (0, 0o444, 0o111):
+            locked.chmod(mode)
+            result = backup.create(self.root, self.dest)
+            self.assertEqual(result["skipped_count"], 1, oct(mode))
+            self.assertIn("zamcena", result["skipped"][0])
+            self.assertFalse(backup.check(self.dest)[0])
+            locked.chmod(0o700)
+            shutil.rmtree(self.dest)
+        # the outbox is left out anyway: an unreadable one is no problem
+        outbox = self.root / "data" / "outbox"
+        outbox.chmod(0)
+        self.addCleanup(outbox.chmod, 0o700)
+        self.assertEqual(backup.create(self.root, self.dest)["skipped_count"], 0)
+
+    def test_failed_monthly_copy_leaves_nothing_behind(self):
+        real_copy = shutil.copy2
+
+        def half_copy(src, dst, **kwargs):
+            Path(dst).write_bytes(b"half")
+            raise OSError(28, "No space left on device")
+
+        with mock.patch.object(backup.os, "link", side_effect=OSError(18, "Invalid cross-device link")), \
+                mock.patch.object(backup.shutil, "copy2", half_copy):
+            rc, out = self._quiet_main("create", "--data-root", str(self.root), "--dest", str(self.dest))
+        self.assertEqual(rc, 1)
+        self.assertEqual([p.name for p in (self.dest / "monthly").iterdir() if not p.name.endswith(".sha256")], [])
+        with mock.patch.object(backup.os, "link", side_effect=OSError(18, "Invalid cross-device link")):
+            result = backup.create(self.root, self.dest)  # next run makes the monthly copy
+        self.assertTrue(result["monthly_created"])
+        self.assertEqual(backup._archives(self.dest / "monthly"), [result["archive"].split("/")[1]])
+        self.assertTrue(backup.check(self.dest, verify_all=True)[0])
+        self.assertIs(shutil.copy2, real_copy)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads everything")
+    def test_folder_that_cannot_be_entered_is_reported(self):
+        app = self.tmp / "app"
+        self._make_tree(app, uploads="static/uploads", audio="static/audio")
+        db = sqlite3.connect(str(app / "data" / "classrally.db"))
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+        db.commit()
+        db.close()
+        (app / "static").chmod(0o644)  # static/uploads exists but cannot be reached
+        self.addCleanup((app / "static").chmod, 0o755)
+        result = backup.create(app, self.dest, layout="app-dir")
+        self.assertEqual(result["skipped_count"], 1)
+        self.assertTrue(result["skipped"][0].startswith("uploads:"))
+        self.assertFalse(backup.check(self.dest)[0])
+
+    def test_control_characters_in_a_name_stay_on_one_line(self):
+        (self.root / "history" / "radek\nnavic.json").write_text("{}", encoding="utf-8")
+        result = backup.create(self.root, self.dest)
+        self.assertEqual(result["skipped_count"], 1)
+        self.assertIn("radek\\x0anavic", result["skipped"][0])
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertNotIn("\n", message)
+
+    def test_unreadable_last_run_is_a_problem(self):
+        backup.create(self.root, self.dest)
+        (self.dest / "last-run.json").write_text("{nedopsane", encoding="utf-8")
+        ok, message = backup.check(self.dest)
+        self.assertFalse(ok)
+        self.assertIn("last-run.json", message)
+
+    def test_settings_that_would_destroy_backups_are_refused(self):
+        with self.assertRaises(backup.BackupError):
+            backup.create(self.root, self.dest, keep_daily=0)
+        with self.assertRaises(backup.BackupError):
+            backup.create(self.root, self.dest, keep_monthly=0)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            backup.main(["create", "--data-root", str(self.root), "--dest", str(self.dest), "--keep-daily", "0"])
+        for inside in (self.root / "history" / "zalohy", self.root / "uploads"):
+            with self.assertRaisesRegex(backup.BackupError, "zalohovane slozce"):
+                backup.create(self.root, inside)
+        backup.create(self.root, self.root / "zalohy")  # next to the folders is fine
+
+    def test_restore_is_all_or_nothing(self):
+        (self.root / "uploads" / "velky.png").write_bytes(os.urandom(300_000))
+        archive = self.dest / backup.create(self.root, self.dest)["archive"]
+        real_open = open
+        cut = []
+
+        class DiskFull:  # writes a little, then the disk is full
+            def __init__(self, f):
+                self.f = f
+
+            def write(self, chunk):
+                self.f.write(chunk[:1000])
+                cut.append(self.f.name)
+                raise OSError(28, "No space left on device")
+
+            def close(self):
+                self.f.close()
+
+        def opener(path, mode="r", *args, **kwargs):
+            f = real_open(path, mode, *args, **kwargs)
+            return DiskFull(f) if "w" in mode and Path(path).name == "velky.png" else f
+
+        for target, existed in ((self.tmp / "obnova" / "nova", False), (self.tmp / "prazdna", True)):
+            if existed:
+                target.mkdir()
+            with mock.patch.object(backup, "open", opener, create=True):
+                with self.assertRaises(OSError) as ctx:
+                    backup.restore(archive, target)
+            self.assertEqual(ctx.exception.errno, 28)
+            self.assertTrue(cut and cut[-1].endswith("velky.png"))  # the file was cut short ...
+            if existed:  # ... and removed with everything else
+                self.assertEqual(list(target.iterdir()), [])
+                backup.restore(archive, target)  # retry into the same folder works
+                self.assertEqual(len((target / "uploads" / "velky.png").read_bytes()), 300_000)
+            else:
+                self.assertFalse((self.tmp / "obnova").exists())
+
+    def test_main_restores_the_callers_umask(self):
+        before = os.umask(0o022)
+        try:
+            self._quiet_main("list", "--dest", str(self.dest))
+            self.assertEqual(os.umask(0o022), 0o022)
+        finally:
+            os.umask(before)
+
+    @unittest.skipUnless(backup.fcntl, "flock is POSIX only")
+    def test_second_run_at_the_same_time_does_nothing(self):
+        self.dest.mkdir()
+        fd = os.open(self.dest / ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        self.addCleanup(os.close, fd)
+        backup.fcntl.flock(fd, backup.fcntl.LOCK_EX)
+        self.assertEqual(backup.create(self.root, self.dest), {"busy": True})
+        self.assertEqual(os.listdir(self.dest / "daily"), [])
+
+    @unittest.skipUnless(hasattr(os, "geteuid"), "POSIX only")
+    def test_root_must_not_touch_a_database_it_does_not_own(self):
+        with mock.patch.object(backup.os, "geteuid", return_value=0), \
+                mock.patch.object(backup.Path, "stat", lambda self, **kw: os.stat_result((0o100600, 0, 0, 1, 1000, 1000, 1, 0, 0, 0))):
+            with self.assertRaises(backup.BackupError) as ctx:
+                backup.create(self.root, self.dest)
+        self.assertIn("ne jako root", str(ctx.exception))
+        self.assertFalse(self.dest.exists())
 
 
 if __name__ == "__main__":

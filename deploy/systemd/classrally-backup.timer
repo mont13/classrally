@@ -1,0 +1,14 @@
+# Starts classrally-backup.service every night; a run missed while the server
+# was off is made up after the next boot (Persistent). The time is in UTC: a
+# local time could fall into the daylight-saving gap and skip a day.
+
+[Unit]
+Description=ClassRally - denni zaloha dat (kazdou noc)
+
+[Timer]
+OnCalendar=*-*-* 01:40:00 UTC
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

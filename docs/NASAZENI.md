@@ -370,32 +370,111 @@ Restart prerusi rozehranou hru (stav hry je v pameti); ucty, sady otazek a histo
 
 ### Zalohy
 
-Zalohujte `data/classrally.db`, `history/`, `questions/` a `static/uploads/`
-(ve variante B `/srv/classrally/{data,history,questions,uploads}`). Databazi kopirujte
-pres SQLite backup, ne prostym `cp` za behu:
+Zalohy dela [`backup.py`](../backup.py) (jen standardni knihovna Pythonu). Jedna zaloha je
+jeden `.tar.gz`, vedle nej lezi `.sha256`. Obsahuje:
+
+- databazi, zkopirovanou pres SQLite online backup (konzistentni i za behu serveru);
+- historii her;
+- vsechny sady otazek, spolecne i vlastni sady ucitelu;
+- nahrane obrazky;
+- `MANIFEST.json` s kontrolnimi soucty souboru a s pocty radku v tabulkach.
+
+Vynecha odchozi postu (jednorazove odkazy) a hudbu v `audio/`, ktera je soucasti instalace
+(`--with-audio` ji prida). Rotace drzi nejnovejsi zalohu z kazdeho z poslednich **7 dni**
+(`daily/`) a prvni zalohu kazdeho z poslednich **12 mesicu** (`monthly/`).
+
+Spoustejte ji **na serveru**, ne z notebooku, a pod uctem, kteremu patri databaze
+(`classrally`), ne jako root. Cil dejte idealne na jiny disk nez data. Systemd jednotky v
+[`deploy/systemd/`](../deploy/systemd) jsou pripravene pro varianty A a C. Zaloha bezi
+kazdou noc v 01:40 UTC (UTC kvuli letnimu casu).
 
 ```bash
-APP=/opt/classrally; D=/var/backups/classrally; TS=$(date +%F)
-sudo install -d -m 700 $D
-sudo python3 -c "import sqlite3,sys; d=sqlite3.connect(sys.argv[2]); sqlite3.connect(sys.argv[1]).backup(d); d.close()" \
-  $APP/data/classrally.db $D/classrally-$TS.db
-sudo tar czf $D/soubory-$TS.tar.gz -C $APP history questions static/uploads
+sudo install -d -m 700 -o classrally -g classrally /var/backups/classrally
+sudo cp /opt/classrally/deploy/systemd/classrally-backup*.service \
+        /opt/classrally/deploy/systemd/classrally-backup*.timer /etc/systemd/system/
 ```
 
-Ve variante B je `APP=/srv/classrally` a v `tar` misto `static/uploads` uvedte `uploads`.
+Jen varianta B (data v `/srv/classrally`):
 
-Doporuceni:
+```bash
+sudo sed -i -e 's|--app-dir /opt/classrally|--data-root /srv/classrally|' \
+            -e 's|/opt/classrally/data|/srv/classrally/data|' /etc/systemd/system/classrally-backup.service
+```
 
-- spoustet denne primo na serveru (cron nebo systemd timer), ne z notebooku;
-- drzet **7 dennich + 12 mesicnich** zaloh;
-- kopii mimo server **stahovat z jineho stroje** (pull), aby se k ni napadeny server nedostal;
-- hlidat **stari** posledni zalohy, ne jen to, ze soubor existuje;
-- obcas zkusit obnovu: zastavit sluzbu, vratit `classrally.db` a slozky, spustit.
+Pak ve vsech variantach:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now classrally-backup.timer classrally-backup-check.timer
+sudo systemctl start classrally-backup.service                  # prvni zaloha hned
+sudo -u classrally python3 /opt/classrally/backup.py list --dest /var/backups/classrally
+```
+
+Kontrola bezi kazdou hodinu (`classrally-backup-check.timer`). Skonci chybou, kdyz:
+
+- je posledni zaloha starsi nez 26 h, nebo ma cas v budoucnosti (spatne hodiny serveru);
+- nesedi jeji kontrolni soucet nebo databaze;
+- chybi mesicni zaloha;
+- posledni beh selhal.
+
+Rucne:
+
+```bash
+sudo -u classrally python3 /opt/classrally/backup.py check --dest /var/backups/classrally
+sudo -u classrally python3 /opt/classrally/backup.py check --dest /var/backups/classrally --all   # vsechny zalohy
+```
+
+O chybe se nekdo musi dozvedet. V Uptime Kuma zalozte monitor typu **Push** s intervalem
+2 hodiny. Jeho URL ulozte do `/etc/classrally/backup.env` (vlastnik root, prava 600) jako
+`CLASSRALLY_BACKUP_PUSH_URL=https://…/api/push/<token>`. Klidne i tak, jak ji Kuma zkopiruje,
+tedy s `?status=up&msg=OK&ping=`: skript tyto parametry nahradi svymi. Kontrola pak kazdou
+hodinu hlasi `up` nebo `down` a Kuma zaalarmuje i ve chvili, kdy kontrola sama prestane bezet.
+
+Soubor, ktery do zalohy nejde dat (zpetne lomitko nebo ridici znak ve jmenu, neplatne UTF-8,
+neprecitelna slozka), zaloha vynecha a kontrola hlasi chybu, dokud ho neprejmenujete nebo
+neopravite prava. Ostatni data se zalohuji dal. Zalohu s casem v budoucnosti (spatne hodiny)
+po oprave hodin smazte i s jejim `.sha256`.
+
+**Obnova** jde vzdy do nove, prazdne slozky, existujici data nikdy neprepise. Kdyz se zapis
+nepovede (napr. plny disk), co uz zapsala, zase smaze:
+
+```bash
+sudo install -d -m 700 -o classrally -g classrally /srv/classrally-obnova
+sudo -u classrally python3 /opt/classrally/backup.py restore \
+  /var/backups/classrally/daily/classrally-<datum>Z.tar.gz --into /srv/classrally-obnova
+# varianty A a C: pridejte --layout app-dir (obrazky pujdou do static/uploads)
+```
+
+Pak:
+
+1. Zastavte server.
+2. Soucasne slozky `data/`, `history/`, `questions/` a `uploads/` (A a C: `static/uploads/`)
+   odsunte stranou, neprepisujte je.
+3. Nahradte je obnovenymi slozkami.
+4. Server spustte.
+
+Obnovu obcas vyzkousejte nanecisto:
+
+- **Docker:** obnovte zalohu do docasne slozky (`--layout data-root`). Spustte druhy kontejner
+  z tehoz image, s obnovenymi slozkami pripojenymi misto ostrych (jako v
+  `deploy/docker-compose.server.yml`), s `--network none`, `MAIL_MODE=off` a jinym jmenem.
+  Kontejner nema sit, takze prihlaseni ucitele overte uvnitr nej (`docker exec`, Python a
+  `/api/auth/login`).
+- **Bez Dockeru:** zkopirujte aplikaci do docasne slozky a jeji `data/`, `history/`,
+  `questions/` a `static/uploads/` nahradte obnovenymi (`--layout app-dir`). Spustte ji na jinem
+  portu s `MAIL_MODE=off`.
+
+Casy v nazvech zaloh jsou v UTC (pismeno `Z`).
+
+**Kopie mimo server:** slozku `/var/backups/classrally` stahujte z jineho, stale zapnuteho
+stroje (pull, napr. rsync pres SSH s uctem jen pro cteni), aby se k zalohum napadeny server
+nedostal. I tam hlidejte stari posledni kopie.
 
 ### Monitoring
 
 - HTTP kontrola `https://…/api/health` (ocekavano 200 a `"ok": true`), napr. Uptime Kuma.
-- Stari posledni zalohy a platnost certifikatu (certbot timer, resp. Caddy obnovuji samy).
+- Stari a citelnost posledni zalohy: `classrally-backup-check` s push monitorem (viz Zalohy).
+- Platnost certifikatu: certbot timer, resp. Caddy, ho obnovuji samy. Kuma umi hlidat i expiraci.
 
 ## 4. Kontrolni seznam po nasazeni
 

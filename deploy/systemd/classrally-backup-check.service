@@ -1,0 +1,36 @@
+# ClassRally backup check (backup.py check): fails when the newest backup is
+# older than 26 hours, its checksum or database does not verify, or the last
+# run failed. The result is in the journal (journalctl -u classrally-backup-check).
+#
+# Somebody has to hear about a failure: create a push monitor (Uptime Kuma:
+# type "Push", heartbeat interval 2 hours) and put its URL into
+# /etc/classrally/backup.env (root only, chmod 600):
+#   CLASSRALLY_BACKUP_PUSH_URL=https://kuma.example.com/api/push/<token>
+# systemd reads the file before dropping privileges. The check then reports
+# up/down every hour, and the monitor also alarms when the check stops running.
+# Paths as in classrally-backup.service (variant B: the same, the code is in /opt/classrally).
+
+[Unit]
+Description=ClassRally - kontrola stari a citelnosti posledni zalohy
+
+[Service]
+Type=oneshot
+User=classrally
+Group=classrally
+EnvironmentFile=-/etc/classrally/backup.env
+ExecStart=/usr/bin/python3 /opt/classrally/backup.py check --dest /var/backups/classrally
+
+# Hardening: only reads the backups; network only for the push monitor
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native

@@ -246,6 +246,7 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 classrally/
   server.py                        # hlavni server (stdlib http.server)
   qrgen.py                         # QR kod generator (pure Python)
+  backup.py                        # zalohy (7 dennich + 12 mesicnich), kontrola stari, obnova
   Dockerfile                       # Docker image
   docker-compose.yml               # Docker Compose konfigurace
   start.sh / stop.sh / rebuild.sh / logs.sh  # Docker skripty
@@ -266,13 +267,13 @@ classrally/
     audio/                         # vlastni MP3/OGG/WAV
   questions/                       # sady otazek (JSON)
   history/                         # historie her (generovano za behu)
-  test_server.py                   # 93 unit + integracnich testu
+  test_server.py                   # unit + integracni testy
 ```
 
 ## Testy
 
 ```bash
-python3 test_server.py        # 93 unit + integracnich testu (hra i pisemka)
+python3 test_server.py        # unit + integracni testy (hra, pisemka, ucty, zalohy)
 ./smoke_test.sh               # end-to-end smoke test (hra i pisemka)
 PORT=48999 ./smoke_test.sh    # na jinem portu, kdyz je vychozi obsazeny
 ```

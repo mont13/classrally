@@ -992,10 +992,15 @@
       } catch (e) { alert(e.message); }
     }
 
+    // Characters a bank file name must not contain (the server refuses them)
+    function safeBankName(text) {
+      return String(text).replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, '-');
+    }
+
     document.getElementById('btnCreateBank').addEventListener('click', async () => {
       const name = document.getElementById('newBankName').value.trim();
       if (!name) { alert(i18n.t('admin.enter_name')); return; }
-      const filename = name.replace(/\s+/g, '_').toLowerCase() + '.json';
+      const filename = safeBankName(name).replace(/\s+/g, '_').toLowerCase() + '.json';
       try {
         await api('/api/admin/bank/save', 'POST', { filename, questions: [] });
         document.getElementById('newBankName').value = '';
@@ -1802,7 +1807,8 @@
           const sel = document.getElementById('aiSaveAs');
           let saveName;
           if (sel.value === '__new__') {
-            saveName = document.getElementById('aiSaveAsNew').value.trim() || 'ai_' + topic.replace(/\s+/g, '_').substring(0, 30);
+            saveName = safeBankName(document.getElementById('aiSaveAsNew').value.trim())
+              || 'ai_' + safeBankName(topic).replace(/\s+/g, '_').substring(0, 30);
             if (!saveName.endsWith('.json')) saveName += '.json';
           } else {
             saveName = sel.value;

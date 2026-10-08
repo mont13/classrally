@@ -1,0 +1,12 @@
+# Starts classrally-backup-check.service every hour.
+
+[Unit]
+Description=ClassRally - kontrola zaloh (kazdou hodinu)
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
