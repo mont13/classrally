@@ -208,7 +208,9 @@
     "double_banner": "OTÁZKA ZA DVOJNÁSOBEK",
     "players_milestone": "🎉 Už {0} hráčů!",
     "podium_title": "Nejlepší hráči",
-    "awards_title": "Ocenění"
+    "awards_title": "Ocenění",
+    "forgot_link": "Zapomenuté heslo?",
+    "music_credit": "Hudba: {0}"
   },
 
   "exam": {
@@ -554,7 +556,17 @@
     "final_double_label": "Poslední otázka za dvojnásobek bodů",
     "badge_free": "Zdarma bez limitu",
     "badge_open_license": "Otevřená licence",
-    "tab_exam": "Písemka"
+    "tab_exam": "Písemka",
+    "lang_uk": "Ukrajinština",
+    "ai_source_label": "Podkladový text (nepovinný)",
+    "ai_source_placeholder": "Vložte text z učebnice nebo zápisu – otázky pak vzniknou jen z něj.",
+    "ai_locked_hint": "AI server a klíč nastavil správce serveru – vybíráte jen model.",
+    "ai_key_saved_placeholder": "uloženo – pro změnu zadejte nový klíč",
+    "invite_title": "Pozvat učitele",
+    "invite_text": "Kolegovi přijde e-mail s odkazem na založení učitelského účtu. Odkaz platí 7 dní.",
+    "invite_email_label": "E-mail kolegy",
+    "invite_btn": "Poslat pozvánku",
+    "invite_sent": "Pozvánka odeslána na {0}."
   },
 
   "profile": {
@@ -593,7 +605,7 @@
     "home_link": "Hlavní stránka",
     "logout_btn": "Odhlásit se",
     "fill_fields": "Vyplňte přezdívku a heslo.",
-    "forgot_password_hint": "Zapomněli jste heslo? Požádejte učitele o reset.",
+    "forgot_password_hint": "Bez potvrzeného e-mailu požádejte učitele o nastavení nového hesla.",
     "change_password_btn": "Změnit heslo",
     "old_password": "Současné heslo",
     "new_password": "Nové heslo",
@@ -635,7 +647,20 @@
     "qr_alt": "QR kód",
     "qr_close_btn": "Zavřít",
     "avatar_title": "Vyber si avatara",
-    "avatar_saved": "Avatar uložen!"
+    "avatar_saved": "Avatar uložen!",
+    "forgot_link": "Zapomenuté heslo?",
+    "label_email": "E-mail (nepovinný, pro obnovu hesla)",
+    "email_placeholder": "např. jana@skola.cz",
+    "email_title": "E-mail pro obnovu hesla",
+    "email_none": "K účtu není zadaný e-mail. Bez něj si zapomenuté heslo sami neobnovíte.",
+    "email_verified": "Potvrzený e-mail: {0}",
+    "email_unverified": "Čeká na potvrzení: {0} – otevřete odkaz, který jsme na adresu poslali.",
+    "email_label_new": "E-mailová adresa",
+    "email_label_password": "Současné heslo",
+    "email_save": "Uložit e-mail",
+    "email_saved": "Uloženo. Na adresu jsme poslali odkaz pro potvrzení.",
+    "email_resend": "Poslat potvrzení znovu",
+    "email_resent": "Potvrzovací odkaz jsme poslali znovu."
   },
 
   "landing": {
@@ -651,14 +676,16 @@
     "setup_title": "První spuštění",
     "setup_desc": "Vytvořte si učitelský účet. Budete mít plnou kontrolu nad hrou a správou.",
     "setup_nickname_placeholder": "Přezdívka (např. Učitel Novák)",
-    "setup_password_placeholder": "Heslo (min. 4 znaky)",
+    "setup_password_placeholder": "Heslo (min. 8 znaků)",
     "setup_password2_placeholder": "Heslo znovu",
     "setup_btn": "Vytvořit účet a začít",
     "setup_err_nickname": "Zadejte přezdívku.",
-    "setup_err_password": "Heslo musí mít aspoň 4 znaky.",
+    "setup_err_password": "Heslo musí mít aspoň 8 znaků.",
     "setup_err_mismatch": "Hesla se neshodují.",
     "err_register_generic": "Chyba registrace",
-    "err_connection": "Chyba spojení"
+    "err_connection": "Chyba spojení",
+    "setup_email_placeholder": "E-mail (doporučeno – pro obnovu hesla)",
+    "forgot_link": "Zapomenuté heslo?"
   },
 
   "common": {
@@ -668,5 +695,38 @@
     "hero_badge_projector": "Projektor-ready",
     "hero_badge_qr": "QR připojení",
     "hero_badge_podium": "Rychlé body a podium"
+  },
+  "account": {
+    "page_title": "ClassRally – Účet",
+    "forgot_title": "Zapomenuté heslo",
+    "forgot_text": "Zadejte přezdívku nebo e-mail. Pokud k účtu patří potvrzený e-mail, pošleme na něj odkaz pro nastavení nového hesla.",
+    "label_login": "Přezdívka nebo e-mail",
+    "forgot_btn": "Poslat odkaz",
+    "forgot_sent": "Pokud účet existuje a má potvrzený e-mail, odkaz je na cestě. Zkontrolujte i nevyžádanou poštu.",
+    "no_email_hint": "Nemáte u účtu potvrzený e-mail? Požádejte učitele o nové heslo.",
+    "reset_title": "Nové heslo",
+    "reset_text": "Zvolte nové heslo. Po uložení budete odhlášeni na všech zařízeních.",
+    "label_new_password": "Nové heslo",
+    "label_confirm_password": "Heslo znovu",
+    "reset_btn": "Nastavit heslo",
+    "reset_done": "Heslo je nastavené. Přihlaste se novým heslem.",
+    "passwords_differ": "Hesla se neshodují.",
+    "verify_title": "Potvrzení e-mailu",
+    "verify_working": "Ověřuji odkaz…",
+    "verify_done": "E-mail {0} je potvrzený. Zapomenuté heslo si teď obnovíte sami.",
+    "invite_title": "Pozvánka pro učitele",
+    "invite_text": "Založte si učitelský účet pro e-mail",
+    "label_nickname": "Přezdívka (přihlašovací jméno)",
+    "label_password": "Heslo (alespoň 8 znaků)",
+    "invite_btn": "Vytvořit účet učitele",
+    "invite_done": "Účet je vytvořený, otevírám učitelský portál…",
+    "invalid_title": "Odkaz nefunguje",
+    "invalid_text": "Odkaz je neplatný, už byl použitý nebo vypršel. Požádejte o nový.",
+    "request_new_link": "Požádat o nový odkaz",
+    "link_profile": "Můj profil",
+    "link_admin": "Učitelský portál",
+    "too_many": "Příliš mnoho pokusů, zkuste to za chvíli.",
+    "error": "Něco se nepovedlo, zkuste to znovu.",
+    "mail_disabled": "Odesílání e-mailů zatím není na tomto serveru zapnuté – e-mail nepřijde."
   }
 }

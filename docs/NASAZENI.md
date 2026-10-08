@@ -196,19 +196,34 @@ Aplikaci nikdy nespoustejte pod rootem.
 | Ucet | Jak vznikne | Co muze |
 |------|-------------|---------|
 | Heslo portalu (`QUIZ_ADMIN_PASSWORD`) | konfigurace serveru | vstup do `/admin` bez osobniho uctu (nouzovy, sdileny); prihlaseni plati 8 h, max. 5 pokusu za 5 min z jedne IP |
-| Ucitel | prvni se zaregistruje sam (jen dokud zadny ucitel neexistuje), dalsi viz nize | `/admin`, rizeni hry na `/host`, sprava uzivatelu a trid |
+| Ucitel | prvni se zaregistruje sam (jen dokud zadny ucitel neexistuje), dalsi na pozvanku e-mailem | `/admin`, rizeni hry na `/host`, sprava uzivatelu a trid, pozvanky |
 | Zak | sam se zaregistruje (volitelne) | hrat, tridy, ukoly, profil — zadna sprava |
 | Hrac bez uctu | prezdivka na `/play` | zahrat si hru |
 
 - Pristupovy klic pro `/host` se generuje pri kazdem startu serveru; ucitel ho dostane
   automaticky po prihlaseni na `/host`. Po restartu serveru staci `/host` znovu nacist.
-- Aplikace vyzaduje heslo jen 4 znaky — pouzivejte dlouha nahodna hesla
-  (napr. `openssl rand -base64 24`), zvlast pro ucitele a pro heslo portalu.
+- Hesla: ucitel min. 8 znaku, zak min. 4; ukladaji se jako solene PBKDF2-SHA256 (stare
+  databaze s nesolenym SHA-256 se prevedou samy pri dalsim prihlaseni). Pro heslo portalu
+  pouzijte dlouhe nahodne heslo (napr. `openssl rand -base64 24`).
+- Prihlaseni do uctu: na 5 minut se zablokuje po 8 spatnych pokusech na prezdivku z jedne IP,
+  po 40 na prezdivku celkem nebo po 50 z jedne IP (utocnik z jedne adresy tak ucitele
+  nezamkne pro ostatni).
+- Zapomenute heslo: na `/reset` si ho obnovi kazdy, kdo ma u uctu **potvrzeny e-mail**
+  (odkaz plati 60 minut, jen jednou, a odhlasi vsechna zarizeni). Bez e-mailu heslo nastavi
+  ucitel (Uzivatele → Reset hesla). E-mail se nastavuje pri registraci nebo v profilu a
+  potvrzuje odkazem z e-mailu. Vyzaduje nastavene odesilani posty (kap. 2.6).
 - Registrace zaku je na verejnem serveru otevrena komukoli; zakovsky ucet nema zadna prava,
   nevhodne ucty ucitel smaze.
 
-**Dalsi ucitel:** zaregistruje se jako zak a stavajici ucitel mu zmeni roli
-(stejne API slouzi i na reset hesla a smazani uctu):
+**Dalsi ucitel:** v `/admin` → Uzivatele → *Pozvat ucitele* zadate jeho e-mail; prijde mu odkaz
+(plati 7 dni, jen jednou) na zalozeni ucitelskeho uctu s uz potvrzenym e-mailem.
+
+Ucitel spravuje jen zakovske ucty (reset hesla, smazani, povyseni na ucitele). Ucitelsky ucet
+nemuze jiny ucitel resetovat, smazat ani sesadit — zmeni ho jen jeho majitel, nebo spravce
+serveru prikazem `--set-password` (nize).
+
+Bez e-mailu: zaregistruje se jako zak a stavajici ucitel mu zmeni roli (stejne API slouzi
+i na reset hesla a smazani uctu):
 
 ```bash
 B=http://127.0.0.1:48217
@@ -222,6 +237,54 @@ curl -s -H "Authorization: UserToken $TOKEN" -H 'Content-Type: application/json'
 # reset hesla:  ... -d '{"new_password":"..."}' $B/api/users/<id>/reset-password
 # smazani:      ... -X POST $B/api/users/<id>/delete
 ```
+
+**Nouzove heslo z prikazove radky** (napr. kdyz jediny ucitel zapomene heslo a nema e-mail).
+Nove heslo se zada bez zobrazeni, vsechna prihlaseni uctu se ukonci:
+
+```bash
+sudo -u classrally python3 /opt/classrally/server.py --set-password <prezdivka>    # systemd
+sudo docker exec -it classrally python3 server.py --set-password <prezdivka>       # Docker
+```
+
+Stejne se z konzole meni role (napr. odebrani ucitele): `python3 server.py --set-role <prezdivka> student`.
+
+### 2.6 E-mail (obnova hesla, pozvanky)
+
+Odchozi posta ma tri rezimy (`MAIL_MODE`):
+
+| Rezim | Co se deje |
+|-------|------------|
+| `off` | nic se neposila ani neuklada |
+| `log` | **vychozi** — kazda zprava se jen ulozi do `data/outbox/*.eml` (prava 600), nic neodejde |
+| `live` | odesila se pres SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY=starttls\|ssl`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) |
+
+- Odkazy v e-mailech se skladaji z `QUIZ_BASE_URL`, nikdy z hlavicky pozadavku — na serveru
+  ji vzdy nastavte.
+- Pred prepnutim na `live` overte prihlaseni k SMTP **bez odeslani zpravy**:
+
+  ```bash
+  read -r -s -p "SMTP heslo: " PW; echo
+  printf '%s' "$PW" | python3 -c "import smtplib,ssl,sys; s=smtplib.SMTP('mail.example.com',587,timeout=20); s.starttls(context=ssl.create_default_context()); print(s.login('classrally@example.com', sys.stdin.read())); s.quit()"
+  ```
+
+- Do `live` prepinejte vedome: odchazi z nej skutecne zpravy (overeni e-mailu, obnova hesla,
+  oznameni o zmene hesla, pozvanky). Zmena rezimu vyzaduje restart.
+- `data/outbox/` obsahuje odkazy s jednorazovymi tokeny — nesdilejte ho a stare soubory mazte.
+- U nezletilych zaku je e-mail volitelny; bez nej heslo obnovi ucitel.
+
+### 2.7 AI generator otazek
+
+Generator vola OpenAI-kompatibilni API (napr. Ollama nebo jinou sluzbu): `AI_BASE_URL`
+(bez `/v1`, aplikace si ho doplni), `AI_API_KEY`, `AI_MODEL`.
+
+- Kdyz je `AI_BASE_URL` nastaveny v konfiguraci serveru, je nastaveni **zamcene**: ucitele
+  vybiraji jen model, adresu AI serveru v portalu jen vidi, klic se do prohlizece nedostane
+  a server nevola adresy zadane z prohlizece.
+- Bez nej (lokalni provoz) jde AI server nastavit v `/admin` → Nastaveni; klic se ulozi jen
+  v pameti serveru a do prohlizece se nevraci.
+- Ucitel muze zadat tema, pocet otazek, jazyk (cs, en, sk, de, uk) a volitelne podkladovy
+  text (napr. odstavec z ucebnice) — otazky pak vzniknou jen z nej. Poradi odpovedi se po
+  vygenerovani nahodne zamicha.
 
 ## 3. Provoz
 
@@ -311,6 +374,8 @@ Doporuceni:
 - [ ] WebSocket `wss://…/api/ws` se pripoji (101)
 - [ ] proxy prepisuje `X-Forwarded-For`
 - [ ] konfigurace s hesly je mimo git s pravy 600/640
+- [ ] `MAIL_MODE` odpovida zameru (`log` dokud neni SMTP overene), `QUIZ_BASE_URL` nastavene
+- [ ] obnova hesla vyzkousena (e-mail potvrzen, odkaz z `/reset` funguje)
 - [ ] zalohy bezi a hlida se jejich stari, obnova vyzkousena
 - [ ] monitoring hlida `/api/health`
 - [ ] odehrana cela hra: ucitel na `/host`, zak z mobilu pres QR

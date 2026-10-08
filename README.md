@@ -224,12 +224,17 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 | `QUIZ_BASE_URL` | _(prazdne)_ | Verejna adresa za proxy (QR kody a odkazy), napr. `https://classrally.example.com` |
 | `QUIZ_TRUSTED_PROXIES` | _(privatni rozsahy)_ | IP/CIDR proxy, ktere smi nastavit `X-Forwarded-For` |
 | `QUIZ_DATA_DIR` | `data/` | Slozka SQLite databaze (ucty, tridy) |
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | _(Ollama)_ | OpenAI-kompatibilni AI API pro generovani otazek |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | _(Ollama)_ | OpenAI-kompatibilni AI API pro generovani otazek (nastavene na serveru = zamcene, klic se neposila do prohlizece) |
+| `MAIL_MODE` | `log` | Odchozi posta: `off`, `log` (jen ulozit do `data/outbox`), `live` (SMTP) |
+| `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD` | — | SMTP pro obnovu hesla, overeni e-mailu a pozvanky ucitelu |
 
 ### Zabezpeceni
 
 - **Pristupovy klic** — server pri startu vygeneruje nahodny klic pro ovladani hry. Zobrazen v konzoli a v ucitelskem portalu (Pokrocile nastaveni).
 - **Heslo portalu** — volitelne (`--admin-password`), SHA-256, session tokeny (8h), rate limiting.
+- **Ucty** — hesla solena PBKDF2-SHA256 (ucitel min. 8 znaku), limit neuspesnych prihlaseni,
+  obnova zapomenuteho hesla potvrzenym e-mailem (`/reset`), pozvanky ucitelu e-mailem,
+  nouzove heslo `python3 server.py --set-password <prezdivka>`.
 - **Ochrana hracu** — kazdy hrac ma tajny identifikator, nelze odpovedet za jineho.
 - **XSS prevence** — vsude DOM API, zadny innerHTML s uzivatelskymi daty.
 - **Validace** — otazky, ID her i soubory se validuji. Ochrana proti path traversal.

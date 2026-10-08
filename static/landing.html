@@ -55,6 +55,7 @@
       <input type="text" id="setupNickname" data-i18n-placeholder="landing.setup_nickname_placeholder" placeholder="Prezdivka (napr. Ucitel Novak)" autocomplete="username" />
       <input type="password" id="setupPassword" data-i18n-placeholder="landing.setup_password_placeholder" placeholder="Heslo (min. 4 znaky)" autocomplete="new-password" />
       <input type="password" id="setupPassword2" data-i18n-placeholder="landing.setup_password2_placeholder" placeholder="Heslo znovu" autocomplete="new-password" />
+      <input type="email" id="setupEmail" data-i18n-placeholder="landing.setup_email_placeholder" placeholder="E-mail (pro obnovu hesla)" autocomplete="email" maxlength="254" />
       <button class="btn good" id="setupBtn" style="width:100%;margin-top:4px;" data-i18n="landing.setup_btn">Vytvorit ucet a zacit</button>
     </div>
 
@@ -80,6 +81,7 @@
       </div>
       <div style="margin-top:28px;">
         <a href="/profile" class="btn secondary" style="font-size:1rem;" data-i18n="landing.profile_link">Muj profil / Prihlaseni</a>
+        <a href="/reset" class="btn ghost" style="font-size:1rem;margin-left:6px;" data-i18n="landing.forgot_link">Zapomenute heslo?</a>
       </div>
     </div>
   </div>
@@ -104,6 +106,7 @@
       const nickname = document.getElementById('setupNickname').value.trim();
       const password = document.getElementById('setupPassword').value;
       const password2 = document.getElementById('setupPassword2').value;
+      const email = document.getElementById('setupEmail').value.trim();
       const errorEl = document.getElementById('setupError');
       const btn = document.getElementById('setupBtn');
 
@@ -114,7 +117,7 @@
         errorEl.style.display = 'block';
         return;
       }
-      if (password.length < 4) {
+      if (password.length < 8) {
         errorEl.textContent = i18n.t('landing.setup_err_password');
         errorEl.style.display = 'block';
         return;
@@ -130,7 +133,7 @@
         const resp = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nickname, password, role: 'teacher' })
+          body: JSON.stringify({ nickname, password, role: 'teacher', email, lang: i18n.getLang() })
         });
         const data = await resp.json();
         if (data.ok && data.token) {

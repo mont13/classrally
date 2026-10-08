@@ -483,6 +483,11 @@
               <input id="aiApiKey" type="password" data-i18n-placeholder="admin.ai_api_key_placeholder" placeholder="volitelné, pro placené služby" />
             </div>
           </div>
+          <p id="aiLockedHint" class="muted hide" style="margin-top:0;" data-i18n="admin.ai_locked_hint"></p>
+          <div class="form-group">
+            <label for="aiSourceText" data-i18n="admin.ai_source_label">Podkladovy text (nepovinne)</label>
+            <textarea id="aiSourceText" rows="5" maxlength="12000" style="width:100%;padding:10px;border:2px solid #7dd3fc;border-radius:10px;font-size:1rem;" data-i18n-placeholder="admin.ai_source_placeholder"></textarea>
+          </div>
           <div class="inline-row">
             <div class="form-group">
               <label for="aiLang" data-i18n="admin.ai_lang_label">Jazyk</label>
@@ -491,6 +496,7 @@
                 <option value="en" data-i18n="admin.lang_en">English</option>
                 <option value="sk" data-i18n="admin.lang_sk">Slovenština</option>
                 <option value="de" data-i18n="admin.lang_de">Deutsch</option>
+                <option value="uk" data-i18n="admin.lang_uk">Українська</option>
               </select>
             </div>
             <div class="form-group">
@@ -658,12 +664,26 @@
           </div>
         </div>
 
-      </div>
-
         <!-- USERS TAB -->
         <div id="tab-users" class="tab-content">
           <h2 data-i18n="admin.users_title">Sprava uzivatelu</h2>
           <p class="muted" data-i18n="admin.users_subtitle">Vsichni registrovani uzivatele. Muzete menit role, resetovat hesla a mazat ucty.</p>
+
+          <div class="invite-box" style="margin-top:16px;padding:14px;border:2px solid #7dd3fc;border-radius:12px;background:#f0f9ff;">
+            <h3 style="margin-top:0;" data-i18n="admin.invite_title">Pozvat ucitele</h3>
+            <p class="muted" style="margin-top:0;" data-i18n="admin.invite_text"></p>
+            <div class="inline-row">
+              <div class="form-group">
+                <label for="inviteEmail" data-i18n="admin.invite_email_label">E-mail kolegy</label>
+                <input id="inviteEmail" type="email" autocomplete="off" />
+              </div>
+              <div class="form-group" style="flex:0 0 auto;">
+                <button class="btn good" id="btnInviteTeacher" data-i18n="admin.invite_btn">Poslat pozvanku</button>
+              </div>
+            </div>
+            <p id="inviteStatus" class="muted hide" style="font-weight:700;"></p>
+          </div>
+
           <div id="usersListAdmin" style="margin-top:16px;"></div>
         </div>
 
@@ -1655,13 +1675,20 @@
       try {
         const cfg = await api('/api/admin/ollama/config');
         const baseUrl = cfg.base_url || (cfg.host ? `http://${cfg.host}:${cfg.port || 11434}` : 'http://localhost:11434');
-        const apiKey = cfg.api_key || '';
         document.getElementById('aiModel').value = cfg.model || 'gpt-oss:20b';
         document.getElementById('aiBaseUrl').value = baseUrl;
-        document.getElementById('aiApiKey').value = apiKey;
         document.getElementById('cfgAiBaseUrl').value = baseUrl;
-        document.getElementById('cfgAiApiKey').value = apiKey;
         document.getElementById('cfgOllamaModel').value = cfg.model || 'gpt-oss:20b';
+        // The server never sends the API key back; an empty field keeps it.
+        for (const id of ['aiApiKey', 'cfgAiApiKey']) {
+          const el = document.getElementById(id);
+          el.value = '';
+          if (cfg.api_key_set) el.placeholder = i18n.t('admin.ai_key_saved_placeholder');
+        }
+        for (const id of ['aiBaseUrl', 'aiApiKey', 'cfgAiBaseUrl', 'cfgAiApiKey']) {
+          document.getElementById(id).disabled = !!cfg.locked;
+        }
+        document.getElementById('aiLockedHint').classList.toggle('hide', !cfg.locked);
       } catch {}
     }
 
@@ -1691,6 +1718,7 @@
           base_url: document.getElementById('aiBaseUrl').value,
           api_key: document.getElementById('aiApiKey').value,
           language: document.getElementById('aiLang').value,
+          source_text: document.getElementById('aiSourceText').value,
         });
         status.className = 'ai-status success';
         status.textContent = i18n.t('admin.ai_generated', result.questions.length);
@@ -1887,6 +1915,24 @@
         alert(i18n.t('admin.ollama_config_saved'));
         loadOllamaConfig();
       } catch (e) { alert(e.message); }
+    });
+
+    // --- Invite a teacher by e-mail ---
+    document.getElementById('btnInviteTeacher').addEventListener('click', async () => {
+      const email = document.getElementById('inviteEmail').value.trim();
+      const status = document.getElementById('inviteStatus');
+      if (!email) { document.getElementById('inviteEmail').focus(); return; }
+      try {
+        const r = await api('/api/auth/invite-teacher', 'POST', { email, lang: i18n.getLang() });
+        status.textContent = r.mail === 'live' ? i18n.t('admin.invite_sent', email)
+          : r.mail === 'rate_limited' ? i18n.t('account.too_many')
+          : r.mail === 'error' ? i18n.t('account.error')
+          : i18n.t('account.mail_disabled');
+        document.getElementById('inviteEmail').value = '';
+      } catch (e) {
+        status.textContent = e.message;
+      }
+      status.classList.remove('hide');
     });
 
     // --- History ---
@@ -2529,49 +2575,78 @@
 
     // ===== USERS =====
 
+    // Same avatar set as play/profile/host (emoji, no image files).
+    const USER_AVATAR_EMOJI = ['\u{1F98A}', '\u{1F431}', '\u{1F436}', '\u{1F981}', '\u{1F438}',
+      '\u{1F427}', '\u{1F98B}', '\u{1F41D}', '\u{1F984}', '\u{1F43C}', '\u{1F428}', '\u{1F42F}',
+      '\u{1F989}', '\u{1F419}', '\u{1F988}', '\u{1F42C}', '\u{1F422}', '\u{1F98E}', '\u{1F9A9}', '\u{1F43A}'];
+
+    function userCell(row, content) {
+      const td = document.createElement('td');
+      if (content instanceof Node) td.appendChild(content); else td.textContent = content;
+      row.appendChild(td);
+      return td;
+    }
+
+    function userButton(label, cls, onClick) {
+      const b = document.createElement('button');
+      b.className = 'btn btn-sm ' + cls;
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    // Built with DOM APIs only: nicknames are user input (no innerHTML, no inline handlers).
     async function loadUsersTab() {
       const container = document.getElementById('usersListAdmin');
+      container.textContent = '';
       try {
         const data = await api('/api/users');
         const users = data.users || [];
         if (users.length === 0) {
-          container.innerHTML = '<p class="muted">' + i18n.t('admin.no_users') + '</p>';
+          const p = document.createElement('p');
+          p.className = 'muted';
+          p.textContent = i18n.t('admin.no_users');
+          container.appendChild(p);
           return;
         }
-        let html = '<table class="data-table" style="width:100%;"><thead><tr>' +
-          '<th>' + i18n.t('admin.col_avatar') + '</th>' +
-          '<th>' + i18n.t('admin.col_nickname') + '</th>' +
-          '<th>' + i18n.t('admin.col_role') + '</th>' +
-          '<th>' + i18n.t('admin.col_score') + '</th>' +
-          '<th>' + i18n.t('admin.col_games') + '</th>' +
-          '<th>' + i18n.t('admin.col_actions') + '</th>' +
-          '</tr></thead><tbody>';
+        const table = document.createElement('table');
+        table.className = 'data-table';
+        table.style.width = '100%';
+        const headRow = table.createTHead().insertRow();
+        ['col_avatar', 'col_nickname', 'col_role', 'col_score', 'col_games', 'col_actions'].forEach(k => {
+          const th = document.createElement('th');
+          th.textContent = i18n.t('admin.' + k);
+          headRow.appendChild(th);
+        });
+        const tbody = table.createTBody();
         users.forEach(u => {
           const isTeacher = u.role === 'teacher';
-          const roleBadge = isTeacher
-            ? '<span class="role-badge teacher">' + i18n.t('admin.role_teacher') + '</span>'
-            : '<span class="role-badge student">' + i18n.t('admin.role_student') + '</span>';
-          const toggleRoleBtn = '<button class="btn secondary btn-sm" onclick="userSetRole(' + u.id + ',\'' +
-            (isTeacher ? 'student' : 'teacher') + '\')">' +
-            (isTeacher ? i18n.t('admin.btn_demote') : i18n.t('admin.btn_promote')) + '</button>';
-          const resetBtn = '<button class="btn secondary btn-sm" onclick="userResetPw(' + u.id + ',\'' +
-            u.nickname.replace(/'/g, "\\'") + '\')">' + i18n.t('admin.btn_reset_password') + '</button>';
-          const deleteBtn = '<button class="btn warn btn-sm" onclick="userDelete(' + u.id + ',\'' +
-            u.nickname.replace(/'/g, "\\'") + '\')">' + i18n.t('admin.btn_delete_user') + '</button>';
-
-          html += '<tr>' +
-            '<td><div class="avatar-circle small" style="background-image:url(/static/illustrations/avatar' + (u.avatar_id || 1) + '.webp);"></div></td>' +
-            '<td><strong>' + (u.nickname || '-') + '</strong></td>' +
-            '<td>' + roleBadge + '</td>' +
-            '<td>' + (u.total_score || 0) + '</td>' +
-            '<td>' + (u.games_played || 0) + '</td>' +
-            '<td style="display:flex;gap:6px;flex-wrap:wrap;">' + toggleRoleBtn + resetBtn + deleteBtn + '</td>' +
-            '</tr>';
+          const row = tbody.insertRow();
+          userCell(row, USER_AVATAR_EMOJI[((u.avatar_id || 1) - 1) % USER_AVATAR_EMOJI.length]);
+          const nick = document.createElement('strong');
+          nick.textContent = u.nickname || '-';
+          userCell(row, nick);
+          const badge = document.createElement('span');
+          badge.className = 'role-badge ' + (isTeacher ? 'teacher' : 'student');
+          badge.textContent = i18n.t(isTeacher ? 'admin.role_teacher' : 'admin.role_student');
+          userCell(row, badge);
+          userCell(row, String(u.total_score || 0));
+          userCell(row, String(u.games_played || 0));
+          const actions = userCell(row, '');
+          actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+          actions.appendChild(userButton(i18n.t(isTeacher ? 'admin.btn_demote' : 'admin.btn_promote'), 'secondary',
+            () => userSetRole(u.id, isTeacher ? 'student' : 'teacher')));
+          actions.appendChild(userButton(i18n.t('admin.btn_reset_password'), 'secondary',
+            () => userResetPw(u.id, u.nickname)));
+          actions.appendChild(userButton(i18n.t('admin.btn_delete_user'), 'warn',
+            () => userDelete(u.id, u.nickname)));
         });
-        html += '</tbody></table>';
-        container.innerHTML = html;
+        container.appendChild(table);
       } catch (e) {
-        container.innerHTML = '<p class="error-msg">' + (e.message || 'Chyba') + '</p>';
+        const p = document.createElement('p');
+        p.className = 'error-msg';
+        p.textContent = e.message || 'Chyba';
+        container.appendChild(p);
       }
     }
 

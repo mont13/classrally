@@ -132,7 +132,8 @@
         </div>
         <button class="btn good" id="btnLogin" data-i18n="profile.login_btn"></button>
         <p id="loginErr" class="error-msg"></p>
-        <p class="hint-text" data-i18n="profile.forgot_password_hint" style="margin-top:12px;color:var(--muted);font-size:0.85rem;"></p>
+        <p style="margin-top:12px;"><a href="/reset" data-i18n="profile.forgot_link"></a></p>
+        <p class="hint-text" data-i18n="profile.forgot_password_hint" style="margin-top:6px;color:var(--muted);font-size:0.85rem;"></p>
       </div>
 
       <div id="tab-register" class="tab-content">
@@ -143,6 +144,10 @@
         <div class="form-group">
           <label for="regPass" data-i18n="profile.label_password"></label>
           <input id="regPass" type="password" data-i18n-placeholder="profile.reg_pass_placeholder" />
+        </div>
+        <div class="form-group">
+          <label for="regEmail" data-i18n="profile.label_email"></label>
+          <input id="regEmail" type="email" data-i18n-placeholder="profile.email_placeholder" maxlength="254" autocomplete="email" />
         </div>
         <!-- Role is always student here; teacher registers via landing page setup -->
         <input type="hidden" id="regRole" value="student" />
@@ -189,6 +194,23 @@
             <div class="value" id="kpiRole">-</div>
           </div>
         </div>
+
+        <!-- E-mail for password recovery -->
+        <div class="section-title" data-i18n="profile.email_title" style="margin:10px 0 8px;font-size:1.15rem;"></div>
+        <p id="emailStatus" class="muted" style="margin-top:0;"></p>
+        <div class="inline-row">
+          <div class="form-group">
+            <label for="emailNew" data-i18n="profile.email_label_new"></label>
+            <input id="emailNew" type="email" data-i18n-placeholder="profile.email_placeholder" maxlength="254" autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="emailPass" data-i18n="profile.email_label_password"></label>
+            <input id="emailPass" type="password" autocomplete="current-password" />
+          </div>
+        </div>
+        <button class="btn" id="btnSaveEmail" data-i18n="profile.email_save"></button>
+        <button class="btn ghost hide" id="btnResendVerify" data-i18n="profile.email_resend"></button>
+        <p id="emailMsg" class="muted hide" style="font-weight:700;"></p>
 
         <!-- Teacher onboarding card (shown only for new teachers with 0 classes and 0 games) -->
         <div id="onboardingCard" class="onboarding-card hide"></div>
@@ -364,7 +386,8 @@
       var err = document.getElementById('regErr');
       err.textContent = '';
       if (!nickname || !password) { err.textContent = i18n.t('profile.fill_fields'); return; }
-      var body = { nickname: nickname, password: password, role: role };
+      var body = { nickname: nickname, password: password, role: role,
+                   email: document.getElementById('regEmail').value.trim(), lang: i18n.getLang() };
       try {
         var data = await api('/api/auth/register', 'POST', body);
         localStorage.setItem(TOKEN_KEY, data.token);
@@ -404,7 +427,7 @@
       if (!oldPw || !newPw) { msg.textContent = i18n.t('profile.fill_fields'); return; }
       if (newPw !== newPw2) { msg.textContent = i18n.t('profile.passwords_mismatch'); return; }
       try {
-        await api('/api/auth/change-password', 'POST', { old_password: oldPw, new_password: newPw });
+        await api('/api/auth/change-password', 'POST', { old_password: oldPw, new_password: newPw, lang: i18n.getLang() });
         msg.style.color = 'var(--good)';
         msg.textContent = i18n.t('profile.password_changed');
         document.getElementById('chpwOld').value = '';
@@ -588,8 +611,59 @@
       }
     }
 
+    function renderEmail(user) {
+      var status = document.getElementById('emailStatus');
+      var resend = document.getElementById('btnResendVerify');
+      if (!user.email) status.textContent = i18n.t('profile.email_none');
+      else if (user.email_verified) status.textContent = i18n.t('profile.email_verified', user.email);
+      else status.textContent = i18n.t('profile.email_unverified', user.email);
+      resend.classList.toggle('hide', !user.email || !!user.email_verified);
+    }
+
+    // Text for the mail outcome reported by the server.
+    function mailOutcome(mode, sentKey) {
+      if (mode === 'live') return i18n.t(sentKey);
+      if (mode === 'rate_limited') return i18n.t('account.too_many');
+      if (mode === 'error') return i18n.t('account.error');
+      return i18n.t('account.mail_disabled');
+    }
+
+    function showEmailMsg(text) {
+      var el = document.getElementById('emailMsg');
+      el.textContent = text;
+      el.classList.remove('hide');
+    }
+
+    document.getElementById('btnSaveEmail').addEventListener('click', async function() {
+      try {
+        var r = await api('/api/auth/set-email', 'POST', {
+          email: document.getElementById('emailNew').value.trim(),
+          password: document.getElementById('emailPass').value,
+          lang: i18n.getLang(),
+        });
+        document.getElementById('emailPass').value = '';
+        currentUser.email = r.email;
+        currentUser.email_verified = r.email_verified;
+        renderEmail(currentUser);
+        if (r.changed) showEmailMsg(mailOutcome(r.mail, 'profile.email_saved'));
+      } catch (e) {
+        showEmailMsg(e.message);
+      }
+    });
+
+    document.getElementById('btnResendVerify').addEventListener('click', async function() {
+      try {
+        var r = await api('/api/auth/resend-verification', 'POST', { lang: i18n.getLang() });
+        showEmailMsg(r.already_verified ? i18n.t('profile.email_verified', currentUser.email || '')
+                                        : mailOutcome(r.mail, 'profile.email_resent'));
+      } catch (e) {
+        showEmailMsg(e.message);
+      }
+    });
+
     function renderProfile(user) {
       document.getElementById('profileNick').textContent = user.nickname || '-';
+      renderEmail(user);
 
       var roleBadge = document.getElementById('profileRole');
       var isTeacher = user.role === 'teacher';

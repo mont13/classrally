@@ -41,6 +41,7 @@ from urllib.error import URLError
 
 from qrgen import generate_qr_svg
 import db as user_db
+import mailer
 from ws import WSConnection, WSConnectionManager, ws_handshake_response
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -48,7 +49,7 @@ STATIC_DIR = BASE_DIR / "static"
 AUDIO_DIR = STATIC_DIR / "audio"
 UPLOADS_DIR = STATIC_DIR / "uploads"
 QUESTIONS_DIR = BASE_DIR / "questions"
-HISTORY_DIR = BASE_DIR / "history"
+HISTORY_DIR = Path(os.environ["QUIZ_HISTORY_DIR"]) if os.environ.get("QUIZ_HISTORY_DIR") else BASE_DIR / "history"
 DEFAULT_QUESTIONS_FILE = "default.json"
 QUESTION_DURATION_SEC = 20
 REVEAL_DURATION_SEC = 5
@@ -498,6 +499,16 @@ def delete_game_history(game_id: str) -> bool:
 
 # --- AI Question Generation via Ollama ---
 
+AI_LANGUAGES = {
+    "cs": "Czech (čeština)",
+    "en": "English",
+    "sk": "Slovak (slovenčina)",
+    "de": "German (Deutsch)",
+    "uk": "Ukrainian (українська)",
+}
+AI_SOURCE_TEXT_MAX = 12000
+
+
 def generate_questions_ai(
     topic: str,
     count: int = 5,
@@ -505,19 +516,27 @@ def generate_questions_ai(
     model: str = "gpt-oss:20b",
     api_key: str = "",
     language: str = "cs",
+    source_text: str = "",
 ) -> list[dict[str, Any]]:
-    prompt = f"""Vygeneruj presne {count} kvizovych otazek na tema: "{topic}"
+    lang_name = AI_LANGUAGES.get(language, language)
+    source_part = ""
+    if source_text.strip():
+        source_part = (
+            "\nBase every question ONLY on the following source text (do not use facts that "
+            "are not in it):\n<<<\n" + source_text.strip()[:AI_SOURCE_TEXT_MAX] + "\n>>>\n"
+        )
+    prompt = f"""Create exactly {count} multiple-choice quiz questions for school students on the topic: "{topic}".
+{source_part}
+Write every question, option and explanation in {lang_name}, with correct spelling and diacritics.
+Each question is a JSON object with:
+- "id": unique identifier ("ai_1", "ai_2", ...)
+- "prompt": the question text
+- "options": exactly 4 answer options, only one of them correct, wrong options plausible
+- "correct_index": index of the correct option (0-3)
+- "explanation": one or two sentences explaining the correct answer
 
-Kazda otazka musi mit:
-- "id": unikatni identifikator (napr. "ai_1", "ai_2", ...)
-- "prompt": text otazky (v jazyce: {language})
-- "options": pole presne 4 moznosti odpovedi
-- "correct_index": index spravne odpovedi (0-3)
-- "explanation": kratke vysvetleni spravne odpovedi
-
-Odpovez POUZE validnim JSON polem bez zadneho dalsiho textu. Zadny markdown, zadne komentare.
-Priklad formatu:
-[{{"id":"ai_1","prompt":"Otazka?","options":["A","B","C","D"],"correct_index":0,"explanation":"Vysvetleni"}}]"""
+Reply ONLY with a valid JSON array, no markdown, no comments.
+Example: [{{"id":"ai_1","prompt":"...?","options":["...","...","...","..."],"correct_index":0,"explanation":"..."}}]"""
 
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -530,7 +549,7 @@ Priklad formatu:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.7,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
     }).encode("utf-8")
 
     req = Request(url, data=payload, headers=headers, method="POST")
@@ -542,7 +561,9 @@ Priklad formatu:
     except Exception as e:
         raise RuntimeError(f"Chyba pri komunikaci s AI API: {e}")
 
-    response_text = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    response_text = result.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+    # Reasoning models may prepend a <think>...</think> block that can contain brackets.
+    response_text = re.sub(r"<think>.*?</think>", "", response_text, flags=re.S).strip()
     start = response_text.find("[")
     end = response_text.rfind("]")
     if start == -1 or end == -1:
@@ -572,6 +593,11 @@ Priklad formatu:
         q["options"] = q["options"][:4]
         if not isinstance(q["correct_index"], int) or q["correct_index"] < 0 or q["correct_index"] > 3:
             q["correct_index"] = 0
+        # Models tend to put the right answer first; shuffle so it is not guessable.
+        perm = list(range(len(q["options"])))
+        random.shuffle(perm)
+        q["options"] = [q["options"][i] for i in perm]
+        q["correct_index"] = perm.index(q["correct_index"])
         if "explanation" not in q:
             q["explanation"] = ""
         valid.append(q)
@@ -666,7 +692,18 @@ def _is_nickname_clean(name: str) -> bool:
     return not any(word in lower for word in _BANNED_WORDS)
 
 
-# --- Registration rate limiter ---
+# --- Rate limiters ---
+
+_SWEEP_EVERY = 1000
+
+
+def _sweep(table: dict[str, list[float]], now: float, window_sec: float) -> None:
+    """Drop keys without recent activity once the table grows (bounded memory)."""
+    if len(table) < _SWEEP_EVERY:
+        return
+    for key in [k for k, times in table.items() if not times or now - times[-1] >= window_sec]:
+        del table[key]
+
 
 class _RegistrationRateLimiter:
     """Simple dict-based rate limiter for player registration."""
@@ -680,6 +717,7 @@ class _RegistrationRateLimiter:
     def is_allowed(self, client_ip: str) -> bool:
         now = time.time()
         with self._lock:
+            _sweep(self._attempts, now, self.window_sec)
             attempts = self._attempts.get(client_ip, [])
             attempts = [t for t in attempts if now - t < self.window_sec]
             self._attempts[client_ip] = attempts
@@ -689,7 +727,59 @@ class _RegistrationRateLimiter:
             return True
 
 
-REGISTER_LIMITER = _RegistrationRateLimiter(max_requests=10, window_sec=60)
+# Largest accepted request body: a 2 MB question image as base64 inside JSON.
+MAX_BODY_BYTES = 4 * 1024 * 1024
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+class _FailureLimiter:
+    """Blocks a key after too many recent failures (successes are not counted)."""
+
+    def __init__(self, max_failures: int, window_sec: int) -> None:
+        self._lock = threading.Lock()
+        self._failures: dict[str, list[float]] = {}
+        self.max_failures = max_failures
+        self.window_sec = window_sec
+
+    def _recent(self, key: str, now: float) -> list[float]:
+        recent = [t for t in self._failures.get(key, []) if now - t < self.window_sec]
+        if recent:
+            self._failures[key] = recent
+        else:
+            self._failures.pop(key, None)
+        return recent
+
+    def blocked(self, key: str) -> bool:
+        with self._lock:
+            return len(self._recent(key, time.time())) >= self.max_failures
+
+    def fail(self, key: str) -> None:
+        now = time.time()
+        with self._lock:
+            _sweep(self._failures, now, self.window_sec)
+            self._failures[key] = self._recent(key, now) + [now]
+
+
+# Players joining a game: a whole school can sit behind one NAT address.
+REGISTER_LIMITER = _RegistrationRateLimiter(max_requests=120, window_sec=60)
+ACCOUNT_REGISTER_LIMITER = _RegistrationRateLimiter(max_requests=60, window_sec=600)
+# Login: a tight limit per (nickname, address) and a looser one per nickname, so
+# one attacker cannot lock a teacher out for everybody else.
+LOGIN_FAIL_IP = _FailureLimiter(max_failures=50, window_sec=300)
+LOGIN_FAIL_NICK_IP = _FailureLimiter(max_failures=8, window_sec=300)
+LOGIN_FAIL_NICK = _FailureLimiter(max_failures=40, window_sec=300)
+# Wrong current password when changing password or e-mail (stolen session).
+PASSWORD_FAIL_USER = _FailureLimiter(max_failures=8, window_sec=300)
+FORGOT_LIMITER_IP = _RegistrationRateLimiter(max_requests=10, window_sec=900)
+MAIL_LIMITER_USER = _RegistrationRateLimiter(max_requests=3, window_sec=3600)
+SET_EMAIL_LIMITER = _RegistrationRateLimiter(max_requests=10, window_sec=3600)
+VERIFY_MAIL_IP = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
+INVITE_LIMITER = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
+# Hard cap on all outgoing account e-mail of the server.
+GLOBAL_MAIL_LIMITER = _RegistrationRateLimiter(max_requests=200, window_sec=3600)
 
 
 # --- Quiz State ---
@@ -1672,6 +1762,9 @@ class ExamStudent:
     events: list[dict[str, Any]] = field(default_factory=list)
 
 
+EXAM_QUESTION_TYPES = ("choice", "truefalse")
+
+
 class ExamState:
     def __init__(self, questions: list[dict[str, Any]] | None = None) -> None:
         self._lock = threading.Lock()
@@ -1686,6 +1779,18 @@ class ExamState:
     # -- setup --
 
     def reload_questions(self, questions: list[dict[str, Any]], bank_name: str | None = None) -> None:
+        # The exam screen renders and grades only option questions with one
+        # correct answer; other types would be unanswerable (and used to be
+        # graded as correct when left blank).
+        unsupported = sorted({
+            str(q.get("type", "choice")) for q in questions
+            if q.get("type", "choice") not in EXAM_QUESTION_TYPES
+        })
+        if unsupported:
+            raise ValueError(
+                "Pisemka podporuje jen otazky typu vyber odpovedi a ano/ne; "
+                f"sada obsahuje: {', '.join(unsupported)}"
+            )
         with self._lock:
             self.questions = questions
             self._active_bank = bank_name
@@ -1851,8 +1956,8 @@ class ExamState:
     def _grade_locked(self, student: ExamStudent, now: float, auto: bool) -> None:
         correct = 0
         for q in self.questions:
-            qid = q["id"]
-            if student.answers.get(qid) == q.get("correct_index"):
+            ci = q.get("correct_index")
+            if isinstance(ci, int) and student.answers.get(q["id"]) == ci:
                 correct += 1
         total = len(self.questions)
         percent = (correct / total * 100.0) if total else 0.0
@@ -2006,14 +2111,40 @@ class ExamState:
             return buf.getvalue()
 
 
-def list_audio_tracks() -> dict[str, list[dict[str, str]]]:
+# Sound roles from the file name: "loop" anywhere in the name = background
+# music; a name starting with an effect role (correct_ding.ogg, win_jingle.ogg,
+# reveal-stinger.mp3 …) = that effect. Anything else counts as music.
+AUDIO_EFFECT_ROLES = ("correct", "wrong", "lock", "reveal", "end", "win")
+
+# Files fetched by download_free_quiz_music.sh whose licence requires credit.
+AUDIO_CREDITS = {
+    "Kevin MacLeod (incompetech.com), CC BY 4.0": {
+        "loop_thinking_music.mp3", "loop_sneaky_snitch.mp3", "loop_quirky_dog.mp3",
+        "loop_monkeys_spinning_monkeys.mp3", "loop_local_forecast_elevator.mp3",
+        "tension-loop.mp3", "reveal-stinger.mp3",
+    },
+}
+
+
+def _audio_role(name: str) -> str:
+    tokens = [t for t in re.split(r"[\s_.\-]+", name.lower()) if t]
+    if "loop" in tokens:
+        return "loop"
+    if tokens and tokens[0] in AUDIO_EFFECT_ROLES:
+        return tokens[0]
+    return "loop"
+
+
+def list_audio_tracks() -> dict[str, Any]:
     allowed = {".mp3", ".ogg", ".wav", ".m4a", ".aac"}
     loops: list[dict[str, str]] = []
     stingers: list[dict[str, str]] = []
     all_tracks: list[dict[str, str]] = []
+    effects: dict[str, list[str]] = {}
+    credits: list[str] = []
 
     if not AUDIO_DIR.exists():
-        return {"all": [], "loops": [], "stingers": []}
+        return {"all": [], "loops": [], "stingers": [], "effects": {}, "credits": []}
 
     for file_path in sorted(AUDIO_DIR.iterdir()):
         if not file_path.is_file():
@@ -2027,18 +2158,23 @@ def list_audio_tracks() -> dict[str, list[dict[str, str]]]:
         }
         all_tracks.append(track)
 
-        lower = file_path.name.lower()
-        if any(key in lower for key in ("stinger", "hit", "reveal", "correct", "win", "lock", "end", "ding")):
-            stingers.append(track)
-        else:
+        role = _audio_role(file_path.name)
+        if role == "loop":
             loops.append(track)
+        else:
+            stingers.append(track)
+            effects.setdefault(role, []).append(track["url"])
+        for credit, names in AUDIO_CREDITS.items():
+            if file_path.name in names and credit not in credits:
+                credits.append(credit)
 
     if not loops and all_tracks:
         loops = all_tracks.copy()
     if not stingers and all_tracks:
         stingers = all_tracks.copy()
 
-    return {"all": all_tracks, "loops": loops, "stingers": stingers}
+    return {"all": all_tracks, "loops": loops, "stingers": stingers,
+            "effects": effects, "credits": credits}
 
 
 QUIZ = QuizState(load_default_questions())
@@ -2242,6 +2378,68 @@ AI_CONFIG: dict[str, Any] = {
     "api_key": os.environ.get("AI_API_KEY", ""),
     "model": os.environ.get("AI_MODEL", os.environ.get("OLLAMA_MODEL", "gpt-oss:20b")),
 }
+# True when the AI endpoint comes from the server configuration (--ai-base-url /
+# AI_BASE_URL): teachers may then only pick a model, while the endpoint and the
+# API key stay on the server (no key in the browser, no arbitrary URLs = SSRF).
+AI_CONFIG_LOCKED = False
+
+
+def ai_public_config() -> dict[str, Any]:
+    """AI settings that may be sent to the browser — never the API key itself."""
+    return {
+        "base_url": AI_CONFIG["base_url"],
+        "model": AI_CONFIG["model"],
+        "api_key_set": bool(AI_CONFIG["api_key"]),
+        "locked": AI_CONFIG_LOCKED,
+    }
+
+
+# Outgoing e-mail (password reset, e-mail verification, teacher invitations).
+# MAIL_MODE=log (default) only writes messages to data/outbox.
+MAILER = mailer.Mailer.from_env(outbox_dir=user_db._DB_DIR / "outbox")
+
+
+def public_base_url() -> str:
+    """Base URL for links in e-mails.
+
+    QUIZ_BASE_URL when set, otherwise the address shown on /host. Never taken
+    from the request Host header, which a client controls (link poisoning).
+    """
+    if QUIZ_BASE_URL:
+        return QUIZ_BASE_URL
+    host_urls = SERVER_INFO.get("host_urls") or [f"http://127.0.0.1:{DEFAULT_PORT}/host"]
+    return host_urls[0].rsplit("/host", 1)[0]
+
+
+def _mail_lang(data: dict[str, Any]) -> str:
+    lang = str(data.get("lang", "cs"))
+    return lang if lang in mailer.LANGS else "cs"
+
+
+def _send_reset_link(login: str, lang: str) -> None:
+    """Background part of /api/auth/forgot-password."""
+    try:
+        user = user_db.find_user_for_reset(login)
+        if user and MAIL_LIMITER_USER.is_allowed(f"reset:{user['id']}"):
+            raw = user_db.create_user_token("reset", user_id=user["id"])
+            send_account_mail("reset", user["email"], lang, nickname=user["nickname"],
+                              link=f"{public_base_url()}/reset?token={raw}")
+    except Exception as e:  # noqa: BLE001 — never break the request thread pool
+        print(f"reset link not sent: {type(e).__name__}: {e}")
+
+
+def send_account_mail(kind: str, to: str, lang: str, **values: str) -> str:
+    """Render and queue an account e-mail. Returns the mail mode, 'rate_limited' or 'error'."""
+    if MAILER.mode != "off" and not GLOBAL_MAIL_LIMITER.is_allowed("all"):
+        print(f"mail not queued ({kind}): server-wide hourly limit reached")
+        return "rate_limited"
+    values.setdefault("base", public_base_url())
+    subject, body = mailer.render(kind, lang, **values)
+    try:
+        return MAILER.send(to, subject, body)
+    except Exception as e:  # noqa: BLE001 — a broken mail must not break the request
+        print(f"mail not queued ({kind}): {type(e).__name__}: {e}")
+        return "error"
 
 # WebSocket connection manager
 WS_MANAGER = WSConnectionManager()
@@ -2462,6 +2660,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
             return {}
+        if length > MAX_BODY_BYTES:
+            raise _BodyTooLarge()
         raw = self.rfile.read(length)
         return json.loads(raw.decode("utf-8"))
 
@@ -2586,6 +2786,17 @@ class Handler(BaseHTTPRequestHandler):
         self._json_response({"error": "Unauthorized", "needs_auth": True}, status=401)
         return False
 
+    def _send_verification(self, user: dict[str, Any] | None, lang: str) -> str:
+        """Send the e-mail confirmation link (rate limited per account and address)."""
+        if not user or not user.get("email"):
+            return "error"
+        if not (MAIL_LIMITER_USER.is_allowed(f"verify:{user['id']}")
+                and VERIFY_MAIL_IP.is_allowed(self._get_client_ip())):
+            return "rate_limited"
+        raw = user_db.create_user_token("verify", user_id=user["id"], email=user["email"])
+        return send_account_mail("verify", user["email"], lang, nickname=user["nickname"],
+                                 link=f"{public_base_url()}/verify-email?token={raw}")
+
     def _require_teacher(self) -> int | None:
         """Require teacher user account. Returns user_id or sends 401 and returns None."""
         uid = self._get_user_id_from_token()
@@ -2691,8 +2902,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/exam":
             self._serve_file(STATIC_DIR / "exam.html")
+            return
+
         if path == "/profile":
             self._serve_file(STATIC_DIR / "profile.html")
+            return
+
+        if path in ("/reset", "/verify-email", "/invite"):
+            # One page for forgotten password, e-mail confirmation and teacher
+            # invitations; the token is redeemed by a POST from the page, so
+            # link scanners that prefetch e-mail links cannot use it up.
+            self._serve_file(STATIC_DIR / "account.html")
             return
 
         if path.startswith("/static/"):
@@ -2779,6 +2999,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_host_token():
                 return
             self._json_response(EXAM.overview())
+            return
+
         if path == "/api/setup-status":
             # Public endpoint: tells the frontend if initial setup is needed
             self._json_response({
@@ -2850,13 +3072,19 @@ class Handler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             models = list_ai_models(AI_CONFIG["base_url"], AI_CONFIG["api_key"])
-            self._json_response({"models": models, "config": AI_CONFIG})
+            self._json_response({"models": models, "config": ai_public_config()})
             return
 
         if path == "/api/admin/ollama/config":
             if not self._require_admin():
                 return
-            self._json_response(AI_CONFIG)
+            self._json_response(ai_public_config())
+            return
+
+        if path == "/api/mail/status":
+            if not self._require_admin():
+                return
+            self._json_response(MAILER.status())
             return
 
         # --- User Auth API (GET) ---
@@ -3365,35 +3593,42 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/admin/ollama/config":
                 if not self._require_admin():
                     return
-                if "base_url" in data:
-                    AI_CONFIG["base_url"] = str(data["base_url"])
-                elif "host" in data or "port" in data:
-                    host = str(data.get("host", "localhost"))
-                    port = int(data.get("port", 11434))
-                    AI_CONFIG["base_url"] = f"http://{host}:{port}"
-                if "api_key" in data:
-                    AI_CONFIG["api_key"] = str(data["api_key"])
-                if "model" in data:
+                if not AI_CONFIG_LOCKED:
+                    if "base_url" in data:
+                        AI_CONFIG["base_url"] = str(data["base_url"])
+                    elif "host" in data or "port" in data:
+                        host = str(data.get("host", "localhost"))
+                        port = int(data.get("port", 11434))
+                        AI_CONFIG["base_url"] = f"http://{host}:{port}"
+                    # The browser never receives the key, so an empty field means "keep".
+                    if data.get("api_key"):
+                        AI_CONFIG["api_key"] = str(data["api_key"])
+                if data.get("model"):
                     AI_CONFIG["model"] = str(data["model"])
-                self._json_response({"ok": True, "config": AI_CONFIG})
+                self._json_response({"ok": True, "config": ai_public_config()})
                 return
 
             if path == "/api/admin/ai/generate":
                 if not self._require_admin():
                     return
-                topic = str(data.get("topic", ""))
-                count = int(data.get("count", 5))
-                model = str(data.get("model", AI_CONFIG["model"]))
-                api_key = str(data.get("api_key", AI_CONFIG["api_key"]))
+                topic = str(data.get("topic", "")).strip()
+                try:
+                    count = max(1, min(20, int(data.get("count", 5))))
+                except (ValueError, TypeError):
+                    count = 5
+                model = str(data.get("model") or AI_CONFIG["model"])
                 language = str(data.get("language", "cs"))
-                if "base_url" in data:
-                    base_url = str(data["base_url"])
-                elif "host" in data or "port" in data:
-                    host = str(data.get("host", "localhost"))
-                    port = int(data.get("port", 11434))
-                    base_url = f"http://{host}:{port}"
-                else:
-                    base_url = AI_CONFIG["base_url"]
+                source_text = str(data.get("source_text", ""))[:AI_SOURCE_TEXT_MAX]
+                base_url, api_key = AI_CONFIG["base_url"], AI_CONFIG["api_key"]
+                if not AI_CONFIG_LOCKED:
+                    # Local single-teacher setups may still point a request elsewhere.
+                    if data.get("base_url"):
+                        base_url = str(data["base_url"])
+                    elif "host" in data or "port" in data:
+                        host = str(data.get("host", "localhost"))
+                        port = int(data.get("port", 11434))
+                        base_url = f"http://{host}:{port}"
+                    api_key = str(data.get("api_key") or api_key)
                 if not topic:
                     self._json_response({"error": "topic required"}, status=400)
                     return
@@ -3402,6 +3637,7 @@ class Handler(BaseHTTPRequestHandler):
                         topic=topic, count=count,
                         base_url=base_url, model=model,
                         api_key=api_key, language=language,
+                        source_text=source_text,
                     )
                     self._json_response({"ok": True, "questions": questions})
                 except Exception as e:
@@ -3410,9 +3646,13 @@ class Handler(BaseHTTPRequestHandler):
 
             # --- User Auth API (POST) ---
             if path == "/api/auth/register":
+                if not ACCOUNT_REGISTER_LIMITER.is_allowed(self._get_client_ip()):
+                    self._json_response({"error": "Prilis mnoho registraci, zkuste to pozdeji"}, status=429)
+                    return
                 nickname = str(data.get("nickname", ""))
                 password = str(data.get("password", ""))
                 role = str(data.get("role", "student"))
+                email = str(data.get("email", "") or "").strip() or None
                 avatar_id = data.get("avatar_id")
                 if avatar_id is not None:
                     try:
@@ -3429,9 +3669,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
                 try:
-                    user = user_db.create_user(nickname, password, role, avatar_id=avatar_id)
+                    user = user_db.create_user(nickname, password, role, avatar_id=avatar_id, email=email)
                     token = user_db.create_session(user["id"])
-                    self._json_response({"ok": True, "token": token, "user": user})
+                    payload = {"ok": True, "token": token, "user": user}
+                    if user.get("email"):
+                        payload["mail"] = self._send_verification(user, _mail_lang(data))
+                    self._json_response(payload)
                 except ValueError as e:
                     self._json_response({"error": str(e)}, status=400)
                 return
@@ -3439,12 +3682,157 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/auth/login":
                 nickname = str(data.get("nickname", ""))
                 password = str(data.get("password", ""))
+                if not nickname.strip() or len(nickname.strip()) > 24 or len(password) > 1024:
+                    # cannot be a real account (nicknames are 1-24 chars): answer like a
+                    # wrong password, without creating limiter keys or hashing megabytes
+                    self._json_response({"error": "Neplatne prihlasovaci udaje"}, status=401)
+                    return
+                ip_key = self._get_client_ip()
+                nick_key = nickname.strip().lower()
+                pair_key = f"{nick_key}|{ip_key}"
+                if (LOGIN_FAIL_IP.blocked(ip_key) or LOGIN_FAIL_NICK_IP.blocked(pair_key)
+                        or LOGIN_FAIL_NICK.blocked(nick_key)):
+                    self._json_response(
+                        {"error": "Prilis mnoho neuspesnych pokusu, zkuste to za par minut", "code": "rate_limited"},
+                        status=429,
+                    )
+                    return
                 user = user_db.authenticate_user(nickname, password)
                 if user:
                     token = user_db.create_session(user["id"])
                     self._json_response({"ok": True, "token": token, "user": user})
                 else:
+                    LOGIN_FAIL_IP.fail(ip_key)
+                    LOGIN_FAIL_NICK_IP.fail(pair_key)
+                    LOGIN_FAIL_NICK.fail(nick_key)
                     self._json_response({"error": "Neplatne prihlasovaci udaje"}, status=401)
+                return
+
+            # --- Account recovery, e-mail confirmation, teacher invitations ---
+
+            if path == "/api/auth/forgot-password":
+                # Same answer whether or not the account exists (no enumeration).
+                if not FORGOT_LIMITER_IP.is_allowed(self._get_client_ip()):
+                    self._json_response({"error": "Prilis mnoho pozadavku, zkuste to pozdeji"}, status=429)
+                    return
+                # Looked up and sent in the background: the answer and its timing are
+                # the same whether or not the account exists.
+                login = str(data.get("login", ""))[:254]
+                threading.Thread(target=_send_reset_link, daemon=True,
+                                 args=(login, _mail_lang(data))).start()
+                self._json_response({"ok": True})
+                return
+
+            if path == "/api/auth/token-check":
+                purpose = str(data.get("purpose", ""))
+                tok = user_db.peek_user_token(str(data.get("token", "")), purpose) \
+                    if purpose in user_db.TOKEN_TTL else None
+                payload: dict[str, Any] = {"valid": tok is not None}
+                if tok and purpose == "invite":
+                    payload["email"] = tok["email"]
+                self._json_response(payload)
+                return
+
+            if path == "/api/auth/reset-password":
+                try:
+                    user = user_db.reset_password_with_token(
+                        str(data.get("token", "")), str(data.get("new_password", "")))
+                except ValueError as e:
+                    self._json_response({"error": str(e), "code": "weak_password"}, status=400)
+                    return
+                if not user:
+                    self._json_response({"error": "Odkaz je neplatny nebo vyprsel", "code": "invalid_token"}, status=400)
+                    return
+                if user.get("email"):
+                    send_account_mail("password_changed", user["email"], _mail_lang(data),
+                                      nickname=user["nickname"])
+                self._json_response({"ok": True, "nickname": user["nickname"]})
+                return
+
+            if path == "/api/auth/verify-email":
+                try:
+                    user = user_db.verify_email_with_token(str(data.get("token", "")))
+                except ValueError as e:
+                    self._json_response({"error": str(e), "code": "email_taken"}, status=400)
+                    return
+                if not user:
+                    self._json_response({"error": "Odkaz je neplatny nebo vyprsel", "code": "invalid_token"}, status=400)
+                    return
+                self._json_response({"ok": True, "nickname": user["nickname"], "email": user["email"]})
+                return
+
+            if path == "/api/auth/set-email":
+                uid = self._require_user()
+                if uid is None:
+                    return
+                if PASSWORD_FAIL_USER.blocked(f"pw:{uid}") or not SET_EMAIL_LIMITER.is_allowed(f"email:{uid}"):
+                    self._json_response({"error": "Prilis mnoho pokusu, zkuste to pozdeji", "code": "rate_limited"}, status=429)
+                    return
+                try:
+                    result = user_db.set_email(uid, str(data.get("email", "")), str(data.get("password", "")))
+                except user_db.WrongPassword as e:
+                    PASSWORD_FAIL_USER.fail(f"pw:{uid}")
+                    self._json_response({"error": str(e)}, status=400)
+                    return
+                except ValueError as e:
+                    self._json_response({"error": str(e)}, status=400)
+                    return
+                if result["changed"]:
+                    result["mail"] = self._send_verification(user_db.get_user(uid), _mail_lang(data))
+                self._json_response({"ok": True, **result})
+                return
+
+            if path == "/api/auth/resend-verification":
+                uid = self._require_user()
+                if uid is None:
+                    return
+                user = user_db.get_user(uid)
+                if not user or not user.get("email"):
+                    self._json_response({"error": "Ucet nema e-mail"}, status=400)
+                    return
+                if user.get("email_verified"):
+                    self._json_response({"ok": True, "already_verified": True})
+                    return
+                self._json_response({"ok": True, "mail": self._send_verification(user, _mail_lang(data))})
+                return
+
+            if path == "/api/auth/invite-teacher":
+                tid = self._require_teacher()
+                if tid is None:
+                    return
+                try:
+                    email = user_db.normalize_email(str(data.get("email", "")))
+                except ValueError as e:
+                    self._json_response({"error": str(e)}, status=400)
+                    return
+                if not INVITE_LIMITER.is_allowed(f"invite:{tid}"):
+                    self._json_response({"error": "Prilis mnoho pozvanek, zkuste to pozdeji"}, status=429)
+                    return
+                inviter = user_db.get_user(tid)
+                raw = user_db.create_user_token("invite", email=email, created_by=tid)
+                mode = send_account_mail("invite", email, _mail_lang(data),
+                                         inviter=inviter["nickname"] if inviter else "ClassRally",
+                                         link=f"{public_base_url()}/invite?token={raw}")
+                self._json_response({"ok": True, "mail": mode})
+                return
+
+            if path == "/api/auth/accept-invite":
+                avatar_id = data.get("avatar_id")
+                try:
+                    avatar_id = int(avatar_id) if avatar_id is not None else None
+                except (ValueError, TypeError):
+                    avatar_id = None
+                try:
+                    user = user_db.accept_invite(str(data.get("token", "")), str(data.get("nickname", "")),
+                                                 str(data.get("password", "")), avatar_id=avatar_id)
+                except ValueError as e:
+                    self._json_response({"error": str(e)}, status=400)
+                    return
+                if not user:
+                    self._json_response({"error": "Pozvanka je neplatna nebo vyprsela", "code": "invalid_token"}, status=400)
+                    return
+                token = user_db.create_session(user["id"])
+                self._json_response({"ok": True, "token": token, "user": user})
                 return
 
             if path == "/api/auth/logout":
@@ -3478,13 +3866,25 @@ class Handler(BaseHTTPRequestHandler):
                 uid = self._require_user()
                 if uid is None:
                     return
+                if PASSWORD_FAIL_USER.blocked(f"pw:{uid}"):
+                    self._json_response({"error": "Prilis mnoho pokusu, zkuste to pozdeji", "code": "rate_limited"}, status=429)
+                    return
                 old_password = str(data.get("old_password", ""))
                 new_password = str(data.get("new_password", ""))
                 try:
-                    user_db.change_password(uid, old_password, new_password)
-                    self._json_response({"ok": True})
+                    user = user_db.change_password(uid, old_password, new_password,
+                                                   keep_session=self._get_user_token())
+                except user_db.WrongPassword as e:
+                    PASSWORD_FAIL_USER.fail(f"pw:{uid}")
+                    self._json_response({"error": str(e)}, status=400)
+                    return
                 except ValueError as e:
                     self._json_response({"error": str(e)}, status=400)
+                    return
+                if user and user.get("email") and user.get("email_verified"):
+                    send_account_mail("password_changed", user["email"], _mail_lang(data),
+                                      nickname=user["nickname"])
+                self._json_response({"ok": True})
                 return
 
             # --- User management (teacher only) ---
@@ -3805,6 +4205,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             self._json_response({"error": "Not found"}, status=404)
+        except _BodyTooLarge:
+            self.close_connection = True  # the unread body stays in the socket
+            self._json_response({"error": "Request too large"}, status=413)
         except ValueError as exc:
             self._json_response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -3844,6 +4247,12 @@ def main() -> None:
                         help="Public base URL when running behind a reverse proxy, e.g. "
                              "https://classrally.example.com  — overrides auto-detected LAN IP "
                              "for QR codes and player URLs  (env: QUIZ_BASE_URL)")
+    parser.add_argument("--set-password", metavar="NICKNAME", default="",
+                        help="Emergency access: set a new password for the account (read from "
+                             "the terminal or stdin) and exit without starting the server")
+    parser.add_argument("--set-role", nargs=2, metavar=("NICKNAME", "ROLE"),
+                        help="Server administration: set an account's role (student/teacher), "
+                             "e.g. to remove a teacher, and exit")
     parser.add_argument("--trusted-proxies",
                         default=os.environ.get("QUIZ_TRUSTED_PROXIES", ""),
                         help="Comma-separated list of trusted reverse-proxy CIDRs/IPs whose "
@@ -3853,12 +4262,42 @@ def main() -> None:
 
     # Initialize SQLite database
     user_db.init_db()
+
+    if args.set_password:
+        import getpass
+        import sys
+        if sys.stdin.isatty():
+            new_password = getpass.getpass(f"Nove heslo pro '{args.set_password}': ")
+        else:
+            new_password = sys.stdin.readline().rstrip("\r\n")
+        try:
+            user = user_db.admin_set_password(args.set_password, new_password)
+        except ValueError as e:
+            print(f"CHYBA: {e}")
+            sys.exit(1)
+        print(f"Heslo uctu '{user['nickname']}' ({user['role']}) zmeneno, prihlaseni ukoncena.")
+        sys.exit(0)
+
+    if args.set_role:
+        import sys
+        try:
+            user = user_db.admin_set_role(*args.set_role)
+        except ValueError as e:
+            print(f"CHYBA: {e}")
+            sys.exit(1)
+        print(f"Ucet '{user['nickname']}' ma roli {user['role']}, prihlaseni ukoncena.")
+        sys.exit(0)
+
     user_db.migrate_json_history(HISTORY_DIR)
 
-    # --teacher-code is deprecated and ignored; anyone can register as teacher
     if args.teacher_code:
-        print("WARNING: --teacher-code is deprecated and no longer has any effect. Teacher registration is open to all.")
-    print("Teacher registration: open (no code required)")
+        print("WARNING: --teacher-code is deprecated and no longer has any effect.")
+    if user_db.teacher_exists():
+        print("Teacher registration: closed (teacher accounts exist; invite more teachers from /admin)")
+    else:
+        print("Teacher registration: OPEN until the first teacher account is created")
+    print(f"Outgoing e-mail: MAIL_MODE={MAILER.mode}"
+          + (f" via {MAILER.host}:{MAILER.port}" if MAILER.mode == "live" else ""))
 
     if args.admin_password:
         ADMIN_AUTH.set_password(args.admin_password)
@@ -3867,8 +4306,10 @@ def main() -> None:
         print("Admin portal: open (no password)")
 
     # New --ai-* args take precedence over legacy --ollama-* args
+    global AI_CONFIG_LOCKED
     if args.ai_base_url:
         AI_CONFIG["base_url"] = args.ai_base_url
+        AI_CONFIG_LOCKED = True
     else:
         AI_CONFIG["base_url"] = f"http://{args.ollama_host}:{args.ollama_port}"
     if args.ai_api_key:

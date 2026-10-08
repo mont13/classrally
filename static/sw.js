@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classrally-v3';
+const CACHE_NAME = 'classrally-v4';
 
 const PRE_CACHE = [
   '/play',
@@ -36,17 +36,10 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Network-first for API calls
+  // API calls go straight to the network and are never cached: responses can
+  // carry personal data or the host token (shared classroom computers), and
+  // the game cannot work offline anyway.
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match(request))
-    );
     return;
   }
 

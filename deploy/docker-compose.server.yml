@@ -16,6 +16,8 @@
 #   QUIZ_BASE_URL         public URL, e.g. https://classrally.example.com
 #   QUIZ_ADMIN_PASSWORD   /admin password — without it the admin portal is
 #                         open to anyone until the first teacher registers
+# Optional: AI_* (question generator), MAIL_MODE/MAIL_FROM/SMTP_* (e-mail,
+# default MAIL_MODE=log writes messages to data/outbox and sends nothing)
 #
 # The admin password is passed via the environment only (the default command
 # in the Dockerfile would also put it on the process command line).
@@ -48,6 +50,16 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-gpt-oss:20b}
+      # Outgoing e-mail (password reset, invitations); log = only data/outbox
+      MAIL_MODE: ${MAIL_MODE:-log}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    # A runaway process must not starve other containers on a shared host.
+    mem_limit: 512m
     cap_drop:
       - ALL
     security_opt:

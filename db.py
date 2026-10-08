@@ -7,9 +7,12 @@ Uses only stdlib (sqlite3). Thread-safe via WAL mode + one connection per call.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import random
+import re
+import secrets
 import sqlite3
 import string
 import threading
@@ -43,9 +46,78 @@ def set_db_path(path: str | Path) -> None:
     _DB_DIR = _DB_PATH.parent
 
 
+# Password hashing: salted PBKDF2-HMAC-SHA256. Older databases store unsalted
+# SHA-256 hex digests; those still verify and are upgraded on the next login.
+PBKDF2_ITERATIONS = 600_000
+_PBKDF2_PREFIX = "pbkdf2_sha256"
+
+# Minimum password length by role (teachers manage classes and question banks).
+MIN_PASSWORD_LEN = {"teacher": 8, "student": 4}
+
+
 def _hash_password(password: str) -> str:
-    """SHA256 hash of password. Matches existing AdminAuth pattern."""
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS)
+    return f"{_PBKDF2_PREFIX}${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    if stored.startswith(_PBKDF2_PREFIX + "$"):
+        try:
+            _, iterations, salt_hex, digest_hex = stored.split("$")
+            digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                                         bytes.fromhex(salt_hex), int(iterations))
+        except ValueError:
+            return False
+        return hmac.compare_digest(digest.hex(), digest_hex)
+    legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy, stored)
+
+
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_hash() -> str:
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None or _needs_rehash(_DUMMY_HASH):
+        _DUMMY_HASH = _hash_password(secrets.token_hex(8))
+    return _DUMMY_HASH
+
+
+def _email_taken(conn: sqlite3.Connection, email: str, except_user: int | None = None) -> bool:
+    """True when another account already has this address CONFIRMED."""
+    row = conn.execute(
+        "SELECT 1 FROM users WHERE email = ? COLLATE NOCASE AND email_verified_at IS NOT NULL "
+        "AND id IS NOT ?", (email, except_user),
+    ).fetchone()
+    return row is not None
+
+
+def _needs_rehash(stored: str) -> bool:
+    return not stored.startswith(f"{_PBKDF2_PREFIX}${PBKDF2_ITERATIONS}$")
+
+
+def _check_password_policy(password: str, role: str) -> None:
+    minimum = MIN_PASSWORD_LEN.get(role, MIN_PASSWORD_LEN["student"])
+    if not password or len(password) < minimum:
+        raise ValueError(f"Heslo musi mit alespon {minimum} znaku.")
+
+
+# Plain ASCII addresses only (internationalised domains in punycode): nothing
+# that could be read as a second address, a display name or a header break.
+_LOCAL_ATOM = r"[a-z0-9!#$%&'*+/=?^_`{|}~-]+"
+_EMAIL_RE = re.compile(
+    rf"^(?=[^@]{{1,64}}@){_LOCAL_ATOM}(?:\.{_LOCAL_ATOM})*"
+    r"@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+)
+
+
+def normalize_email(email: str) -> str:
+    """Return a lower-cased e-mail address or raise ValueError."""
+    email = (email or "").strip().lower()
+    if len(email) > 254 or not _EMAIL_RE.match(email):
+        raise ValueError("Neplatna e-mailova adresa.")
+    return email
 
 
 def get_conn() -> sqlite3.Connection:
@@ -149,6 +221,35 @@ def init_db() -> None:
         if "avatar_id" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 1")
             conn.commit()
+
+        # Migration: optional e-mail (password reset, invitations)
+        if "email" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if "email_verified_at" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN email_verified_at REAL")
+        conn.executescript("""
+            -- Only a CONFIRMED address is unique: an unconfirmed one may sit on
+            -- several accounts, so nobody can block someone else's address and
+            -- setting an address never reveals whether it is already in use.
+            DROP INDEX IF EXISTS idx_users_email;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_verified
+                ON users(email COLLATE NOCASE) WHERE email_verified_at IS NOT NULL;
+
+            -- One-time links sent by e-mail; only the SHA-256 of the token is stored.
+            -- purpose: 'reset' (password), 'verify' (e-mail), 'invite' (new teacher)
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                token_hash  TEXT PRIMARY KEY,
+                purpose     TEXT NOT NULL,
+                user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                email       TEXT,
+                created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                created_at  REAL NOT NULL,
+                expires_at  REAL NOT NULL,
+                used_at     REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_tokens_user ON user_tokens(user_id);
+        """)
+        conn.commit()
     finally:
         conn.close()
 
@@ -156,15 +257,17 @@ def init_db() -> None:
 # --- User CRUD ---
 
 def create_user(nickname: str, password: str, role: str = "student",
-                avatar_id: int | None = None) -> dict:
-    """Register a new user. Returns {id, nickname, role, avatar_id} or raises ValueError."""
+                avatar_id: int | None = None, email: str | None = None,
+                email_verified: bool = False) -> dict:
+    """Register a new user. Returns {id, nickname, role, avatar_id, email} or raises ValueError."""
     nickname = nickname.strip()
     if not nickname or len(nickname) > 24:
         raise ValueError("Prezdivka musi mit 1-24 znaku.")
-    if not password or len(password) < 4:
-        raise ValueError("Heslo musi mit alespon 4 znaky.")
     if role not in ("student", "teacher"):
         raise ValueError("Role musi byt 'student' nebo 'teacher'.")
+    _check_password_policy(password, role)
+    email = normalize_email(email) if email else None
+    verified_at = time.time() if (email and email_verified) else None
 
     if avatar_id is None:
         avatar_id = random.randint(1, 20)
@@ -174,13 +277,19 @@ def create_user(nickname: str, password: str, role: str = "student",
     pw_hash = _hash_password(password)
     conn = get_conn()
     try:
+        # Only reachable with a confirmed address (teacher invitation link).
+        if verified_at and _email_taken(conn, email):
+            raise ValueError("E-mail uz pouziva jiny ucet.")
         try:
             cur = conn.execute(
-                "INSERT INTO users (nickname, password_hash, role, avatar_id) VALUES (?, ?, ?, ?)",
-                (nickname, pw_hash, role, avatar_id),
+                "INSERT INTO users (nickname, password_hash, role, avatar_id, email, email_verified_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (nickname, pw_hash, role, avatar_id, email, verified_at),
             )
             conn.commit()
-            return {"id": cur.lastrowid, "nickname": nickname, "role": role, "avatar_id": avatar_id}
+            return {"id": cur.lastrowid, "nickname": nickname, "role": role,
+                    "avatar_id": avatar_id, "email": email,
+                    "email_verified": verified_at is not None}
         except sqlite3.IntegrityError:
             raise ValueError(f"Prezdivka '{nickname}' je jiz obsazena.")
     finally:
@@ -188,18 +297,29 @@ def create_user(nickname: str, password: str, role: str = "student",
 
 
 def authenticate_user(nickname: str, password: str) -> dict | None:
-    """Check credentials. Returns user dict or None."""
-    pw_hash = _hash_password(password)
+    """Check credentials. Returns user dict or None.
+
+    A password stored in the old unsalted format is re-hashed on success.
+    """
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, nickname, role, total_score, games_played, avatar_id FROM users "
-            "WHERE nickname = ? COLLATE NOCASE AND password_hash = ?",
-            (nickname.strip(), pw_hash),
+            "SELECT id, nickname, role, total_score, games_played, avatar_id, password_hash "
+            "FROM users WHERE nickname = ? COLLATE NOCASE",
+            (nickname.strip(),),
         ).fetchone()
-        if row:
-            return dict(row)
-        return None
+        if not row:
+            _verify_password(password, _dummy_hash())  # same cost as a real check
+            return None
+        if not _verify_password(password, row["password_hash"]):
+            return None
+        if _needs_rehash(row["password_hash"]):
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                         (_hash_password(password), row["id"]))
+            conn.commit()
+        user = dict(row)
+        del user["password_hash"]
+        return user
     finally:
         conn.close()
 
@@ -209,11 +329,15 @@ def get_user(user_id: int) -> dict | None:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id, nickname, role, total_score, games_played, avatar_id, created_at "
-            "FROM users WHERE id = ?",
+            "SELECT id, nickname, role, total_score, games_played, avatar_id, created_at, "
+            "email, email_verified_at FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        user = dict(row)
+        user["email_verified"] = user.pop("email_verified_at") is not None
+        return user
     finally:
         conn.close()
 
@@ -270,14 +394,19 @@ def update_avatar(user_id: int, avatar_id: int) -> bool:
 
 # --- Sessions ---
 
+def _session_key(token: str) -> str:
+    """Sessions are stored as SHA-256 of the token (a DB leak is not a login)."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def create_session(user_id: int) -> str:
     """Create a new session token for a user."""
-    token = uuid.uuid4().hex
+    token = secrets.token_hex(24)
     conn = get_conn()
     try:
         conn.execute(
             "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
-            (token, user_id, time.time()),
+            (_session_key(token), user_id, time.time()),
         )
         conn.commit()
         return token
@@ -291,14 +420,15 @@ def validate_session(token: str | None) -> int | None:
         return None
     conn = get_conn()
     try:
+        key = _session_key(token)
         row = conn.execute(
             "SELECT user_id, created_at FROM sessions WHERE token = ?",
-            (token,),
+            (key,),
         ).fetchone()
         if not row:
             return None
         if time.time() - row["created_at"] > SESSION_TTL:
-            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.execute("DELETE FROM sessions WHERE token = ?", (key,))
             conn.commit()
             return None
         return row["user_id"]
@@ -310,7 +440,7 @@ def delete_session(token: str) -> None:
     """Invalidate a session token."""
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.execute("DELETE FROM sessions WHERE token = ?", (_session_key(token),))
         conn.commit()
     finally:
         conn.close()
@@ -529,8 +659,7 @@ def reset_user_password(user_id: int, new_password: str, teacher_id: int) -> boo
 
     Only allows resetting students who are in one of the teacher's classes.
     """
-    if not new_password or len(new_password) < 4:
-        raise ValueError("Heslo musi mit alespon 4 znaky.")
+    _check_password_policy(new_password, "student")
 
     conn = get_conn()
     try:
@@ -548,6 +677,7 @@ def reset_user_password(user_id: int, new_password: str, teacher_id: int) -> boo
         pw_hash = _hash_password(new_password)
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
                       (pw_hash, user_id))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         conn.commit()
         return True
     finally:
@@ -599,26 +729,39 @@ def delete_user(user_id: int, teacher_id: int) -> bool:
         conn.close()
 
 
-def change_password(user_id: int, old_password: str, new_password: str) -> bool:
-    """User changes their own password. Verifies old password first."""
-    if not new_password or len(new_password) < 4:
-        raise ValueError("Heslo musi mit alespon 4 znaky.")
-    old_hash = _hash_password(old_password)
-    new_hash = _hash_password(new_password)
+class WrongPassword(ValueError):
+    """The current password given to confirm a change is wrong."""
+
+
+def change_password(user_id: int, old_password: str, new_password: str,
+                    keep_session: str | None = None) -> dict:
+    """User changes their own password. Verifies old password first.
+
+    Ends all other sessions and voids pending reset links. Returns the user.
+    """
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT id FROM users WHERE id = ? AND password_hash = ?",
-            (user_id, old_hash),
+            "SELECT password_hash, role FROM users WHERE id = ?", (user_id,),
         ).fetchone()
-        if not row:
-            raise ValueError("Soucasne heslo neni spravne.")
+        if not row or not _verify_password(old_password, row["password_hash"]):
+            raise WrongPassword("Soucasne heslo neni spravne.")
+        _check_password_policy(new_password, row["role"])
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                     (new_hash, user_id))
+                     (_hash_password(new_password), user_id))
+        conn.execute("DELETE FROM sessions WHERE user_id = ? AND token IS NOT ?",
+                     (user_id, _session_key(keep_session) if keep_session else None))
+        conn.execute("UPDATE user_tokens SET used_at = ? WHERE user_id = ? AND purpose = 'reset' "
+                     "AND used_at IS NULL", (time.time(), user_id))
         conn.commit()
-        return True
     finally:
         conn.close()
+    return get_user(user_id)
+
+
+# With several teachers on one server, no teacher may take over another one.
+_TEACHER_PROTECTED = ("Ucitelsky ucet muze zmenit jen jeho majitel, nebo spravce serveru "
+                      "(python3 server.py --set-password / --set-role).")
 
 
 def set_user_role(target_user_id: int, new_role: str, acting_teacher_id: int) -> bool:
@@ -629,10 +772,12 @@ def set_user_role(target_user_id: int, new_role: str, acting_teacher_id: int) ->
         raise ValueError("Nemuzes zmenit svoji vlastni roli.")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id FROM users WHERE id = ?",
+        row = conn.execute("SELECT id, role FROM users WHERE id = ?",
                            (target_user_id,)).fetchone()
         if not row:
             raise ValueError("Uzivatel nenalezen.")
+        if row["role"] == "teacher":
+            raise ValueError(_TEACHER_PROTECTED)
         conn.execute("UPDATE users SET role = ? WHERE id = ?",
                      (new_role, target_user_id))
         conn.commit()
@@ -659,17 +804,19 @@ def teacher_reset_password(target_user_id: int, new_password: str,
     """Teacher resets any user's password (global, not class-restricted)."""
     if target_user_id == teacher_id:
         raise ValueError("Pouzijte zmenu vlastniho hesla.")
-    if not new_password or len(new_password) < 4:
-        raise ValueError("Heslo musi mit alespon 4 znaky.")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id FROM users WHERE id = ?",
+        row = conn.execute("SELECT id, role FROM users WHERE id = ?",
                            (target_user_id,)).fetchone()
         if not row:
             raise ValueError("Uzivatel nenalezen.")
+        if row["role"] == "teacher":
+            raise ValueError(_TEACHER_PROTECTED)
+        _check_password_policy(new_password, row["role"])
         pw_hash = _hash_password(new_password)
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
                      (pw_hash, target_user_id))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (target_user_id,))
         conn.commit()
         return True
     finally:
@@ -686,12 +833,246 @@ def delete_user_by_teacher(target_user_id: int, teacher_id: int) -> bool:
                            (target_user_id,)).fetchone()
         if not row:
             raise ValueError("Uzivatel nenalezen.")
+        if row["role"] == "teacher":
+            raise ValueError(_TEACHER_PROTECTED)
         # Remove from all classes first
         conn.execute("DELETE FROM class_members WHERE user_id = ?",
                      (target_user_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (target_user_id,))
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+# --- E-mail and one-time tokens (password reset, e-mail verification, invites) ---
+
+TOKEN_TTL = {"reset": 3600, "verify": 2 * 86400, "invite": 7 * 86400}
+
+
+def _token_hash(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def create_user_token(purpose: str, user_id: int | None = None, email: str | None = None,
+                      created_by: int | None = None) -> str:
+    """Create a one-time token and return it (only its hash is stored)."""
+    if purpose not in TOKEN_TTL:
+        raise ValueError(f"unknown token purpose: {purpose}")
+    raw = secrets.token_urlsafe(32)
+    now = time.time()
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM user_tokens WHERE expires_at < ?", (now - 86400,))
+        conn.execute(
+            "INSERT INTO user_tokens (token_hash, purpose, user_id, email, created_by,"
+            " created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (_token_hash(raw), purpose, user_id, email, created_by, now, now + TOKEN_TTL[purpose]),
+        )
+        conn.commit()
+        return raw
+    finally:
+        conn.close()
+
+
+def peek_user_token(raw: str, purpose: str) -> dict | None:
+    """Return a valid (unused, unexpired) token row without consuming it."""
+    if not raw:
+        return None
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT purpose, user_id, email, created_by, expires_at FROM user_tokens "
+            "WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?",
+            (_token_hash(raw), purpose, time.time()),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _consume_token(conn: sqlite3.Connection, raw: str, purpose: str) -> dict | None:
+    """Atomically mark a valid token as used; return its row or None."""
+    if not raw:
+        return None
+    now = time.time()
+    cur = conn.execute(
+        "UPDATE user_tokens SET used_at = ? WHERE token_hash = ? AND purpose = ? "
+        "AND used_at IS NULL AND expires_at > ?",
+        (now, _token_hash(raw), purpose, now),
+    )
+    if cur.rowcount != 1:
+        return None
+    row = conn.execute(
+        "SELECT purpose, user_id, email, created_by FROM user_tokens WHERE token_hash = ?",
+        (_token_hash(raw),),
+    ).fetchone()
+    return dict(row)
+
+
+def set_email(user_id: int, email: str, password: str) -> dict:
+    """Set or change the user's e-mail (unverified until the link is opened).
+
+    Requires the current password so a stolen session cannot redirect password
+    resets to another mailbox.
+    """
+    email = normalize_email(email)
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT password_hash, email, email_verified_at FROM users WHERE id = ?",
+                           (user_id,)).fetchone()
+        if not row or not _verify_password(password, row["password_hash"]):
+            raise WrongPassword("Soucasne heslo neni spravne.")
+        if row["email"] == email:
+            return {"email": email, "email_verified": row["email_verified_at"] is not None,
+                    "changed": False}
+        conn.execute("UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?",
+                     (email, user_id))
+        conn.commit()
+        return {"email": email, "email_verified": False, "changed": True}
+    finally:
+        conn.close()
+
+
+def verify_email_with_token(raw: str) -> dict | None:
+    """Confirm an e-mail address. Returns the user or None (invalid/expired link).
+
+    Raises ValueError when another account has already confirmed the address
+    (only the mailbox owner, who holds the link, learns that).
+    """
+    tok = peek_user_token(raw, "verify")
+    if not tok:
+        return None
+    conn = get_conn()
+    try:
+        if _email_taken(conn, tok["email"], except_user=tok["user_id"]):
+            raise ValueError("Tato adresa je uz potvrzena u jineho uctu.")
+        tok = _consume_token(conn, raw, "verify")
+        if not tok:
+            conn.commit()
+            return None
+        try:
+            cur = conn.execute(
+                "UPDATE users SET email_verified_at = ? WHERE id = ? AND email = ? COLLATE NOCASE",
+                (time.time(), tok["user_id"], tok["email"]),
+            )
+        except sqlite3.IntegrityError:  # confirmed elsewhere in the meantime
+            conn.rollback()
+            raise ValueError("Tato adresa je uz potvrzena u jineho uctu.")
+        conn.commit()
+        if cur.rowcount != 1:
+            return None  # the address was changed after the link was sent
+        return get_user(tok["user_id"])
+    finally:
+        conn.close()
+
+
+def find_user_for_reset(login: str) -> dict | None:
+    """Find an account by nickname or e-mail that has a verified e-mail address."""
+    login = (login or "").strip()
+    if not login:
+        return None
+    # "@" means an address: a nickname shaped like someone's address must not
+    # capture resets requested with that address.
+    field, value = ("email", login.lower()) if "@" in login else ("nickname", login)
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, nickname, role, email FROM users WHERE email_verified_at IS NOT NULL "
+            f"AND email IS NOT NULL AND {field} = ? COLLATE NOCASE",
+            (value,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def reset_password_with_token(raw: str, new_password: str) -> dict | None:
+    """Set a new password from a reset link. Logs the user out everywhere.
+
+    Returns the user or None when the link is invalid, used or expired.
+    Raises ValueError (without consuming the link) for a too short password.
+    """
+    tok = peek_user_token(raw, "reset")
+    if not tok:
+        return None
+    user = get_user(tok["user_id"])
+    if not user:
+        return None
+    _check_password_policy(new_password, user["role"])
+    conn = get_conn()
+    try:
+        tok = _consume_token(conn, raw, "reset")
+        if not tok:
+            conn.commit()
+            return None
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                     (_hash_password(new_password), tok["user_id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (tok["user_id"],))
+        conn.execute("UPDATE user_tokens SET used_at = ? WHERE user_id = ? AND purpose = 'reset' "
+                     "AND used_at IS NULL", (time.time(), tok["user_id"]))
+        conn.commit()
+        return user
+    finally:
+        conn.close()
+
+
+def accept_invite(raw: str, nickname: str, password: str, avatar_id: int | None = None) -> dict | None:
+    """Create a teacher account from an invitation link (e-mail counts as verified).
+
+    Returns the new user, None for an invalid/used/expired link; raises
+    ValueError for invalid account data (the link stays usable).
+    """
+    tok = peek_user_token(raw, "invite")
+    if not tok:
+        return None
+    user = create_user(nickname, password, "teacher", avatar_id=avatar_id,
+                       email=tok["email"], email_verified=True)
+    conn = get_conn()
+    try:
+        if not _consume_token(conn, raw, "invite"):
+            # Lost a race with another acceptance of the same link: undo.
+            conn.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+            conn.commit()
+            return None
+        conn.commit()
+        return user
+    finally:
+        conn.close()
+
+
+def admin_set_password(nickname: str, new_password: str) -> dict:
+    """Set a password from the server console (emergency access). Logs the user out."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT id, nickname, role FROM users WHERE nickname = ? COLLATE NOCASE",
+                           (nickname.strip(),)).fetchone()
+        if not row:
+            raise ValueError(f"Ucet '{nickname}' neexistuje.")
+        _check_password_policy(new_password, row["role"])
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                     (_hash_password(new_password), row["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def admin_set_role(nickname: str, role: str) -> dict:
+    """Set an account's role from the server console (e.g. remove a teacher). Logs the user out."""
+    if role not in ("student", "teacher"):
+        raise ValueError("Role musi byt 'student' nebo 'teacher'.")
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT id, nickname FROM users WHERE nickname = ? COLLATE NOCASE",
+                           (nickname.strip(),)).fetchone()
+        if not row:
+            raise ValueError(f"Ucet '{nickname}' neexistuje.")
+        conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, row["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+        conn.commit()
+        return {"id": row["id"], "nickname": row["nickname"], "role": role}
     finally:
         conn.close()
 

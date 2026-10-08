@@ -53,7 +53,7 @@ fi
 echo ">> Kopiruji aplikaci..."
 # server.py importuje db (ucty, SQLite) a ws (WebSockety) — musi byt v balicku,
 # jinak embedded Python spadne na ImportError pri startu.
-cp "${ROOT}/server.py" "${ROOT}/qrgen.py" "${ROOT}/db.py" "${ROOT}/ws.py" "${APP}/"
+cp "${ROOT}/server.py" "${ROOT}/qrgen.py" "${ROOT}/db.py" "${ROOT}/ws.py" "${ROOT}/mailer.py" "${APP}/"
 cp -r "${ROOT}/static" "${APP}/static"
 cp -r "${ROOT}/questions" "${APP}/questions"
 mkdir -p "${APP}/history" "${APP}/static/audio"

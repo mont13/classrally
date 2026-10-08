@@ -16,7 +16,27 @@ from urllib.error import HTTPError
 # Add parent dir to path so we can import server module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Isolate all runtime data (accounts DB, game history, uploads, question banks)
+# from the developer's real data/, history/ and questions/: the DB location is
+# read from QUIZ_DATA_DIR when db.py is imported, the rest is patched below.
+_TEST_DATA_ROOT = Path(tempfile.mkdtemp(prefix="classrally-tests-"))
+os.environ["QUIZ_DATA_DIR"] = str(_TEST_DATA_ROOT / "data")
+os.environ["MAIL_MODE"] = "off"  # tests that need mail use their own log-mode Mailer
+for _k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM"):
+    os.environ.pop(_k, None)
+
 import server
+
+server.HISTORY_DIR = _TEST_DATA_ROOT / "history"
+server.HISTORY_DIR.mkdir()
+server.UPLOADS_DIR = _TEST_DATA_ROOT / "uploads"
+shutil.copytree(server.QUESTIONS_DIR, _TEST_DATA_ROOT / "questions")
+server.QUESTIONS_DIR = _TEST_DATA_ROOT / "questions"
+import atexit
+atexit.register(shutil.rmtree, _TEST_DATA_ROOT, True)
+
+import db as _db
+_db.PBKDF2_ITERATIONS = 1000  # keep the suite fast; production uses 600k
 
 
 class TestQuizState(unittest.TestCase):
@@ -635,6 +655,27 @@ class TestHTTPIntegration(unittest.TestCase):
     def _host_get(self, path):
         """GET with host token auth (X-Host-Token header)."""
         return self._get(path, headers={"X-Host-Token": server.HOST_TOKEN})
+
+    def _raw_status_lines(self, path, extra_headers=""):
+        import re, socket
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        sock.sendall(f"GET {path} HTTP/1.0\r\nHost: x\r\n{extra_headers}\r\n".encode())
+        data = b""
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        sock.close()
+        # a second response may follow the body without any line break
+        return re.findall(rb"HTTP/1\.[01] \d{3} ", data)
+
+    def test_exam_page_sends_single_response(self):
+        self.assertEqual(len(self._raw_status_lines("/exam")), 1)
+
+    def test_exam_overview_sends_single_response(self):
+        lines = self._raw_status_lines("/api/host/exam/overview", f"X-Host-Token: {server.HOST_TOKEN}\r\n")
+        self.assertEqual(len(lines), 1)
 
     def test_health(self):
         data = self._get("/api/health")
@@ -1313,6 +1354,32 @@ class TestExamState(unittest.TestCase):
         e = server.ExamState()
         with self.assertRaises(ValueError):
             e.open_exam()
+
+    def test_exam_rejects_unsupported_question_types(self):
+        e = server.ExamState()
+        qs = self._sample_questions() + [
+            {"id": "q4", "type": "typed", "prompt": "Napis OS?", "accept": ["linux"]},
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            e.reload_questions(qs, "mixed")
+        self.assertIn("typed", str(ctx.exception))
+        self.assertEqual(e.questions, [])  # nothing was loaded
+
+    def test_exam_accepts_truefalse(self):
+        e = server.ExamState()
+        e.reload_questions([{"id": "t", "type": "truefalse", "prompt": "Linux je OS?",
+                             "options": ["Ano", "Ne"], "correct_index": 0}], "tf")
+        self.assertEqual(len(e.questions), 1)
+
+    def test_unanswered_question_without_correct_index_not_counted(self):
+        # Defensive: a question without integer correct_index must never be
+        # counted as correct for a blank answer (None == None).
+        e = self._exam(shuffle_questions=False, shuffle_options=False)
+        e.questions.append({"id": "qx", "prompt": "?", "options": ["a", "b"]})
+        r = e.register_student("Eve")
+        e.open_exam()
+        res = e.submit(r["player_id"], r["player_secret"])
+        self.assertEqual(res["score"], 0)
 
     def test_grading_all_correct(self):
         e = self._exam(shuffle_questions=False, shuffle_options=False)
@@ -2688,6 +2755,737 @@ class TestWebSocket(unittest.TestCase):
             self.assertFalse(conn.alive)
         finally:
             s2.close()
+
+
+
+class TestPasswordHashing(_DBTestBase):
+    """Salted PBKDF2 hashes, legacy SHA-256 upgrade, role-based policy."""
+
+    def setUp(self):
+        super().setUp()
+        import db
+        self.db = db
+
+    def _stored_hash(self, user_id):
+        conn = self.db.get_conn()
+        try:
+            return conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_new_hash_is_salted_pbkdf2(self):
+        a = self.db.create_user("Ann", "secret12", "student")
+        b = self.db.create_user("Ben", "secret12", "student")
+        ha, hb = self._stored_hash(a["id"]), self._stored_hash(b["id"])
+        self.assertTrue(ha.startswith("pbkdf2_sha256$"))
+        self.assertNotEqual(ha, hb)  # same password, different salt
+        self.assertIsNotNone(self.db.authenticate_user("ann", "secret12"))
+        self.assertIsNone(self.db.authenticate_user("ann", "wrong"))
+
+    def test_legacy_sha256_login_upgrades_hash(self):
+        import hashlib
+        u = self.db.create_user("Old", "legacy1", "student")
+        conn = self.db.get_conn()
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                     (hashlib.sha256(b"legacy1").hexdigest(), u["id"]))
+        conn.commit()
+        conn.close()
+        self.assertIsNone(self.db.authenticate_user("Old", "nope"))
+        user = self.db.authenticate_user("Old", "legacy1")
+        self.assertEqual(user["id"], u["id"])
+        self.assertNotIn("password_hash", user)
+        self.assertTrue(self._stored_hash(u["id"]).startswith("pbkdf2_sha256$"))
+        self.assertIsNotNone(self.db.authenticate_user("Old", "legacy1"))
+
+    def test_teacher_password_minimum(self):
+        with self.assertRaises(ValueError):
+            self.db.create_user("Teach", "short12", "teacher")  # 7 chars
+        self.db.create_user("Teach", "longer12", "teacher")
+        self.db.create_user("Kid", "1234", "student")  # students keep the 4-char minimum
+
+    def test_change_password_with_new_hash(self):
+        u = self.db.create_user("Cara", "start123", "student")
+        with self.assertRaises(ValueError):
+            self.db.change_password(u["id"], "bad", "newpass1")
+        self.db.change_password(u["id"], "start123", "newpass1")
+        self.assertIsNotNone(self.db.authenticate_user("Cara", "newpass1"))
+
+    def test_admin_set_password_logs_out(self):
+        u = self.db.create_user("Lost", "forgotten1", "teacher")
+        tok = self.db.create_session(u["id"])
+        with self.assertRaises(ValueError):
+            self.db.admin_set_password("Lost", "short")
+        self.db.admin_set_password("lost", "brandnew99")
+        self.assertIsNone(self.db.validate_session(tok))
+        self.assertIsNotNone(self.db.authenticate_user("Lost", "brandnew99"))
+
+
+class TestEmailAndTokens(_DBTestBase):
+    """E-mail on accounts, verification, password reset and invitations."""
+
+    def setUp(self):
+        super().setUp()
+        import db
+        self.db = db
+        self.user = db.create_user("Dana", "danapass", "teacher", email=" Dana@Example.COM ")
+
+    def test_email_normalized_and_validated(self):
+        self.assertEqual(self.user["email"], "dana@example.com")
+        self.assertFalse(self.user["email_verified"])
+        for bad in ("not-an-email", "a@b", "a b@example.com", "a@example.com,b@example.com",
+                    "<a@example.com>", "a\u2028b@example.com", "ě@example.com"):
+            with self.assertRaises(ValueError, msg=bad):
+                self.db.create_user("Bad", "badpass1", "student", email=bad)
+
+    def test_unconfirmed_address_cannot_be_squatted(self):
+        # Someone else entering Dana's address neither fails (no enumeration)
+        # nor blocks Dana: only a confirmed address is unique.
+        other = self.db.create_user("Squatter", "squat123", "student", email="DANA@example.com")
+        self.assertEqual(other["email"], "dana@example.com")
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.assertIsNotNone(self.db.verify_email_with_token(raw))
+        late = self.db.create_user_token("verify", user_id=other["id"], email="dana@example.com")
+        with self.assertRaises(ValueError):
+            self.db.verify_email_with_token(late)  # already confirmed by Dana
+        self.assertEqual(self.db.find_user_for_reset("dana@example.com")["id"], self.user["id"])
+
+    def test_nickname_shaped_like_address_does_not_capture_reset(self):
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        trap = self.db.create_user("dana@example.com", "trap1234", "student", email="trap@example.com")
+        raw2 = self.db.create_user_token("verify", user_id=trap["id"], email="trap@example.com")
+        self.db.verify_email_with_token(raw2)
+        self.assertEqual(self.db.find_user_for_reset("dana@example.com")["id"], self.user["id"])
+
+    def test_invite_for_confirmed_address_rejected(self):
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        inv = self.db.create_user_token("invite", email="dana@example.com", created_by=self.user["id"])
+        with self.assertRaises(ValueError):
+            self.db.accept_invite(inv, "Copy", "copypass1")
+
+    def test_set_email_requires_password_and_resets_verification(self):
+        with self.assertRaises(ValueError):
+            self.db.set_email(self.user["id"], "new@example.com", "wrong")
+        r = self.db.set_email(self.user["id"], "new@example.com", "danapass")
+        self.assertTrue(r["changed"])
+        self.assertEqual(self.db.get_user(self.user["id"])["email"], "new@example.com")
+
+    def test_verify_token_confirms_current_address_only(self):
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.assertIsNotNone(self.db.verify_email_with_token(raw))
+        self.assertTrue(self.db.get_user(self.user["id"])["email_verified"])
+        self.assertIsNone(self.db.verify_email_with_token(raw))  # one-time
+        # a link for an address that was changed afterwards must not verify the new one
+        old = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.set_email(self.user["id"], "other@example.com", "danapass")
+        self.assertIsNone(self.db.verify_email_with_token(old))
+        self.assertFalse(self.db.get_user(self.user["id"])["email_verified"])
+
+    def test_reset_requires_verified_email(self):
+        self.assertIsNone(self.db.find_user_for_reset("Dana"))
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        self.assertEqual(self.db.find_user_for_reset("dana")["id"], self.user["id"])
+        self.assertEqual(self.db.find_user_for_reset("DANA@example.com")["id"], self.user["id"])
+        self.assertIsNone(self.db.find_user_for_reset("nobody"))
+
+    def test_reset_with_token(self):
+        session = self.db.create_session(self.user["id"])
+        raw = self.db.create_user_token("reset", user_id=self.user["id"])
+        with self.assertRaises(ValueError):
+            self.db.reset_password_with_token(raw, "short")  # teacher minimum 8
+        self.assertIsNotNone(self.db.peek_user_token(raw, "reset"))  # not consumed by the error
+        user = self.db.reset_password_with_token(raw, "fresh-pass")
+        self.assertEqual(user["id"], self.user["id"])
+        self.assertIsNone(self.db.validate_session(session))  # logged out everywhere
+        self.assertIsNotNone(self.db.authenticate_user("Dana", "fresh-pass"))
+        self.assertIsNone(self.db.reset_password_with_token(raw, "another-pass"))  # one-time
+
+    def test_expired_token_rejected(self):
+        raw = self.db.create_user_token("reset", user_id=self.user["id"])
+        conn = self.db.get_conn()
+        conn.execute("UPDATE user_tokens SET expires_at = ?", (time.time() - 1,))
+        conn.commit()
+        conn.close()
+        self.assertIsNone(self.db.reset_password_with_token(raw, "fresh-pass"))
+
+    def test_token_purpose_is_checked(self):
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.assertIsNone(self.db.reset_password_with_token(raw, "fresh-pass"))
+
+    def test_only_token_hash_is_stored(self):
+        raw = self.db.create_user_token("reset", user_id=self.user["id"])
+        conn = self.db.get_conn()
+        stored = [r[0] for r in conn.execute("SELECT token_hash FROM user_tokens")]
+        conn.close()
+        self.assertNotIn(raw, stored)
+
+    def test_accept_invite_creates_verified_teacher(self):
+        raw = self.db.create_user_token("invite", email="new.teacher@example.com", created_by=self.user["id"])
+        with self.assertRaises(ValueError):
+            self.db.accept_invite(raw, "NewT", "short")  # stays usable
+        t = self.db.accept_invite(raw, "NewT", "teacherpass")
+        self.assertEqual(t["role"], "teacher")
+        self.assertTrue(self.db.get_user(t["id"])["email_verified"])
+        self.assertIsNone(self.db.accept_invite(raw, "NewT2", "teacherpass"))
+
+
+class TestMailer(unittest.TestCase):
+    def setUp(self):
+        import mailer
+        self.mailer = mailer
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_log_mode_writes_private_outbox_file(self):
+        m = self.mailer.Mailer(mode="log", outbox_dir=self.tmp, sender="ClassRally <cr@example.com>")
+        self.assertEqual(m.send("a@example.com", "Predmet", "Telo"), "log")
+        files = list(self.tmp.glob("*.eml"))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].stat().st_mode & 0o777, 0o600)
+        self.assertIn(b"To: a@example.com", files[0].read_bytes())
+
+    def test_off_mode_stores_nothing(self):
+        m = self.mailer.Mailer(mode="off", outbox_dir=self.tmp)
+        self.assertEqual(m.send("a@example.com", "S", "T"), "off")
+        self.assertEqual(list(self.tmp.glob("*")), [])
+
+    def test_header_injection_rejected(self):
+        m = self.mailer.Mailer(mode="log", outbox_dir=self.tmp)
+        with self.assertRaises(ValueError):
+            m.send("a@example.com\r\nBcc: x@evil.example", "S", "T")
+        with self.assertRaises(ValueError):
+            m.send("a@example.com", "S\r\nBcc: x@evil.example", "T")
+
+    def test_live_without_smtp_falls_back_to_log(self):
+        m = self.mailer.Mailer(mode="live", outbox_dir=self.tmp)
+        self.assertEqual(m.mode, "log")
+
+    def test_all_templates_render_in_all_languages(self):
+        values = {"nickname": "Dana", "link": "https://x/reset?token=T", "base": "https://x", "inviter": "Miro"}
+        for kind in ("verify", "reset", "password_changed", "invite"):
+            for lang in self.mailer.LANGS:
+                subject, body = self.mailer.render(kind, lang, **values)
+                self.assertIn("ClassRally", subject)
+                self.assertNotIn("{", body)
+        self.assertEqual(self.mailer.render("reset", "xx", **values)[0],
+                         self.mailer.render("reset", "cs", **values)[0])
+
+
+class _AccountHTTPBase(unittest.TestCase):
+    """Isolated DB + log-mode mailer + running server for account API tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        import db
+        import mailer
+        cls.db = db
+        cls.tmpdir = Path(tempfile.mkdtemp())
+        cls.orig_db_path = db._DB_PATH
+        db.set_db_path(cls.tmpdir / "recovery.db")
+        db.init_db()
+        cls.orig_mailer = server.MAILER
+        server.MAILER = mailer.Mailer(mode="log", outbox_dir=cls.tmpdir / "outbox",
+                                      sender="ClassRally <classrally@example.com>")
+        cls.orig_base = server.QUIZ_BASE_URL
+        server.QUIZ_BASE_URL = "https://classrally.example.com"
+        server.ADMIN_AUTH.set_password(None)
+        cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        cls.base_url = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        server.MAILER = cls.orig_mailer
+        server.QUIZ_BASE_URL = cls.orig_base
+        cls.db.set_db_path(cls.orig_db_path)
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def setUp(self):
+        for lim in (server.LOGIN_FAIL_IP, server.LOGIN_FAIL_NICK, server.LOGIN_FAIL_NICK_IP,
+                    server.PASSWORD_FAIL_USER):
+            lim._failures.clear()
+        for lim in (server.ACCOUNT_REGISTER_LIMITER, server.FORGOT_LIMITER_IP, server.MAIL_LIMITER_USER,
+                    server.INVITE_LIMITER, server.SET_EMAIL_LIMITER, server.VERIFY_MAIL_IP,
+                    server.GLOBAL_MAIL_LIMITER):
+            lim._attempts.clear()
+
+    def _wait_mails(self, count, timeout=3.0):
+        """Forgotten-password mail is sent in the background."""
+        deadline = time.time() + timeout
+        while len(self._mails()) < count and time.time() < deadline:
+            time.sleep(0.05)
+        return self._mails()
+
+    def _post(self, path, data, token=None):
+        req = Request(f"{self.base_url}{path}", data=json.dumps(data).encode(),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        if token:
+            req.add_header("Authorization", f"UserToken {token}")
+        try:
+            with urlopen(req) as r:
+                return r.status, json.loads(r.read())
+        except HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def _get(self, path, token=None):
+        req = Request(f"{self.base_url}{path}")
+        if token:
+            req.add_header("Authorization", f"UserToken {token}")
+        with urlopen(req) as r:
+            return r.status, r.read()
+
+    def _mails(self):
+        import email
+        out = []
+        for f in sorted((self.tmpdir / "outbox").glob("*.eml")):
+            msg = email.message_from_bytes(f.read_bytes(), policy=__import__("email.policy").policy.default)
+            out.append(msg)
+        return out
+
+    def _link_token(self, msg, path):
+        import re
+        body = msg.get_content()
+        m = re.search(re.escape(f"https://classrally.example.com{path}?token=") + r"([A-Za-z0-9_\-]+)", body)
+        self.assertIsNotNone(m, body)
+        return m.group(1)
+
+
+
+class TestAccountRecoveryHTTP(_AccountHTTPBase):
+    """End-to-end over HTTP: register with e-mail, verify, forgot/reset, invites."""
+
+    def test_full_recovery_flow(self):
+        before = len(self._mails())
+        code, reg = self._post("/api/auth/register", {"nickname": "Rita", "password": "ritapass1",
+                                                     "role": "student", "email": "rita@example.com", "lang": "en"})
+        self.assertEqual(code, 200, reg)
+        self.assertEqual(reg["mail"], "log")
+        verify_mail = self._mails()[before]
+        self.assertEqual(verify_mail["To"], "rita@example.com")
+        self.assertIn("confirm", verify_mail["Subject"].lower())
+
+        # forgot before verification: generic answer, no mail
+        code, r = self._post("/api/auth/forgot-password", {"login": "Rita"})
+        self.assertEqual((code, r), (200, {"ok": True}))
+        time.sleep(0.3)
+        self.assertEqual(len(self._mails()), before + 1)
+
+        code, r = self._post("/api/auth/verify-email", {"token": self._link_token(verify_mail, "/verify-email")})
+        self.assertEqual(code, 200, r)
+
+        code, r = self._post("/api/auth/forgot-password", {"login": "rita@example.com", "lang": "cs"})
+        self.assertEqual((code, r), (200, {"ok": True}))
+        reset_mail = self._wait_mails(before + 2)[-1]
+        self.assertEqual(reset_mail["Subject"], "ClassRally: obnova hesla")
+        token = self._link_token(reset_mail, "/reset")
+
+        code, r = self._post("/api/auth/token-check", {"token": token, "purpose": "reset"})
+        self.assertTrue(r["valid"])
+        code, r = self._post("/api/auth/reset-password", {"token": token, "new_password": "newrita99"})
+        self.assertEqual(code, 200, r)
+        self.assertIn("heslo", self._mails()[-1]["Subject"].lower())  # change notification
+        code, r = self._post("/api/auth/reset-password", {"token": token, "new_password": "again1234"})
+        self.assertEqual((code, r.get("code")), (400, "invalid_token"))
+        code, r = self._post("/api/auth/login", {"nickname": "Rita", "password": "newrita99"})
+        self.assertEqual(code, 200)
+
+    def test_forgot_password_does_not_reveal_accounts(self):
+        before = len(self._mails())
+        code, r = self._post("/api/auth/forgot-password", {"login": "does-not-exist"})
+        self.assertEqual((code, r), (200, {"ok": True}))
+        time.sleep(0.3)
+        self.assertEqual(len(self._mails()), before)
+
+    def test_login_lockout_per_nickname(self):
+        self._post("/api/auth/register", {"nickname": "Lock", "password": "lockpass1", "role": "student"})
+        for _ in range(server.LOGIN_FAIL_NICK_IP.max_failures):
+            code, _ = self._post("/api/auth/login", {"nickname": "Lock", "password": "wrong"})
+            self.assertEqual(code, 401)
+        code, r = self._post("/api/auth/login", {"nickname": "lock", "password": "lockpass1"})
+        self.assertEqual((code, r.get("code")), (429, "rate_limited"))
+        code, _ = self._post("/api/auth/login", {"nickname": "Other", "password": "x"})
+        self.assertEqual(code, 401)  # other accounts are not locked
+
+    def test_invite_teacher_flow(self):
+        code, t = self._post("/api/auth/register", {"nickname": "Boss", "password": "bosspass1", "role": "student"})
+        code, r = self._post("/api/auth/invite-teacher", {"email": "kolega@example.com"}, token=t["token"])
+        self.assertEqual(code, 401)  # students cannot invite
+        conn = self.db.get_conn()
+        conn.execute("UPDATE users SET role = 'teacher' WHERE nickname = 'Boss'")
+        conn.commit()
+        conn.close()
+        code, r = self._post("/api/auth/invite-teacher", {"email": "kolega@example.com", "lang": "cs"}, token=t["token"])
+        self.assertEqual(code, 200, r)
+        invite = self._mails()[-1]
+        self.assertEqual(invite["To"], "kolega@example.com")
+        self.assertIn("Boss", invite.get_content())
+        token = self._link_token(invite, "/invite")
+        code, r = self._post("/api/auth/token-check", {"token": token, "purpose": "invite"})
+        self.assertEqual(r, {"valid": True, "email": "kolega@example.com"})
+        code, r = self._post("/api/auth/accept-invite", {"token": token, "nickname": "Kolega", "password": "kolega123"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["user"]["role"], "teacher")
+        code, r = self._post("/api/auth/accept-invite", {"token": token, "nickname": "Kolega2", "password": "kolega123"})
+        self.assertEqual((code, r.get("code")), (400, "invalid_token"))
+
+    def test_account_pages_served(self):
+        for path in ("/reset", "/verify-email", "/invite"):
+            code, body = self._get(path)
+            self.assertEqual(code, 200)
+            self.assertIn(b"account.js", body)
+
+
+class TestAIConfigHTTP(_AccountHTTPBase):
+    """The AI API key never reaches the browser; a locked config ignores client URLs."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved = (dict(server.AI_CONFIG), server.AI_CONFIG_LOCKED)
+        server.AI_CONFIG.update({"base_url": "http://ai.internal:9", "api_key": "sk-secret", "model": "m1"})
+
+    def tearDown(self):
+        server.AI_CONFIG.clear()
+        server.AI_CONFIG.update(self.saved[0])
+        server.AI_CONFIG_LOCKED = self.saved[1]
+
+    def test_config_hides_key(self):
+        code, body = self._get("/api/admin/ollama/config")
+        cfg = json.loads(body)
+        self.assertNotIn("sk-secret", body.decode())
+        self.assertTrue(cfg["api_key_set"])
+
+    def test_locked_config_keeps_endpoint_and_key(self):
+        server.AI_CONFIG_LOCKED = True
+        code, r = self._post("/api/admin/ollama/config", {"base_url": "http://169.254.169.254", "api_key": "x", "model": "m2"})
+        self.assertEqual(code, 200)
+        self.assertEqual(server.AI_CONFIG["base_url"], "http://ai.internal:9")
+        self.assertEqual(server.AI_CONFIG["api_key"], "sk-secret")
+        self.assertEqual(server.AI_CONFIG["model"], "m2")
+
+    def test_locked_generate_ignores_client_url(self):
+        server.AI_CONFIG_LOCKED = True
+        seen = {}
+        orig = server.generate_questions_ai
+
+        def fake(**kw):
+            seen.update(kw)
+            return [{"id": "ai_1", "prompt": "Q?", "options": ["a", "b", "c", "d"], "correct_index": 0}]
+        server.generate_questions_ai = fake
+        try:
+            code, r = self._post("/api/admin/ai/generate", {"topic": "Linux", "base_url": "http://evil.example",
+                                                             "api_key": "stolen", "source_text": "Text."})
+        finally:
+            server.generate_questions_ai = orig
+        self.assertEqual(code, 200, r)
+        self.assertEqual(seen["base_url"], "http://ai.internal:9")
+        self.assertEqual(seen["api_key"], "sk-secret")
+        self.assertEqual(seen["source_text"], "Text.")
+
+    def test_unlocked_empty_key_keeps_stored_key(self):
+        code, r = self._post("/api/admin/ollama/config", {"base_url": "http://other:1", "api_key": "", "model": "m3"})
+        self.assertEqual(server.AI_CONFIG["api_key"], "sk-secret")
+        self.assertEqual(server.AI_CONFIG["base_url"], "http://other:1")
+
+
+class TestRateLimiters(unittest.TestCase):
+    def test_failure_limiter_counts_only_failures(self):
+        lim = server._FailureLimiter(max_failures=2, window_sec=60)
+        self.assertFalse(lim.blocked("k"))
+        lim.fail("k")
+        self.assertFalse(lim.blocked("k"))
+        lim.fail("k")
+        self.assertTrue(lim.blocked("k"))
+        self.assertFalse(lim.blocked("other"))
+
+    def test_class_behind_nat_can_join(self):
+        # 35 pupils joining from one school IP within a minute must not be blocked
+        lim = server._RegistrationRateLimiter(max_requests=server.REGISTER_LIMITER.max_requests,
+                                              window_sec=server.REGISTER_LIMITER.window_sec)
+        self.assertTrue(all(lim.is_allowed("10.0.0.1") for _ in range(35)))
+
+
+
+class TestI18nCatalogs(unittest.TestCase):
+    """All languages carry the same keys and every key used by the UI exists."""
+
+    LANGS = ("cs", "en", "sk", "de", "uk")
+
+    def _flat(self, lang):
+        data = json.loads((Path(server.STATIC_DIR) / "i18n" / f"{lang}.json").read_text(encoding="utf-8"))
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, dict):
+                out.update({f"{k}.{kk}": vv for kk, vv in v.items()})
+            else:
+                out[k] = v
+        return out
+
+    def test_key_parity(self):
+        base = set(self._flat("cs"))
+        for lang in self.LANGS[1:]:
+            keys = set(self._flat(lang))
+            self.assertEqual(sorted(base - keys), [], f"missing in {lang}")
+            self.assertEqual(sorted(keys - base), [], f"extra in {lang}")
+
+    def test_placeholders_match(self):
+        import re
+        cs = self._flat("cs")
+        for lang in self.LANGS[1:]:
+            other = self._flat(lang)
+            for key, text in cs.items():
+                if isinstance(text, str):
+                    self.assertEqual(sorted(re.findall(r"\{\d+\}", text)),
+                                     sorted(re.findall(r"\{\d+\}", other[key])), f"{lang}:{key}")
+
+    def test_used_keys_exist(self):
+        import re
+        known = set(self._flat("cs"))
+        used = set()
+        for f in Path(server.STATIC_DIR).glob("*.*"):
+            if f.suffix not in (".html", ".js"):
+                continue
+            text = f.read_text(encoding="utf-8")
+            used |= set(re.findall(r'data-i18n(?:-[a-z]+)?="([a-z_]+\.[a-z0-9_]+)"', text))
+            used |= set(re.findall(r"i18n\.t\(\s*'([a-z_]+\.[a-z0-9_]+)'", text))
+        self.assertEqual(sorted(used - known), [])
+
+
+
+class TestAudioTracks(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.orig = server.AUDIO_DIR
+        server.AUDIO_DIR = self.tmp
+
+    def tearDown(self):
+        server.AUDIO_DIR = self.orig
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_roles_by_name_prefix(self):
+        cases = {"loop_quirky_dog.mp3": "loop", "tension-loop.mp3": "loop", "reveal-stinger.mp3": "reveal",
+                 "correct_ding.ogg": "correct", "wrong_hit.ogg": "wrong", "win_jingle.ogg": "win",
+                 "end_gong.ogg": "end", "lock_click.ogg": "lock",
+                 # substrings must not decide any more ("legend" contains "end", "white" contains "hit")
+                 "legend.mp3": "loop", "white-noise.mp3": "loop"}
+        for name, role in cases.items():
+            self.assertEqual(server._audio_role(name), role, name)
+
+    def test_catalog_effects_and_credits(self):
+        for n in ("loop_quirky_dog.mp3", "correct_ding.ogg", "notes.txt"):
+            (self.tmp / n).write_bytes(b"x")
+        cat = server.list_audio_tracks()
+        self.assertEqual([t["name"] for t in cat["loops"]], ["loop_quirky_dog.mp3"])
+        self.assertEqual(cat["effects"], {"correct": ["/static/audio/correct_ding.ogg"]})
+        self.assertEqual(cat["credits"], ["Kevin MacLeod (incompetech.com), CC BY 4.0"])
+
+    def test_no_credit_for_own_music(self):
+        (self.tmp / "my_song.mp3").write_bytes(b"x")
+        self.assertEqual(server.list_audio_tracks()["credits"], [])
+
+
+
+class TestAIGenerationParsing(unittest.TestCase):
+    """Response parsing: reasoning blocks ignored, answers shuffled, source text sent."""
+
+    def _run(self, content, **kw):
+        sent = {}
+
+        class FakeResp:
+            def __init__(self, body): self.body = body
+            def read(self): return self.body
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def fake_urlopen(req, timeout=None):
+            sent["payload"] = json.loads(req.data.decode())
+            sent["url"] = req.full_url
+            body = {"choices": [{"message": {"content": content}}]}
+            return FakeResp(json.dumps(body).encode())
+
+        orig = server.urlopen
+        server.urlopen = fake_urlopen
+        try:
+            return server.generate_questions_ai(topic="Linux", base_url="https://ai.example/", **kw), sent
+        finally:
+            server.urlopen = orig
+
+    def test_think_block_ignored_and_answers_shuffled(self):
+        qs = [{"id": f"ai_{i}", "prompt": f"Q{i}?", "options": ["right", "w1", "w2", "w3"],
+               "correct_index": 0} for i in range(30)]
+        content = "<think>[draft] maybe [x]</think>\n" + json.dumps(qs)
+        out, sent = self._run(content, count=30)
+        self.assertEqual(sent["url"], "https://ai.example/v1/chat/completions")
+        self.assertEqual(len(out), 30)
+        for q in out:
+            self.assertEqual(q["options"][q["correct_index"]], "right")
+            self.assertEqual(sorted(q["options"]), ["right", "w1", "w2", "w3"])
+        # with 30 questions the right answer cannot always stay first
+        self.assertTrue(any(q["correct_index"] != 0 for q in out))
+
+    def test_source_text_and_language_in_prompt(self):
+        content = json.dumps([{"id": "a", "prompt": "Q?", "options": ["a", "b", "c", "d"], "correct_index": 2}])
+        _, sent = self._run(content, language="uk", source_text="Proces je běžící program.")
+        prompt = sent["payload"]["messages"][1]["content"]
+        self.assertIn("Ukrainian", prompt)
+        self.assertIn("Proces je běžící program.", prompt)
+
+
+
+class TestAccountHardening(_DBTestBase):
+    def setUp(self):
+        super().setUp()
+        import db
+        self.db = db
+        self.t1 = db.create_user("TeachA", "teacher-a1", "teacher")
+        self.t2 = db.create_user("TeachB", "teacher-b1", "teacher")
+        self.kid = db.create_user("Kid", "kid1", "student")
+
+    def test_sessions_stored_as_hash(self):
+        tok = self.db.create_session(self.kid["id"])
+        conn = self.db.get_conn()
+        stored = [r[0] for r in conn.execute("SELECT token FROM sessions")]
+        conn.close()
+        self.assertNotIn(tok, stored)
+        self.assertEqual(self.db.validate_session(tok), self.kid["id"])
+        self.db.delete_session(tok)
+        self.assertIsNone(self.db.validate_session(tok))
+
+    def test_teacher_cannot_take_over_teacher(self):
+        for call in (lambda: self.db.teacher_reset_password(self.t2["id"], "newpass99", self.t1["id"]),
+                     lambda: self.db.delete_user_by_teacher(self.t2["id"], self.t1["id"]),
+                     lambda: self.db.set_user_role(self.t2["id"], "student", self.t1["id"])):
+            with self.assertRaises(ValueError):
+                call()
+        self.db.teacher_reset_password(self.kid["id"], "kid2", self.t1["id"])  # students still fine
+        self.db.set_user_role(self.kid["id"], "teacher", self.t1["id"])        # promotion still fine
+
+    def test_change_password_ends_other_sessions_and_reset_links(self):
+        keep = self.db.create_session(self.t1["id"])
+        other = self.db.create_session(self.t1["id"])
+        link = self.db.create_user_token("reset", user_id=self.t1["id"])
+        with self.assertRaises(self.db.WrongPassword):
+            self.db.change_password(self.t1["id"], "bad", "teacher-a2", keep_session=keep)
+        user = self.db.change_password(self.t1["id"], "teacher-a1", "teacher-a2", keep_session=keep)
+        self.assertEqual(user["nickname"], "TeachA")
+        self.assertEqual(self.db.validate_session(keep), self.t1["id"])
+        self.assertIsNone(self.db.validate_session(other))
+        self.assertIsNone(self.db.peek_user_token(link, "reset"))
+
+    def test_unknown_login_costs_a_hash_check(self):
+        calls = []
+        orig = self.db._verify_password
+        self.db._verify_password = lambda pw, stored: calls.append(stored) or orig(pw, stored)
+        try:
+            self.assertIsNone(self.db.authenticate_user("nobody-here", "whatever"))
+        finally:
+            self.db._verify_password = orig
+        self.assertEqual(len(calls), 1)
+
+
+class TestMailerHardening(unittest.TestCase):
+    def test_unknown_security_falls_back_to_starttls(self):
+        import mailer
+        m = mailer.Mailer(mode="log", security="tls")
+        self.assertEqual(m.security, "starttls")
+        self.assertEqual(mailer.Mailer(mode="log", security="ssl").security, "ssl")
+
+    def test_old_outbox_files_pruned(self):
+        import mailer
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            old = tmp / "20200101T000000000000-aaaa.eml"
+            old.write_bytes(b"x")
+            os.utime(old, (time.time() - 30 * 86400,) * 2)
+            mailer.Mailer(mode="log", outbox_dir=tmp).send("a@example.com", "S", "T")
+            self.assertFalse(old.exists())
+            self.assertEqual(len(list(tmp.glob("*.eml"))), 1)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestAccountHardeningHTTP(_AccountHTTPBase):
+    def test_set_email_wrong_password_is_limited(self):
+        code, r = self._post("/api/auth/register", {"nickname": "Guess", "password": "guess123", "role": "student"})
+        tok = r["token"]
+        for _ in range(server.PASSWORD_FAIL_USER.max_failures):
+            code, _ = self._post("/api/auth/set-email", {"email": "g@example.com", "password": "wrong"}, token=tok)
+            self.assertEqual(code, 400)
+        code, r = self._post("/api/auth/set-email", {"email": "g@example.com", "password": "guess123"}, token=tok)
+        self.assertEqual((code, r.get("code")), (429, "rate_limited"))
+
+    def test_change_password_notifies_confirmed_address(self):
+        code, r = self._post("/api/auth/register", {"nickname": "Noti", "password": "noti1234", "role": "student",
+                                                     "email": "noti@example.com"})
+        tok = r["token"]
+        verify = self._wait_mails(1)[-1]
+        self._post("/api/auth/verify-email", {"token": self._link_token(verify, "/verify-email")})
+        before = len(self._mails())
+        code, r = self._post("/api/auth/change-password", {"old_password": "noti1234", "new_password": "noti5678"},
+                             token=tok)
+        self.assertEqual(code, 200, r)
+        mails = self._wait_mails(before + 1)
+        self.assertEqual(mails[-1]["To"], "noti@example.com")
+        code, _ = self._get("/api/auth/profile", token=tok)  # current session stays valid
+        self.assertEqual(code, 200)
+
+
+
+class TestResourceLimits(_AccountHTTPBase):
+    def test_long_nickname_login_rejected_without_limiter_key(self):
+        code, _ = self._post("/api/auth/login", {"nickname": "x" * 5000, "password": "p"})
+        self.assertEqual(code, 401)
+        self.assertFalse(any(len(k) > 100 for k in server.LOGIN_FAIL_NICK._failures))
+        self.assertFalse(any(len(k) > 100 for k in server.LOGIN_FAIL_NICK_IP._failures))
+
+    def test_oversized_body_rejected(self):
+        import socket
+        host, port = "127.0.0.1", self.httpd.server_address[1]
+        sock = socket.create_connection((host, port), timeout=5)
+        sock.sendall((f"POST /api/auth/login HTTP/1.0\r\nHost: x\r\nContent-Type: application/json\r\n"
+                      f"Content-Length: {server.MAX_BODY_BYTES + 1}\r\n\r\n{{}}").encode())
+        data = b""
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        sock.close()
+        self.assertIn(b" 413 ", data.split(b"\r\n", 1)[0])
+
+    def test_limiters_forget_stale_keys(self):
+        lim = server._FailureLimiter(max_failures=3, window_sec=60)
+        old = time.time() - 120
+        lim._failures.update({f"k{i}": [old] for i in range(server._SWEEP_EVERY + 5)})
+        lim.fail("fresh")
+        self.assertEqual(list(lim._failures), ["fresh"])
+        reg = server._RegistrationRateLimiter(max_requests=3, window_sec=60)
+        reg._attempts.update({f"k{i}": [old] for i in range(server._SWEEP_EVERY + 5)})
+        reg.is_allowed("fresh")
+        self.assertEqual(list(reg._attempts), ["fresh"])
+
+
+class TestEmailDotsAndConsole(_DBTestBase):
+    def test_dot_rules(self):
+        import db
+        for bad in (".a@example.com", "a.@example.com", "a..b@example.com", ("a" * 65) + "@example.com"):
+            with self.assertRaises(ValueError, msg=bad):
+                db.normalize_email(bad)
+        self.assertEqual(db.normalize_email("Jan.Novak+kviz@Example.com"), "jan.novak+kviz@example.com")
+
+    def test_admin_set_role(self):
+        import db
+        t = db.create_user("Former", "former-t1", "teacher")
+        tok = db.create_session(t["id"])
+        self.assertEqual(db.admin_set_role("former", "student")["role"], "student")
+        self.assertEqual(db.get_user(t["id"])["role"], "student")
+        self.assertIsNone(db.validate_session(tok))
+        with self.assertRaises(ValueError):
+            db.admin_set_role("nobody", "student")
 
 
 if __name__ == "__main__":

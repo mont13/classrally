@@ -134,7 +134,8 @@
       <input type="text" id="hostLoginNick" data-i18n-placeholder="host.login_nick_placeholder" placeholder="Prezdivka" autocomplete="username" autofocus />
       <input type="password" id="hostLoginPass" data-i18n-placeholder="host.login_pass_placeholder" placeholder="Heslo" autocomplete="current-password" />
       <button class="btn good" id="hostLoginBtn" style="width:100%;" data-i18n="host.login_btn">Prihlasit se</button>
-      <p style="margin-top:16px;"><a href="/" style="color:var(--accent);" data-i18n="host.login_back">Zpet na vyber role</a></p>
+      <p style="margin-top:16px;"><a href="/reset" style="color:var(--accent);" data-i18n="host.forgot_link">Zapomenute heslo?</a>
+        &nbsp;·&nbsp; <a href="/" style="color:var(--accent);" data-i18n="host.login_back">Zpet na vyber role</a></p>
     </div>
   </div>
 
@@ -194,6 +195,7 @@
         </label>
         <p id="musicTrackInfo" class="help" data-i18n="host.track_none">Track: -</p>
         <p id="musicState" class="help" data-i18n="host.music_off">Hudba: vypnuta</p>
+        <p id="musicCredits" class="help hide"></p>
       </div>
     </section>
 
@@ -409,10 +411,40 @@
         const loops = Array.isArray(data.loops) ? data.loops : [];
         const stingers = Array.isArray(data.stingers) ? data.stingers : [];
         const all = Array.isArray(data.all) ? data.all : [];
-        appState.trackCatalog = { loops, stingers, all };
+        const effects = (data.effects && typeof data.effects === 'object') ? data.effects : {};
+        const credits = Array.isArray(data.credits) ? data.credits : [];
+        appState.trackCatalog = { loops, stingers, all, effects, credits };
       } catch (_) {
-        appState.trackCatalog = { loops: [], stingers: [], all: [] };
+        appState.trackCatalog = { loops: [], stingers: [], all: [], effects: {}, credits: [] };
       }
+      renderMusicCredits();
+    }
+
+    // CC BY music must be credited wherever it is played. Re-rendered after
+    // translations load and on language switch.
+    function renderMusicCredits() {
+      const credits = (appState.trackCatalog && appState.trackCatalog.credits) || [];
+      const el = document.getElementById('musicCredits');
+      el.textContent = credits.length ? i18n.t('host.music_credit', credits.join('; ')) : '';
+      el.classList.toggle('hide', credits.length === 0);
+    }
+
+    // Game event sound: an MP3 effect for the role (correct, win, end, …) when
+    // the server has one, otherwise the synthesized SFX. Plays on its own
+    // element, so background music keeps going. Silent while effects are off.
+    function playEffect(role, sfxName) {
+      if (!window.SFX || !SFX.enabled) return;
+      const urls = (appState.trackCatalog.effects || {})[role] || [];
+      if (urls.length) {
+        if (!appState.effectAudio) appState.effectAudio = new Audio();
+        const el = appState.effectAudio;
+        el.src = randomItem(urls);
+        el.volume = Math.max(0.15, Math.min(1, (document.getElementById('musicVol').value || 40) / 100 + 0.3));
+        el.currentTime = 0;
+        el.play().catch(() => { try { SFX[sfxName](); } catch (_) {} });
+        return;
+      }
+      try { SFX[sfxName](); } catch (_) {}
     }
 
     function getLoopTracks() {
@@ -1034,7 +1066,7 @@
       // Celebration when the winning team rises
       setTimeout(() => {
         if (!teamPodiumState.shown) return;
-        if (window.SFX) { try { SFX.fanfare(); } catch (_) {} }
+        playEffect('win', 'fanfare');
         if (window.Confetti) { try { Confetti.rain(4500); } catch (_) {} }
       }, 1500);
     }
@@ -1114,8 +1146,8 @@
       // Time's-up gong. With music automation active the reveal sound already
       // went through playStinger (MP3 priority, SFX.gong fallback) — one path.
       const autoActive = document.getElementById('musicAuto').checked && !appState.userStopped;
-      if (qType && qType !== 'slide' && !autoActive && window.SFX) {
-        try { SFX.gong(); } catch (_) {}
+      if (qType && qType !== 'slide' && !autoActive) {
+        playEffect('end', 'gong');
       }
       const suspenseTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended', 'poll'];
       if (!q || !suspenseTypes.includes(qType)) return;
@@ -1134,8 +1166,8 @@
         appState.revealAnimHold = Date.now() + 1000; // let the bar transition finish
         const correctTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended'];
         const mp3Recent = appState.lastMp3StingerAt && (Date.now() - appState.lastMp3StingerAt < 2500);
-        if (!mp3Recent && correctTypes.includes(qType) && window.SFX) {
-          try { SFX.correct(); } catch (_) {}
+        if (!mp3Recent && correctTypes.includes(qType)) {
+          playEffect('correct', 'correct');
         }
       });
     }
@@ -1226,7 +1258,7 @@
       if (byRank[1]) {
         T.push(setTimeout(() => {
           byRank[1].classList.add('rise');
-          if (window.SFX) { try { SFX.fanfare(); } catch (_) {} }
+          playEffect('win', 'fanfare');
           if (window.Confetti) { try { Confetti.rain(4500); } catch (_) {} }
         }, 3800));
       }
@@ -1657,6 +1689,8 @@
     i18n.init().then(async () => {
       i18n.apply();
       injectLangSwitcher();
+      renderMusicCredits();
+      i18n.onLangChange(renderMusicCredits);
 
       // Host token: fetch from server (requires teacher login)
       function getAuthHeaders() {

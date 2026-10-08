@@ -42,6 +42,13 @@ services:
       - QUESTION_TIME=${QUESTION_TIME:-20}
       - REVEAL_TIME=${REVEAL_TIME:-5}
       - QUIZ_TEACHER_CODE=${QUIZ_TEACHER_CODE:-}
+      - MAIL_MODE=${MAIL_MODE:-log}
+      - MAIL_FROM=${MAIL_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURITY=${SMTP_SECURITY:-starttls}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
     # Only reachable inside the Docker network; Caddy talks to it by service name.
     networks:
       - classrally_net
