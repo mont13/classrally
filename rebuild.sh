@@ -9,7 +9,7 @@ info "Rebuilduji image..."
 $COMPOSE_CMD build --no-cache
 
 # Create dirs if missing
-mkdir -p history questions static/audio
+mkdir -p history questions static/audio static/uploads data
 
 # Detect host IP for player URLs
 detect_host_ip

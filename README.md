@@ -85,6 +85,11 @@ Ucitel pak:
 
 Navody pro ucitele jsou primo v ZIPu (`CTI-ME-PRVNI.txt`, `WIFI-NAVOD.txt`).
 
+### Na serveru (internet, trvala sluzba)
+
+Provoz na serveru s HTTPS — Docker + Caddy, Docker za existujici proxy nebo systemd sluzba —
+vcetne uctu, zabezpeceni, zaloh a aktualizaci popisuje [docs/NASAZENI.md](docs/NASAZENI.md).
+
 ## Pisemka (test pro znamku)
 
 V ucitelskem portalu (`/admin`) zalozka **Pisemka (test)**:
@@ -216,6 +221,10 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 | `OLLAMA_MODEL` | `gpt-oss:20b` | AI model |
 | `QUESTION_TIME` | `20` | Cas na otazku (sekundy) |
 | `REVEAL_TIME` | `5` | Cas na vyhodnoceni (sekundy) |
+| `QUIZ_BASE_URL` | _(prazdne)_ | Verejna adresa za proxy (QR kody a odkazy), napr. `https://classrally.example.com` |
+| `QUIZ_TRUSTED_PROXIES` | _(privatni rozsahy)_ | IP/CIDR proxy, ktere smi nastavit `X-Forwarded-For` |
+| `QUIZ_DATA_DIR` | `data/` | Slozka SQLite databaze (ucty, tridy) |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | _(Ollama)_ | OpenAI-kompatibilni AI API pro generovani otazek |
 
 ### Zabezpeceni
 
@@ -235,6 +244,8 @@ classrally/
   docker-compose.yml               # Docker Compose konfigurace
   start.sh / stop.sh / rebuild.sh / logs.sh  # Docker skripty
   docker-common.sh                 # sdilene funkce
+  deploy/                          # serverove nasazeni: compose za proxy, Caddy, nginx, systemd
+  docs/NASAZENI.md                 # navod: nasazeni, ucty, zalohy, aktualizace
   make-windows-package.sh          # sestavi ClassRally-Windows.zip (prenosny Python)
   windows/
     Spustit-ClassRally.bat         # spousteci skript pro ucitele

@@ -9,7 +9,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/docker-common.sh"
 check_docker
 
 # Create dirs if missing
-mkdir -p history questions static/audio
+mkdir -p history questions static/audio static/uploads data
 
 # Detect host IP for player URLs
 detect_host_ip

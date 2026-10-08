@@ -1,0 +1,46 @@
+# ClassRally as a systemd service (server without Docker).
+#
+# Runs as the unprivileged system user "classrally"; the code in
+# /opt/classrally is read-only for the service, only the data directories are
+# writable. Configuration (incl. the admin password) comes from
+# /etc/classrally/classrally.env, never from the command line.
+# Full guide: docs/NASAZENI.md
+#
+#   sudo cp deploy/systemd/classrally.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now classrally
+
+[Unit]
+Description=ClassRally - kvizova a testovaci platforma pro tridu
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=classrally
+Group=classrally
+WorkingDirectory=/opt/classrally
+EnvironmentFile=/etc/classrally/classrally.env
+Environment=PYTHONUNBUFFERED=1
+# Listens only on localhost: the reverse proxy runs on the same machine.
+ExecStart=/usr/bin/python3 /opt/classrally/server.py --host 127.0.0.1
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/classrally/data /opt/classrally/history /opt/classrally/questions /opt/classrally/static/uploads
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

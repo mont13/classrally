@@ -13,6 +13,8 @@ services:
       - ./static/audio:/app/static/audio
       # SQLite database for user accounts and classes
       - ./data:/app/data
+      # Images uploaded to questions in /admin
+      - ./static/uploads:/app/static/uploads
     environment:
       - QUIZ_ADMIN_PASSWORD=${QUIZ_ADMIN_PASSWORD:-}
       - QUIZ_PORT=${QUIZ_PORT:-48217}

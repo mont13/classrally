@@ -9,6 +9,12 @@ history/*.json
 # Runtime database — user accounts & classes (private, never commit)
 data/
 
+# Images uploaded to questions at runtime
+static/uploads/
+
+# Server configuration with passwords (deploy/classrally.env.example)
+.env
+
 # Audio files (license restrictions - users add their own)
 static/audio/*.mp3
 static/audio/*.ogg
@@ -44,3 +50,7 @@ docker-run.sh
 kritikaopenai.md
 kritikaopenaikahoo.md
 research
+
+# Interni provoz: skripty nasazeni na konkretni servery, runbook, logy.
+# Obsahuje interni infrastrukturu — NIKDY do verejneho repa.
+interni/
