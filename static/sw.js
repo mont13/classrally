@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classrally-v2';
+const CACHE_NAME = 'classrally-v3';
 
 const PRE_CACHE = [
   '/play',
@@ -7,7 +7,13 @@ const PRE_CACHE = [
   '/static/offline.html',
   '/static/illustrations/host-stage.svg',
   '/static/illustrations/player-join.svg',
-  '/static/illustrations/admin-control.svg'
+  '/static/illustrations/admin-control.svg',
+  '/static/i18n.js',
+  '/static/i18n/cs.json',
+  '/static/i18n/en.json',
+  '/static/i18n/sk.json',
+  '/static/i18n/de.json',
+  '/static/i18n/uk.json'
 ];
 
 self.addEventListener('install', (event) => {

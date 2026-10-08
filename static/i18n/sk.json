@@ -1,6 +1,5 @@
 {
   "lang_name": "Slovenčina",
-
   "play": {
     "page_title": "ClassRally - Hraj!",
     "hero_kicker": "Rýchle pripojenie z mobilu",
@@ -105,7 +104,6 @@
     "award_comeback": "Veľký návrat",
     "avatar_pick": "Vyber si avatara:"
   },
-
   "fun": {
     "correct": {
       "0": "🚀 Raketa!",
@@ -122,7 +120,6 @@
       "4": "🔁 Hlavu hore, ideme ďalej!"
     }
   },
-
   "host": {
     "title": "Kvíz host - ClassRally",
     "login_title": "Prihlásenie učiteľa",
@@ -210,14 +207,41 @@
     "podium_title": "Najlepší hráči",
     "awards_title": "Ocenenia"
   },
-
+  "exam": {
+    "page_title": "ClassRally - Písomka",
+    "eyebrow": "Offline písomka",
+    "login_title": "Písomka — prihlásenie",
+    "badge_no_account": "Bez účtu",
+    "badge_time_limit": "Časový limit",
+    "badge_supervision": "Dozor",
+    "nickname_placeholder": "Tvoja prezývka",
+    "login_btn": "Vstúpiť do písomky",
+    "wait_message": "Čakaj, učiteľ písomku za chvíľu spustí.",
+    "btn_prev": "◀ Predchádzajúca",
+    "btn_next": "Ďalšia ▶",
+    "btn_submit": "Odovzdať písomku",
+    "result_title": "Písomka odovzdaná",
+    "blur_warning_title": "Opustil(a) si test!",
+    "blur_warning_text": "Učiteľ to vidí. Vráť sa k testu.",
+    "blur_count": "Opustenie okna: {0}",
+    "progress": "Zodpovedaných {0} z {1}",
+    "question_of": "Otázka {0} z {1}",
+    "player_fallback": "Hráč",
+    "confirm_submit": "Naozaj chcete odovzdať písomku?",
+    "submit_failed": "Odovzdanie zlyhalo.",
+    "enter_nickname": "Zadaj prezývku.",
+    "connection_error": "Chyba pripojenia: {0}",
+    "error_unknown": "neznáma",
+    "result_detail": "Správne {0} z {1} ({2}%)",
+    "result_pending": "Ďakujeme, výsledok sa dozvieš od učiteľa.",
+    "auto_submitted": "Automaticky odovzdané."
+  },
   "awards": {
     "fastest_finger": "Najrýchlejší prst",
     "streak_master": "Majster sérií",
     "sharpshooter": "Ostrostrelec",
     "comeback": "Veľký návrat"
   },
-
   "admin": {
     "page_title": "Quiz Admin - Učiteľský portál",
     "title": "Učiteľský portál",
@@ -228,7 +252,6 @@
     "btn_host_screen": "Host obrazovka",
     "btn_play_screen": "Hráčska obrazovka",
     "url_for_students": "URL pre žiakov:",
-
     "tab_dashboard": "Prehľad",
     "tab_questions": "Sady otázok",
     "tab_editor": "Editor otázok",
@@ -256,9 +279,8 @@
     "confirm_promote": "Naozaj povýšiť na učiteľa?",
     "confirm_demote": "Naozaj znížiť na žiaka?",
     "confirm_delete_user": "Naozaj zmazať používateľa",
-    "prompt_new_password": "Zadajte nové heslo pre",
-    "password_reset_ok": "Heslo úspešne resetované.",
-
+    "prompt_new_password": "Nové heslo pre {0}:",
+    "password_reset_ok": "Heslo bolo resetované.",
     "login_title": "Prihlásenie učiteľa",
     "login_subtitle": "Prihláste sa učiteľským účtom.",
     "login_nick_label": "Prezývka",
@@ -270,28 +292,21 @@
     "login_fill_fields": "Vyplňte prezývku a heslo.",
     "login_not_teacher": "Tento účet nie je učiteľský.",
     "btn_logout": "Odhlásiť sa",
-    "btn_reset_password": "Reset hesla",
     "btn_kick": "Vyhodiť",
     "member_score": "Skóre",
-    "prompt_new_password": "Nové heslo pre {0}:",
-    "password_reset_ok": "Heslo bolo resetované.",
     "confirm_kick": "Naozaj chcete vyhodiť {0} z triedy?",
-
     "dash_login_prompt": "Prihláste sa pre personalizovaný prehľad",
     "dash_login_desc": "Dashboard zobrazuje vaše triedy, štatistiky a poslednú aktivitu. Pre používanie sa najskôr prihláste do svojho učiteľského účtu.",
     "dash_login_btn": "Prihlásiť sa / Registrovať",
-
     "dash_welcome": "Vitajte!",
     "dash_welcome_name": "Vitajte, {0}!",
     "dash_welcome_sub": "Spravujte svoje triedy a kvízové sady z jedného miesta.",
     "dash_role_teacher": "Učiteľ",
     "teacher_fallback": "Učiteľ",
-
     "stat_banks": "Sady otázok",
     "stat_games": "Odohraných hier",
     "stat_classes": "Tried",
     "stat_students": "Žiakov celkom",
-
     "dash_quick_actions": "Rýchle akcie",
     "dash_action_create_questions": "Vytvoriť otázky",
     "dash_action_editor_sub": "Editor otázok",
@@ -301,13 +316,11 @@
     "dash_action_homework_sub": "Self-paced režim",
     "dash_action_ai": "AI generátor",
     "dash_action_ai_sub": "Generovať s AI",
-
     "dash_recent_games": "Posledné hry",
     "dash_my_classes": "Moje triedy",
     "dash_no_games": "Zatiaľ žiadne odohrané hry.",
     "dash_no_classes": "Zatiaľ žiadne triedy. Vytvorte prvú v záložke Triedy.",
     "game": "Hra",
-
     "available_banks": "Dostupné sady otázok",
     "search_bank_placeholder": "Hľadať sadu...",
     "bank_count_filtered": "{0} z {1} sád",
@@ -323,7 +336,6 @@
     "bank_name_placeholder": "moje_otazky",
     "btn_create": "Vytvoriť",
     "enter_name": "Zadajte názov",
-
     "editor_title": "Editor otázok",
     "editor_bank_label": "Sada na editáciu",
     "btn_load": "Načítať",
@@ -337,13 +349,11 @@
     "load_bank_first": "Najskôr načítajte sadu",
     "saved": "Uložené!",
     "select_or_load_bank": "Najskôr vyberte alebo načítajte sadu",
-
     "import_save_as_prompt": "Uložiť importované otázky ako sadu (názov súboru):",
     "invalid_json": "Neplatný JSON súbor",
     "json_must_be_array": "JSON musí obsahovať pole otázok",
     "imported_questions": "Importovaných {0} otázok ako \"{1}\"!",
     "import_error": "Chyba importu",
-
     "question_n": "Otázka {0}",
     "drag_to_reorder": "Pretiahnuť pre zmenu poradia",
     "btn_remove": "Odstrániť",
@@ -351,14 +361,12 @@
     "question_text_placeholder": "Text otázky...",
     "explanation_label": "Vysvetlenie",
     "explanation_placeholder": "Prečo je táto odpoveď správna...",
-
     "image_url": "URL obrázku",
     "image_url_placeholder": "https://example.com/obrazok.png",
     "image_upload": "Nahrať obrázok",
     "image_preview": "Náhľad",
     "image_remove": "Odstrániť obrázok",
     "image_too_large": "Obrázok príliš veľký (max 2 MB)",
-
     "qtype_choice": "Výber (A/B/C/D)",
     "qtype_truefalse": "Pravda / Nepravda",
     "qtype_multiselect": "Viac správnych",
@@ -367,33 +375,24 @@
     "qtype_poll": "Anketa (bez bodov)",
     "qtype_wordcloud": "Word Cloud",
     "qtype_slide": "Info slide",
-
     "true_val": "Pravda",
     "false_val": "Nepravda",
-
     "options_select_correct": "Možnosti (vyberte správnu)",
     "option_placeholder": "Možnosť {0}",
     "btn_add_option": "+ Možnosť",
-
     "options_check_correct": "Možnosti (zaškrtnite všetky správne)",
-
     "ordering_label": "Položky (zadajte v SPRÁVNOM poradí)",
     "item_placeholder": "Položka {0}",
     "btn_add_item": "+ Položka",
-
     "accepted_answers_label": "Prijímané odpovede (každá na vlastný riadok)",
     "answer_placeholder": "Odpoveď {0}",
     "btn_add_answer": "+ Ďalšia odpoveď",
-
     "poll_options_label": "Možnosti ankety (bez správnej odpovede)",
-
     "wordcloud_label": "Word Cloud — zadajte prompt (napr. \"Aký je váš obľúbený programovací jazyk?\")",
     "wordcloud_hint": "Žiaci napíšu jedno slovo/frázu. Často opakujúce sa slová sa zobrazia väčšie.",
-
     "slide_body_label": "Obsah slidu (telo)",
     "slide_body_placeholder": "Text slidu — vysvetlenie, pokyny, zaujímavosť...",
     "slide_hint": "Žiaci uvidia \"Čakaj na učiteľa...\" — slide nemá odpovede ani body.",
-
     "ai_title": "AI návrh otázok",
     "ai_topic_label": "Téma otázok",
     "ai_topic_placeholder": "napr. Linuxové príkazy, Docker kontajnery, sieťové protokoly...",
@@ -424,14 +423,12 @@
     "appended_questions": "Pridaných {0} otázok do {1}!",
     "no_models_found": "Žiadne modely nenájdené. Skontrolujte, že AI server beží.",
     "available_models": "Dostupné modely:",
-
     "settings_title": "Nastavenia kvízu",
     "timing_question_label": "Čas na otázku (sekundy)",
     "timing_reveal_label": "Čas na vyhodnotenie (sekundy)",
     "btn_save_settings": "Uložiť nastavenia",
     "timing_hint": "Zmeny sa prejavia od ďalšej otázky.",
     "settings_saved": "Nastavenia uložené!",
-
     "team_mode_title": "Tímový režim",
     "team_mode_desc": "Hráči sú automaticky rozdelení do tímov (round-robin). Tímy súťažia o celkové skóre.",
     "team_mode_enable": "Povoliť tímový režim",
@@ -446,20 +443,17 @@
     "team_yellow": "Žltí",
     "team_purple": "Fialoví",
     "team_orange": "Oranžoví",
-
     "ollama_config_title": "AI konfigurácia",
     "cfg_ai_base_url": "AI Server URL",
     "cfg_ai_api_key": "API kľúč",
     "cfg_ollama_model": "AI model",
     "btn_save_ollama": "Uložiť AI config",
     "ollama_config_saved": "AI konfigurácia uložená!",
-
     "host_token_title": "Prístupový kľúč pre ovládanie hry",
     "host_token_desc": "Kľúč pre ovládanie hry z host obrazovky. Kliknite pre kopírovanie.",
     "loading": "Načítavam...",
     "token_load_error": "Nie je možné načítať (chýba oprávnenie)",
     "token_copied": "Token skopírovaný!",
-
     "history_title": "História hier",
     "btn_refresh": "Obnoviť",
     "history_count": "{0} záznamov",
@@ -467,7 +461,6 @@
     "players_suffix": "hráčov",
     "points_suffix": "bodov",
     "confirm_delete_record": "Zmazať záznam?",
-
     "classes_title": "Správa tried",
     "classes_subtitle": "Pre správu tried sa musíte prihlásiť ako učiteľ v profile.",
     "classes_logged_out": "Pre správu tried je potrebný učiteľský účet.",
@@ -488,7 +481,6 @@
     "confirm_delete_class": "Naozaj zmazať triedu \"{0}\"?",
     "classes_load_error": "Nepodarilo sa načítať triedy",
     "enter_class_name": "Zadajte názov triedy",
-
     "homework_title": "Domáca úloha (Self-paced)",
     "homework_subtitle": "Vytvor odkaz pre žiakov, ktorí môžu riešiť kvíz vlastným tempom — bez učiteľa pri projektore.",
     "hw_create_title": "Vytvoriť novú domácu úlohu",
@@ -507,17 +499,14 @@
     "hw_in_progress": "Prebieha",
     "no_banks": "-- Nie sú žiadne sady --",
     "link_copied": "Odkaz skopírovaný!",
-
     "click_to_show_members": "Kliknite pre zobrazenie členov",
     "students_suffix": "žiakov",
     "code_label": "Kód",
     "class_code": "Kód triedy",
     "qr_class_title": "QR kód pre pripojenie do triedy",
     "qr_class_alt": "QR kód triedy",
-
     "auth_required": "Nutné prihlásenie",
     "error": "Chyba",
-
     "q_double_label": "⚡ Dvojnásobné body",
     "timing_get_ready_label": "Odpočet Priprav sa (s)",
     "final_double_label": "Posledná otázka za dvojnásobok bodov",
@@ -525,7 +514,6 @@
     "badge_open_license": "Otvorená licencia",
     "tab_exam": "Písomka"
   },
-
   "profile": {
     "page_title": "ClassRally – Môj profil",
     "title": "Môj profil",
@@ -560,7 +548,6 @@
     "play_link": "Hrať kvíz",
     "admin_link": "Učiteľský portál",
     "home_link": "Hlavná stránka",
-    "logout_btn": "Odhlásiť sa",
     "fill_fields": "Vyplňte prezývku a heslo.",
     "forgot_password_hint": "Zabudli ste heslo? Požiadajte učiteľa o reset.",
     "change_password_btn": "Zmeniť heslo",
@@ -606,7 +593,6 @@
     "avatar_title": "Vyber si avatara",
     "avatar_saved": "Avatar uložený!"
   },
-
   "landing": {
     "page_title": "ClassRally",
     "subtitle": "Interaktívny kvíz pre triedu. Vyber si svoju rolu:",
@@ -625,9 +611,10 @@
     "setup_btn": "Vytvoriť účet a začať",
     "setup_err_nickname": "Zadajte prezývku.",
     "setup_err_password": "Heslo musí mať aspoň 4 znaky.",
-    "setup_err_mismatch": "Heslá sa nezhodujú."
+    "setup_err_mismatch": "Heslá sa nezhodujú.",
+    "err_register_generic": "Chyba registrácie",
+    "err_connection": "Chyba spojenia"
   },
-
   "common": {
     "hero_badge_mobile": "Mobil-first",
     "hero_badge_colors": "Farebné voľby",

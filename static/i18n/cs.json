@@ -211,6 +211,36 @@
     "awards_title": "Ocenění"
   },
 
+  "exam": {
+    "page_title": "ClassRally - Písemka",
+    "eyebrow": "Offline písemka",
+    "login_title": "Písemka — přihlášení",
+    "badge_no_account": "Bez účtu",
+    "badge_time_limit": "Časový limit",
+    "badge_supervision": "Dohled",
+    "nickname_placeholder": "Tvoje přezdívka",
+    "login_btn": "Vstoupit do písemky",
+    "wait_message": "Čekej, učitel písemku za chvíli spustí.",
+    "btn_prev": "◀ Předchozí",
+    "btn_next": "Další ▶",
+    "btn_submit": "Odevzdat písemku",
+    "result_title": "Písemka odevzdána",
+    "blur_warning_title": "Opustil(a) jsi test!",
+    "blur_warning_text": "Učitel to vidí. Vrať se k testu.",
+    "blur_count": "Opuštění okna: {0}",
+    "progress": "Zodpovězeno {0} z {1}",
+    "question_of": "Otázka {0} z {1}",
+    "player_fallback": "Hráč",
+    "confirm_submit": "Opravdu chcete odevzdat písemku?",
+    "submit_failed": "Odevzdání selhalo.",
+    "enter_nickname": "Zadej přezdívku.",
+    "connection_error": "Chyba připojení: {0}",
+    "error_unknown": "neznámá",
+    "result_detail": "Správně {0} z {1} ({2}%)",
+    "result_pending": "Děkujeme, výsledek se dozvíš od učitele.",
+    "auto_submitted": "Automaticky odevzdáno."
+  },
+
   "awards": {
     "fastest_finger": "Nejrychlejší prst",
     "streak_master": "Mistr sérií",
@@ -626,7 +656,9 @@
     "setup_btn": "Vytvořit účet a začít",
     "setup_err_nickname": "Zadejte přezdívku.",
     "setup_err_password": "Heslo musí mít aspoň 4 znaky.",
-    "setup_err_mismatch": "Hesla se neshodují."
+    "setup_err_mismatch": "Hesla se neshodují.",
+    "err_register_generic": "Chyba registrace",
+    "err_connection": "Chyba spojení"
   },
 
   "common": {

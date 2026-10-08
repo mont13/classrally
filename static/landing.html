@@ -139,10 +139,10 @@
           window.location.href = '/admin';
           return;
         }
-        errorEl.textContent = data.error || 'Chyba registrace';
+        errorEl.textContent = data.error || i18n.t('landing.err_register_generic');
         errorEl.style.display = 'block';
       } catch (e) {
-        errorEl.textContent = 'Chyba spojeni';
+        errorEl.textContent = i18n.t('landing.err_connection');
         errorEl.style.display = 'block';
       }
       btn.disabled = false;

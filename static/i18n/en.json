@@ -1,6 +1,5 @@
 {
   "lang_name": "English",
-
   "play": {
     "page_title": "ClassRally - Play!",
     "hero_kicker": "Quick join from your phone",
@@ -105,7 +104,6 @@
     "award_comeback": "Comeback Kid",
     "avatar_pick": "Pick your avatar:"
   },
-
   "fun": {
     "correct": {
       "0": "🚀 Rocket speed!",
@@ -122,7 +120,6 @@
       "4": "🔁 Shake it off — next one!"
     }
   },
-
   "host": {
     "title": "Quiz Host - ClassRally",
     "login_title": "Teacher Login",
@@ -210,14 +207,41 @@
     "podium_title": "Top players",
     "awards_title": "Awards"
   },
-
+  "exam": {
+    "page_title": "ClassRally - Test",
+    "eyebrow": "Offline test",
+    "login_title": "Test — login",
+    "badge_no_account": "No account",
+    "badge_time_limit": "Time limit",
+    "badge_supervision": "Supervision",
+    "nickname_placeholder": "Your nickname",
+    "login_btn": "Enter test",
+    "wait_message": "Wait, the teacher will start the test shortly.",
+    "btn_prev": "◀ Previous",
+    "btn_next": "Next ▶",
+    "btn_submit": "Submit test",
+    "result_title": "Test submitted",
+    "blur_warning_title": "You left the test!",
+    "blur_warning_text": "The teacher can see this. Return to the test.",
+    "blur_count": "Window left: {0}",
+    "progress": "Answered {0} of {1}",
+    "question_of": "Question {0} of {1}",
+    "player_fallback": "Player",
+    "confirm_submit": "Do you really want to submit the test?",
+    "submit_failed": "Submission failed.",
+    "enter_nickname": "Enter a nickname.",
+    "connection_error": "Connection error: {0}",
+    "error_unknown": "unknown",
+    "result_detail": "Correct {0} out of {1} ({2}%)",
+    "result_pending": "Thank you, you will get the result from your teacher.",
+    "auto_submitted": "Automatically submitted."
+  },
   "awards": {
     "fastest_finger": "Fastest Finger",
     "streak_master": "Streak Master",
     "sharpshooter": "Sharpshooter",
     "comeback": "Comeback Kid"
   },
-
   "admin": {
     "page_title": "Quiz Admin - Teacher Portal",
     "title": "Teacher Portal",
@@ -228,7 +252,6 @@
     "btn_host_screen": "Host screen",
     "btn_play_screen": "Player screen",
     "url_for_students": "URL for students:",
-
     "tab_dashboard": "Dashboard",
     "tab_questions": "Question banks",
     "tab_editor": "Question editor",
@@ -256,9 +279,8 @@
     "confirm_promote": "Really promote to teacher?",
     "confirm_demote": "Really demote to student?",
     "confirm_delete_user": "Really delete user",
-    "prompt_new_password": "Enter new password for",
-    "password_reset_ok": "Password reset successfully.",
-
+    "prompt_new_password": "New password for {0}:",
+    "password_reset_ok": "Password has been reset.",
     "login_title": "Teacher Login",
     "login_subtitle": "Log in with your teacher account.",
     "login_nick_label": "Nickname",
@@ -270,28 +292,21 @@
     "login_fill_fields": "Enter nickname and password.",
     "login_not_teacher": "This is not a teacher account.",
     "btn_logout": "Log out",
-    "btn_reset_password": "Reset password",
     "btn_kick": "Remove",
     "member_score": "Score",
-    "prompt_new_password": "New password for {0}:",
-    "password_reset_ok": "Password has been reset.",
     "confirm_kick": "Remove {0} from class?",
-
     "dash_login_prompt": "Log in for a personalized dashboard",
     "dash_login_desc": "The dashboard shows your classes, stats, and recent activity. Please log in to your teacher account first.",
     "dash_login_btn": "Log in / Register",
-
     "dash_welcome": "Welcome!",
     "dash_welcome_name": "Welcome, {0}!",
     "dash_welcome_sub": "Manage your classes and quiz banks from one place.",
     "dash_role_teacher": "Teacher",
     "teacher_fallback": "Teacher",
-
     "stat_banks": "Question banks",
     "stat_games": "Games played",
     "stat_classes": "Classes",
     "stat_students": "Total students",
-
     "dash_quick_actions": "Quick actions",
     "dash_action_create_questions": "Create questions",
     "dash_action_editor_sub": "Question editor",
@@ -301,13 +316,11 @@
     "dash_action_homework_sub": "Self-paced mode",
     "dash_action_ai": "AI generator",
     "dash_action_ai_sub": "Generate with AI",
-
     "dash_recent_games": "Recent games",
     "dash_my_classes": "My classes",
     "dash_no_games": "No games played yet.",
     "dash_no_classes": "No classes yet. Create your first one in the Classes tab.",
     "game": "Game",
-
     "available_banks": "Available question banks",
     "search_bank_placeholder": "Search banks...",
     "bank_count_filtered": "{0} of {1} banks",
@@ -323,7 +336,6 @@
     "bank_name_placeholder": "my_questions",
     "btn_create": "Create",
     "enter_name": "Enter a name",
-
     "editor_title": "Question editor",
     "editor_bank_label": "Bank to edit",
     "btn_load": "Load",
@@ -337,13 +349,11 @@
     "load_bank_first": "Load a bank first",
     "saved": "Saved!",
     "select_or_load_bank": "Select or load a bank first",
-
     "import_save_as_prompt": "Save imported questions as bank (filename):",
     "invalid_json": "Invalid JSON file",
     "json_must_be_array": "JSON must contain an array of questions",
     "imported_questions": "Imported {0} questions as \"{1}\"!",
     "import_error": "Import error",
-
     "question_n": "Question {0}",
     "drag_to_reorder": "Drag to reorder",
     "btn_remove": "Remove",
@@ -351,14 +361,12 @@
     "question_text_placeholder": "Question text...",
     "explanation_label": "Explanation",
     "explanation_placeholder": "Why this answer is correct...",
-
     "image_url": "Image URL",
     "image_url_placeholder": "https://example.com/image.png",
     "image_upload": "Upload image",
     "image_preview": "Preview",
     "image_remove": "Remove image",
     "image_too_large": "Image too large (max 2MB)",
-
     "qtype_choice": "Choice (A/B/C/D)",
     "qtype_truefalse": "True / False",
     "qtype_multiselect": "Multiple correct",
@@ -367,33 +375,24 @@
     "qtype_poll": "Poll (no points)",
     "qtype_wordcloud": "Word Cloud",
     "qtype_slide": "Info slide",
-
     "true_val": "True",
     "false_val": "False",
-
     "options_select_correct": "Options (select the correct one)",
     "option_placeholder": "Option {0}",
     "btn_add_option": "+ Option",
-
     "options_check_correct": "Options (check all correct ones)",
-
     "ordering_label": "Items (enter in the CORRECT order)",
     "item_placeholder": "Item {0}",
     "btn_add_item": "+ Item",
-
     "accepted_answers_label": "Accepted answers (one per line)",
     "answer_placeholder": "Answer {0}",
     "btn_add_answer": "+ Add answer",
-
     "poll_options_label": "Poll options (no correct answer)",
-
     "wordcloud_label": "Word Cloud — enter a prompt (e.g. \"What is your favorite programming language?\")",
     "wordcloud_hint": "Students type a single word/phrase. Frequently repeated words appear larger.",
-
     "slide_body_label": "Slide content (body)",
     "slide_body_placeholder": "Slide text — explanation, instructions, fun fact...",
     "slide_hint": "Students will see \"Wait for the teacher...\" — slides have no answers or points.",
-
     "ai_title": "AI question suggestions",
     "ai_topic_label": "Question topic",
     "ai_topic_placeholder": "e.g. Linux commands, Docker containers, network protocols...",
@@ -424,14 +423,12 @@
     "appended_questions": "Appended {0} questions to {1}!",
     "no_models_found": "No models found. Make sure the AI server is running.",
     "available_models": "Available models:",
-
     "settings_title": "Quiz settings",
     "timing_question_label": "Time per question (seconds)",
     "timing_reveal_label": "Time for results (seconds)",
     "btn_save_settings": "Save settings",
     "timing_hint": "Changes take effect from the next question.",
     "settings_saved": "Settings saved!",
-
     "team_mode_title": "Team mode",
     "team_mode_desc": "Players are automatically split into teams (round-robin). Teams compete for the overall score.",
     "team_mode_enable": "Enable team mode",
@@ -446,20 +443,17 @@
     "team_yellow": "Yellow",
     "team_purple": "Purple",
     "team_orange": "Orange",
-
     "ollama_config_title": "AI configuration",
     "cfg_ai_base_url": "AI Server URL",
     "cfg_ai_api_key": "API key",
     "cfg_ollama_model": "AI model",
     "btn_save_ollama": "Save AI config",
     "ollama_config_saved": "AI configuration saved!",
-
     "host_token_title": "Game control access token",
     "host_token_desc": "Token for controlling the game from the host screen. Click to copy.",
     "loading": "Loading...",
     "token_load_error": "Cannot load (missing permissions)",
     "token_copied": "Token copied!",
-
     "history_title": "Game history",
     "btn_refresh": "Refresh",
     "history_count": "{0} records",
@@ -467,7 +461,6 @@
     "players_suffix": "players",
     "points_suffix": "points",
     "confirm_delete_record": "Delete record?",
-
     "classes_title": "Class management",
     "classes_subtitle": "To manage classes, log in as a teacher in your profile.",
     "classes_logged_out": "A teacher account is required to manage classes.",
@@ -488,7 +481,6 @@
     "confirm_delete_class": "Really delete class \"{0}\"?",
     "classes_load_error": "Failed to load classes",
     "enter_class_name": "Enter a class name",
-
     "homework_title": "Homework (Self-paced)",
     "homework_subtitle": "Create a link for students who can take the quiz at their own pace — no teacher at the projector needed.",
     "hw_create_title": "Create new homework assignment",
@@ -507,17 +499,14 @@
     "hw_in_progress": "In progress",
     "no_banks": "-- No banks available --",
     "link_copied": "Link copied!",
-
     "click_to_show_members": "Click to show members",
     "students_suffix": "students",
     "code_label": "Code",
     "class_code": "Class code",
     "qr_class_title": "QR code to join the class",
     "qr_class_alt": "Class QR code",
-
     "auth_required": "Login required",
     "error": "Error",
-
     "q_double_label": "⚡ Double points",
     "timing_get_ready_label": "Get-ready countdown (s)",
     "final_double_label": "Final question worth double points",
@@ -525,7 +514,6 @@
     "badge_open_license": "Open license",
     "tab_exam": "Exam"
   },
-
   "profile": {
     "page_title": "ClassRally – My Profile",
     "title": "My Profile",
@@ -560,7 +548,6 @@
     "play_link": "Play quiz",
     "admin_link": "Teacher Portal",
     "home_link": "Home",
-    "logout_btn": "Log out",
     "fill_fields": "Please fill in nickname and password.",
     "forgot_password_hint": "Forgot your password? Ask your teacher to reset it.",
     "change_password_btn": "Change password",
@@ -606,7 +593,6 @@
     "avatar_title": "Choose avatar",
     "avatar_saved": "Avatar saved!"
   },
-
   "landing": {
     "page_title": "ClassRally",
     "subtitle": "Interactive classroom quiz. Choose your role:",
@@ -625,9 +611,10 @@
     "setup_btn": "Create account & start",
     "setup_err_nickname": "Enter a nickname.",
     "setup_err_password": "Password must be at least 4 characters.",
-    "setup_err_mismatch": "Passwords don't match."
+    "setup_err_mismatch": "Passwords don't match.",
+    "err_register_generic": "Registration failed",
+    "err_connection": "Connection error"
   },
-
   "common": {
     "hero_badge_mobile": "Mobile-first",
     "hero_badge_colors": "Colorful choices",

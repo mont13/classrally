@@ -9,7 +9,7 @@
 const i18n = (() => {
   const STORAGE_KEY = 'classrally_lang';
   const DEFAULT_LANG = 'cs';
-  const SUPPORTED = ['cs', 'en', 'sk', 'de'];
+  const SUPPORTED = ['cs', 'en', 'sk', 'de', 'uk'];
 
   let _lang = DEFAULT_LANG;
   let _cache = {};   // lang -> flat translations object
@@ -151,6 +151,9 @@ const i18n = (() => {
  *
  * @param {string[]} [langs]  Subset to show; defaults to all supported.
  */
+const LANG_FLAGS = { cs: '🇨🇿', en: '🇬🇧', sk: '🇸🇰', de: '🇩🇪', uk: '🇺🇦' };
+const LANG_NATIVE_NAMES = { cs: 'Čeština', en: 'English', sk: 'Slovenčina', de: 'Deutsch', uk: 'Українська' };
+
 function injectLangSwitcher(langs) {
   const supported = langs || i18n.supported();
 
@@ -162,8 +165,20 @@ function injectLangSwitcher(langs) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.dataset.lang = lang;
-    btn.textContent = lang.toUpperCase();
-    btn.title = lang;
+
+    const flagEl = document.createElement('span');
+    flagEl.className = 'i18n-flag';
+    flagEl.textContent = LANG_FLAGS[lang] || '';
+    flagEl.setAttribute('aria-hidden', 'true');
+
+    const codeEl = document.createElement('span');
+    codeEl.className = 'i18n-code';
+    codeEl.textContent = lang.toUpperCase();
+
+    btn.appendChild(flagEl);
+    btn.appendChild(codeEl);
+    btn.title = LANG_NATIVE_NAMES[lang] || lang;
+    btn.setAttribute('aria-label', LANG_NATIVE_NAMES[lang] || lang);
     btn.classList.toggle('active', lang === i18n.getLang());
     btn.addEventListener('click', () => i18n.setLang(lang));
     wrapper.appendChild(btn);

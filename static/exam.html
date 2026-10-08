@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ClassRally - Písemka</title>
+    <title data-i18n="exam.page_title">ClassRally - Písemka</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/i18n.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -23,7 +24,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
+            /* Extra top padding keeps the fixed language switcher (top-right pill)
+               clear of the card's top bar (timer) on small screens. */
+            padding: 3.5rem 1rem 1rem;
             margin: 0;
         }
 
@@ -350,22 +353,22 @@
         <!-- Sekce JOIN -->
         <section id="joinSection" class="card">
             <div class="join-art exam-art" aria-hidden="true"></div>
-            <p class="eyebrow">Offline písemka</p>
-            <h1 class="section-title">Písemka — přihlášení</h1>
+            <p class="eyebrow" data-i18n="exam.eyebrow">Offline písemka</p>
+            <h1 class="section-title" data-i18n="exam.login_title">Písemka — přihlášení</h1>
             <div class="hero-badges compact">
-                <span>Bez účtu</span>
-                <span>Časový limit</span>
-                <span>Dohled</span>
+                <span data-i18n="exam.badge_no_account">Bez účtu</span>
+                <span data-i18n="exam.badge_time_limit">Časový limit</span>
+                <span data-i18n="exam.badge_supervision">Dohled</span>
             </div>
-            <input type="text" id="nicknameInput" placeholder="Tvoje přezdívka" maxlength="24" autocomplete="off">
-            <button id="joinButton" class="btn good">Vstoupit do písemky</button>
+            <input type="text" id="nicknameInput" data-i18n-placeholder="exam.nickname_placeholder" placeholder="Tvoje přezdívka" maxlength="24" autocomplete="off">
+            <button id="joinButton" class="btn good" data-i18n="exam.login_btn">Vstoupit do písemky</button>
             <div id="joinError" class="error-message hide"></div>
             <img src="/api/qr" alt="QR kód" class="qr-img" id="qrImage">
         </section>
 
         <!-- Sekce WAIT -->
         <section id="waitSection" class="card hide">
-            <div class="wait-message">Čekej, učitel písemku za chvíli spustí.</div>
+            <div class="wait-message" data-i18n="exam.wait_message">Čekej, učitel písemku za chvíli spustí.</div>
         </section>
 
         <!-- Sekce TEST -->
@@ -381,22 +384,22 @@
                 <div class="options-grid" id="optionsContainer"></div>
             </div>
             <div class="nav-arrows">
-                <button id="prevButton" class="btn small">◀ Předchozí</button>
-                <button id="nextButton" class="btn small" style="margin-left: auto;">Další ▶</button>
+                <button id="prevButton" class="btn small" data-i18n="exam.btn_prev">◀ Předchozí</button>
+                <button id="nextButton" class="btn small" style="margin-left: auto;" data-i18n="exam.btn_next">Další ▶</button>
             </div>
-            <button id="submitButton" class="btn warn">Odevzdat písemku</button>
+            <button id="submitButton" class="btn warn" data-i18n="exam.btn_submit">Odevzdat písemku</button>
         </section>
 
         <!-- Sekce RESULT -->
         <section id="resultSection" class="card hide">
-            <h2 style="text-align: center;">Písemka odevzdána</h2>
+            <h2 style="text-align: center;" data-i18n="exam.result_title">Písemka odevzdána</h2>
             <div id="resultContent"></div>
         </section>
 
         <!-- Anti-cheat overlay -->
         <div id="antiCheatOverlay" class="overlay hide">
-            <div>Opustil(a) jsi test!</div>
-            <div style="font-size: 1.2rem; margin-top: 1rem;">Učitel to vidí. Vrať se k testu.</div>
+            <div data-i18n="exam.blur_warning_title">Opustil(a) jsi test!</div>
+            <div style="font-size: 1.2rem; margin-top: 1rem;" data-i18n="exam.blur_warning_text">Učitel to vidí. Vrať se k testu.</div>
             <div style="margin-top: 1.5rem;" id="blurCounterDisplay">Opuštění okna: 0</div>
         </div>
     </div>
@@ -447,6 +450,7 @@
             let localTimerInterval = null;
             let blurDebounce = false;
             let lastEventSent = '';
+            let lastResultData = null; // kept for re-render on language change
 
             // === UTILS ===
             function showSection(section) {
@@ -552,7 +556,7 @@
 
             function updateBlurOverlay() {
                 if (blurCounterDisplay) {
-                    blurCounterDisplay.textContent = `Opuštění okna: ${blurCount}`;
+                    blurCounterDisplay.textContent = i18n.t('exam.blur_count', blurCount);
                 }
             }
 
@@ -617,19 +621,19 @@
                 const answered = answeredMap.size;
                 const total = questions.length;
                 if (progressIndicator) {
-                    progressIndicator.textContent = `Zodpovězeno ${answered} z ${total}`;
+                    progressIndicator.textContent = i18n.t('exam.progress', answered, total);
                 }
             }
 
             function renderQuestion() {
                 if (!questions.length || currentPosition >= questions.length) return;
                 const q = questions[currentPosition];
-                questionTitle.textContent = `Otázka ${currentPosition + 1} z ${questions.length}`;
-                
+                questionTitle.textContent = i18n.t('exam.question_of', currentPosition + 1, questions.length);
+
                 const promptEl = document.createElement('div');
                 promptEl.textContent = q.prompt;
                 questionTitle.innerHTML = '';
-                questionTitle.appendChild(document.createTextNode(`Otázka ${currentPosition + 1} z ${questions.length}: `));
+                questionTitle.appendChild(document.createTextNode(i18n.t('exam.question_of', currentPosition + 1, questions.length) + ': '));
                 questionTitle.appendChild(promptEl);
                 
                 optionsContainer.innerHTML = '';
@@ -706,7 +710,7 @@
             });
 
             submitButton.addEventListener('click', async () => {
-                if (!confirm('Opravdu chcete odevzdat písemku?')) return;
+                if (!confirm(i18n.t('exam.confirm_submit'))) return;
                 await submitExam();
             });
 
@@ -718,7 +722,7 @@
                     });
                     handleResult(data);
                 } catch (e) {
-                    alert('Odevzdání selhalo.');
+                    alert(i18n.t('exam.submit_failed'));
                 }
             }
 
@@ -734,34 +738,38 @@
                 applyAntiCheat();
                 showSection(resultSection);
                 hideAntiCheatOverlay();
-                
+                lastResultData = data;
+                renderResultContent(data);
+            }
+
+            function renderResultContent(data) {
                 resultContent.innerHTML = '';
                 if (data.grade !== undefined && data.grade !== null) {
                     const gradeEl = document.createElement('div');
                     gradeEl.className = 'result-grade';
                     gradeEl.textContent = data.grade;
-                    
+
                     const detailEl = document.createElement('p');
                     detailEl.style.textAlign = 'center';
                     detailEl.style.fontSize = '1.2rem';
-                    detailEl.textContent = `Správně ${data.score} z ${data.total} (${data.percent}%)`;
-                    
+                    detailEl.textContent = i18n.t('exam.result_detail', data.score, data.total, data.percent);
+
                     resultContent.appendChild(gradeEl);
                     resultContent.appendChild(detailEl);
                 } else {
                     const msgEl = document.createElement('p');
-                    msgEl.textContent = 'Děkujeme, výsledek se dozvíš od učitele.';
+                    msgEl.textContent = i18n.t('exam.result_pending');
                     msgEl.style.textAlign = 'center';
                     msgEl.style.fontSize = '1.2rem';
                     resultContent.appendChild(msgEl);
                 }
-                
+
                 if (data.auto_submitted) {
                     const autoMsg = document.createElement('p');
                     autoMsg.style.color = '#d32f2f';
                     autoMsg.style.fontWeight = 'bold';
                     autoMsg.style.textAlign = 'center';
-                    autoMsg.textContent = 'Automaticky odevzdáno.';
+                    autoMsg.textContent = i18n.t('exam.auto_submitted');
                     resultContent.appendChild(autoMsg);
                 }
             }
@@ -805,7 +813,7 @@
                         updateLocalTimerFromServer(state.time_left);
                         currentPhase = 'open';
                         showSection(testSection);
-                        testPlayerName.textContent = state.name || 'Hráč';
+                        testPlayerName.textContent = state.name || i18n.t('exam.player_fallback');
                         applyAntiCheat();
                         renderNavigator();
                         renderQuestion();
@@ -861,7 +869,7 @@
             joinButton.addEventListener('click', async () => {
                 const name = nicknameInput.value.trim();
                 if (!name) {
-                    joinError.textContent = 'Zadej přezdívku.';
+                    joinError.textContent = i18n.t('exam.enter_nickname');
                     joinError.classList.remove('hide');
                     return;
                 }
@@ -877,7 +885,8 @@
                     pollState();
                     pollTimer = setInterval(pollState, 3000);
                 } catch (e) {
-                    joinError.textContent = 'Chyba připojení: ' + (e.message || 'neznámá');
+                    // e.message may contain a raw server-sent error text — shown as-is.
+                    joinError.textContent = i18n.t('exam.connection_error', e.message || i18n.t('exam.error_unknown'));
                     joinError.classList.remove('hide');
                 }
             });
@@ -891,6 +900,24 @@
             } else {
                 showSection(joinSection);
             }
+
+            // i18n init + language switcher (fixed pill top-right; the anti-cheat
+            // overlay has a higher z-index and intentionally covers it when shown)
+            i18n.init().then(() => {
+                injectLangSwitcher();
+                updateBlurOverlay();
+            });
+
+            // Re-render JS-generated texts after a language change
+            i18n.onLangChange(() => {
+                updateBlurOverlay();
+                if (currentPhase === 'open') {
+                    renderNavigator();
+                    renderQuestion();
+                } else if (currentPhase === 'ended' && lastResultData) {
+                    renderResultContent(lastResultData);
+                }
+            });
 
             // Cleanup na unload
             window.addEventListener('beforeunload', () => {

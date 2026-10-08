@@ -1243,17 +1243,30 @@ tbody tr.rank-3 {
 }
 
 .i18n-switcher button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  padding: 3px 7px;
+  padding: 3px 6px;
   border-radius: 99px;
   cursor: pointer;
   transition: background 120ms, color 120ms;
-  line-height: 1.4;
+  line-height: 1;
+}
+
+.i18n-switcher .i18n-flag {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.i18n-switcher .i18n-code {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .i18n-switcher button:hover {
@@ -1270,5 +1283,19 @@ tbody tr.rank-3 {
   .i18n-switcher {
     top: 6px;
     right: 8px;
+    gap: 1px;
+  }
+
+  .i18n-switcher button {
+    padding: 2px 4px;
+  }
+
+  .i18n-switcher .i18n-flag {
+    font-size: 0.95rem;
+  }
+
+  /* flag only: the code line made the switcher overlap page headers */
+  .i18n-switcher .i18n-code {
+    display: none;
   }
 }
