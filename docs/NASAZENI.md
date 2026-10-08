@@ -367,6 +367,20 @@ Ve variantach A a C jsou sady otazek v `questions/` soucasti gitu: kdyz ucitel u
 nekterou z vychozich sad, `git pull` ji odmitne prepsat — zalohujte ji a slucte rucne.
 
 Restart prerusi rozehranou hru (stav hry je v pameti); ucty, sady otazek a historie zustanou.
+Vysledky pisemek se ukladaji prubezne do databaze: pisemku prerusenou restartem server pri dalsim
+startu ohodnoti podle ulozenych odpovedi a najdete ji v portalu v casti Ulozene pisemky.
+
+Jestli se prave hraje nebo pise, zjistite pred restartem bez jmen zaku (jen heslo portalu):
+
+```bash
+B=https://classrally.example.com
+read -r -s -p "Heslo portalu: " PW; echo      # heslo nejde na prikazovou radku
+T=$(printf '%s' "$PW" | python3 -c 'import json,sys; print(json.dumps({"password": sys.stdin.read()}))' \
+    | curl -s -H 'Content-Type: application/json' --data-binary @- $B/api/admin/login \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+curl -s -H "Authorization: Bearer $T" $B/api/admin/activity
+# "busy": true = bezi hra nebo pisemka, nekdo je pripojeny, nebo byla mistnost pouzita v poslednich 15 min
+```
 
 ### Zalohy
 

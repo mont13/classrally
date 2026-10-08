@@ -42,6 +42,45 @@
     .history-player.gold { background: #fef3c7; }
     .history-player.silver { background: #e2e8f0; }
     .history-player.bronze { background: #fed7aa; }
+    /* formative analysis: games and exams */
+    .btn.small { padding: 6px 12px; font-size: 0.85rem; }
+    .analysis { margin-top: 12px; }
+    .analysis h5 { margin: 14px 0 6px; color: #0c4a6e; font-size: 1rem; }
+    .analysis table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .analysis th, .analysis td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+    .analysis tr.hotspot td { background: #fef2f2; }
+    .pct-bar { position: relative; min-width: 120px; height: 22px; background: #e2e8f0; border-radius: 6px; overflow: hidden; }
+    .pct-fill { height: 100%; background: #16a34a; }
+    .pct-fill.low { background: #dc2626; }
+    .pct-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 0.85rem; color: #0f172a; }
+    .hotspot-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px;
+      background: #dc2626; color: #fff; font-size: 0.75rem; font-weight: 800; vertical-align: middle; }
+    .matrix { overflow-x: auto; }
+    .matrix td.cell { text-align: center; font-weight: 900; }
+    .cell.ok { color: #15803d; }
+    .cell.bad { color: #b91c1c; }
+    .cell.part { color: #c2410c; }
+    .cell.none { color: #94a3b8; }
+    .item-card { padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #fff; }
+    .item-card.hotspot { border-color: #fca5a5; background: #fef2f2; }
+    .item-card .pct-bar { margin: 6px 0; }
+    .opt-row { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; font-size: 0.95rem; }
+    .opt-row .opt-count { min-width: 28px; text-align: right; font-weight: 800; }
+    .opt-row.correct { color: #15803d; font-weight: 800; }
+    .opt-row.top-wrong { color: #b91c1c; }
+    .saved-exam { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center;
+      padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc; }
+    #analysisOverlay { position: fixed; inset: 0; z-index: 3000; background: #0b1730;  /* opaque: no names shine through */
+      overflow-y: auto; padding: 56px 4vw 40px; }
+    #analysisOverlay.hide { display: none; }
+    #analysisOverlay .analysis-panel { max-width: 1100px; margin: 0 auto; background: #fff; border-radius: 14px;
+      padding: 20px 24px; font-size: 1.1rem; }
+    #analysisOverlay .analysis-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .rule-option { margin: 10px 0; }
+    .rule-option label { font-weight: 700; }
+    .rule-option input { width: 18px; height: 18px; margin-right: 6px; vertical-align: middle; }
+    .rule-option p { margin: 2px 0 0 26px; }
     .ai-status { padding: 12px; border-radius: 10px; margin-top: 10px; font-weight: 700; }
     .ai-status.loading { background: #e0f2fe; color: #0c4a6e; }
     .ai-status.success { background: #dcfce7; color: #166534; }
@@ -432,6 +471,8 @@
             <button class="btn warn" id="btnExamEnd">Ukončit pro všechny</button>
             <button class="btn secondary" id="btnExamExtend">+5 minut</button>
             <button class="btn secondary" id="btnExamExport">Stáhnout výsledky (CSV)</button>
+            <button class="btn secondary" id="btnExamExportAnswers" data-i18n="admin.csv_answers">Odpovědi žáků (CSV)</button>
+            <button class="btn secondary" id="btnExamExportItems" data-i18n="admin.csv_items">Rozbor otázek (CSV)</button>
             <button class="btn ghost" id="btnExamReset">Vymazat žáky</button>
           </div>
           <p id="examStatusLine" class="muted" style="margin-top:10px;font-weight:800;"></p>
@@ -443,6 +484,19 @@
             <span id="examOverviewSummary" class="muted"></span>
           </div>
           <div id="examOverview" style="overflow-x:auto;"></div>
+
+          <h3 style="margin-top:24px;" data-i18n="admin.exam_items_title">4. Rozbor otázek (bez jmen, lze promítnout)</h3>
+          <p class="muted" data-i18n="admin.exam_items_hint">Rozbor se otevře přes celou obrazovku, bez jmen a známek, takže ho můžete promítnout třídě.</p>
+          <div class="btn-row">
+            <button class="btn" id="btnExamItems" data-i18n="admin.btn_show_analysis">Zobrazit rozbor</button>
+          </div>
+
+          <h3 style="margin-top:24px;" data-i18n="admin.saved_exams_title">5. Uložené písemky</h3>
+          <p class="muted" data-i18n="admin.saved_exams_hint">Výsledky se ukládají průběžně, takže přežijí i restart serveru. Písemku přerušenou restartem server ohodnotí podle uložených odpovědí.</p>
+          <div class="btn-row">
+            <button class="btn" id="btnSavedExams" data-i18n="admin.btn_refresh">Obnovit</button>
+          </div>
+          <div id="savedExams" style="margin-top:10px;"></div>
         </div>
 
         <div id="tab-editor" class="tab-content">
@@ -541,6 +595,15 @@
               <input type="checkbox" id="timingFinalDouble" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" />
               <span data-i18n="admin.final_double_label">Poslední otázka za dvojnásobek bodů</span>
             </label>
+          </div>
+          <h3 style="margin-top: 18px;" data-i18n="admin.rules_title">Pravidla hry</h3>
+          <div class="rule-option">
+            <label><input type="checkbox" id="timingSpeedBonus" /><span data-i18n="admin.speed_bonus_label">Bonus za rychlost</span></label>
+            <p class="muted" data-i18n="admin.speed_bonus_hint">Vypnuto: každá správná odpověď má plných 1000 bodů bez ohledu na čas, takže pomalejší žáci nejsou znevýhodnění.</p>
+          </div>
+          <div class="rule-option">
+            <label><input type="checkbox" id="timingShowLeaderboard" /><span data-i18n="admin.show_leaderboard_label">Ukazovat celý žebříček</span></label>
+            <p class="muted" data-i18n="admin.show_leaderboard_hint">Vypnuto: projektor ani mobily neukazují pořadí ostatních, na konci jen stupně vítězů. Každý vidí jen své body.</p>
           </div>
           <button class="btn good" id="btnSaveTiming" data-i18n="admin.btn_save_settings">Uložit nastavení</button>
           <p class="muted" style="margin-top:10px;" data-i18n="admin.timing_hint">Změny se projeví od další otázky.</p>
@@ -701,6 +764,17 @@
     </section>
   </main>
 
+  <!-- Exam analysis for the projector: no names, no grades -->
+  <div id="analysisOverlay" class="hide" role="dialog" aria-modal="true">
+    <div class="analysis-panel">
+      <div class="analysis-head">
+        <h2 id="analysisTitle"></h2>
+        <button class="btn" id="analysisClose" data-i18n="admin.close">Zavřít</button>
+      </div>
+      <div id="analysisBody" class="analysis"></div>
+    </div>
+  </div>
+
   <script>
     let userToken = localStorage.getItem('quiz_user_token') || '';
     // Legacy admin token — kept for backward compat with old admin password system
@@ -734,6 +808,187 @@
       }
       if (!res.ok) throw new Error(data.error || 'Request failed');
       return data;
+    }
+
+    // i18n.t() with a Czech fallback while a key is missing in i18n/*.json
+    function tr(key, fallback, ...args) {
+      const s = i18n.t(key, ...args);
+      if (s !== key) return s;
+      return String(fallback).replace(/\{(\d+)\}/g, (_, i) => args[+i] ?? '');
+    }
+
+    function el(tag, className, text) {
+      const e = document.createElement(tag);
+      if (className) e.className = className;
+      if (text !== undefined && text !== null) e.textContent = text;
+      return e;
+    }
+
+    function smallBtn(text, cls, onClick) {
+      const b = el('button', 'btn small ' + (cls || ''), text);
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    // CSV download with the login header (plain links would not carry it)
+    async function downloadCsv(path, filename) {
+      try {
+        const res = await fetch(path, { headers: authHeaders() });
+        if (!res.ok) {
+          let msg = tr('admin.export_failed', 'Export se nepodařil');
+          try { msg = (await res.json()).error || msg; } catch (_) {}
+          throw new Error(msg);
+        }
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) { alert(e.message); }
+    }
+
+    // --- Formative analysis: which questions the class got wrong ---
+    function pctBar(percent) {
+      const known = percent !== null && percent !== undefined;
+      const wrap = el('div', 'pct-bar');
+      const fill = el('div', 'pct-fill' + (known && percent < 50 ? ' low' : ''));
+      fill.style.width = (known ? Math.max(0, Math.min(100, percent)) : 0) + '%';
+      wrap.appendChild(fill);
+      wrap.appendChild(el('span', 'pct-label', known ? percent + ' %' : '—'));
+      return wrap;
+    }
+
+    function hotspotBadge() {
+      const b = el('span', 'hotspot-badge', tr('admin.hotspot', 'pod 50 %'));
+      b.title = tr('admin.hotspot_title', 'Problémová otázka: projděte ji se třídou znovu');
+      return b;
+    }
+
+    function answerText(q, a) {
+      if (!a || a.choice === undefined || a.choice === null) return '';
+      const c = a.choice;
+      if (Array.isArray(c)) return c.map(i => (q.type === 'ordering' ? (q.items || [])[i] : abc[i]) ?? i).join(', ');
+      if (typeof c === 'number' && (q.options || [])[c] !== undefined) return `${abc[c] || c + 1}) ${q.options[c]}`;
+      return String(c);
+    }
+
+    function renderGameAnalysis(box, detail) {
+      box.innerHTML = '';
+      const items = detail.items || [];
+      if (!items.length) {
+        box.appendChild(el('p', 'muted', tr('admin.no_details', 'U této hry se odpovědi po otázkách neukládaly (hra ze starší verze).')));
+        return;
+      }
+      box.appendChild(el('h5', null, tr('admin.analysis_questions', 'Úspěšnost třídy po otázkách')));
+      const table = el('table');
+      const head = el('tr');
+      ['#', tr('admin.th_question', 'Otázka'), tr('admin.th_success', 'Úspěšnost'), tr('admin.th_correct', 'Správně'),
+       tr('admin.th_answered', 'Odpovědělo'), tr('admin.th_top_wrong', 'Nejčastější chyba'),
+       tr('admin.th_avg_time', 'Ø čas správných')].forEach(t => head.appendChild(el('th', null, t)));
+      const thead = el('thead');
+      thead.appendChild(head);
+      table.appendChild(thead);
+      const tbody = el('tbody');
+      items.forEach(it => {
+        const scored = it.correct !== null && it.correct !== undefined;
+        const hot = scored && it.percent !== null && it.percent < 50;
+        const row = el('tr', hot ? 'hotspot' : '');
+        row.appendChild(el('td', null, String(it.number)));
+        const tdQ = el('td', null, it.prompt);
+        if (hot) tdQ.appendChild(hotspotBadge());
+        row.appendChild(tdQ);
+        const tdBar = el('td');
+        if (scored) tdBar.appendChild(pctBar(it.percent));
+        else tdBar.textContent = tr('admin.not_scored', 'bez hodnocení');
+        row.appendChild(tdBar);
+        row.appendChild(el('td', null, scored ? `${it.correct}/${it.players}` : '—'));
+        row.appendChild(el('td', null, `${it.answered}/${it.players}`));
+        row.appendChild(el('td', null, it.top_wrong || '—'));
+        row.appendChild(el('td', null, it.avg_sec_correct === null || it.avg_sec_correct === undefined
+          ? '—' : String(it.avg_sec_correct).replace('.', ',') + ' s'));
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      box.appendChild(table);
+
+      const questions = detail.questions || [];
+      const scoredQ = questions.map((q, i) => ({ q, i })).filter(x => !['poll', 'wordcloud', 'slide'].includes(x.q.type));
+      if (!scoredQ.length) return;
+      box.appendChild(el('h5', null, tr('admin.analysis_matrix', 'Žáci × otázky')));
+      const wrap = el('div', 'matrix');
+      const m = el('table');
+      const mh = el('tr');
+      ['#', tr('admin.th_name', 'Jméno'), tr('admin.th_points', 'Body')].forEach(t => mh.appendChild(el('th', null, t)));
+      scoredQ.forEach(({ q }) => {
+        const th = el('th', null, 'O' + ((q.index ?? 0) + 1));
+        th.title = q.prompt;
+        mh.appendChild(th);
+      });
+      const mhead = el('thead');
+      mhead.appendChild(mh);
+      m.appendChild(mhead);
+      const mb = el('tbody');
+      (detail.players || []).forEach(p => {
+        const row = el('tr');
+        row.appendChild(el('td', null, String(p.rank)));
+        row.appendChild(el('td', null, p.name));
+        row.appendChild(el('td', null, String(p.score)));
+        scoredQ.forEach(({ q, i }) => {
+          const a = (p.answers || [])[i];
+          let cls = 'none', mark = '–';
+          if (a && a.ok) { cls = 'ok'; mark = '✓'; }
+          else if (a && a.points > 0) { cls = 'part'; mark = '½'; }
+          else if (a) { cls = 'bad'; mark = '✗'; }
+          const td = el('td', 'cell ' + cls, mark);
+          td.title = answerText(q, a);
+          row.appendChild(td);
+        });
+        mb.appendChild(row);
+      });
+      m.appendChild(mb);
+      wrap.appendChild(m);
+      box.appendChild(wrap);
+      box.appendChild(el('p', 'muted', tr('admin.matrix_legend', '✓ správně · ½ částečně · ✗ špatně · – bez odpovědi (najetím myší uvidíte odpověď)')));
+    }
+
+    function renderExamItems(box, data) {
+      box.innerHTML = '';
+      if (!data.graded) {
+        box.appendChild(el('p', 'muted', tr('admin.exam_items_empty', 'Rozbor bude k dispozici, jakmile někdo odevzdá.')));
+        return;
+      }
+      box.appendChild(el('p', 'muted', tr('admin.exam_items_summary', 'Hodnoceno {0} z {1} žáků. Bez jmen, lze promítnout třídě.', data.graded, data.students)));
+      data.items.forEach(it => {
+        const hot = it.percent !== null && it.percent < 50;
+        const card = el('div', 'item-card' + (hot ? ' hotspot' : ''));
+        const title = el('div', null, `${it.number}. ${it.prompt}`);
+        title.style.fontWeight = '800';
+        if (hot) title.appendChild(hotspotBadge());
+        card.appendChild(title);
+        card.appendChild(pctBar(it.percent));
+        (it.options || []).forEach((opt, i) => {
+          const cls = i === it.correct_index ? ' correct' : (i === it.top_wrong ? ' top-wrong' : '');
+          const row = el('div', 'opt-row' + cls);
+          row.appendChild(el('span', 'opt-count', String((it.counts || [])[i] || 0)));
+          row.appendChild(el('span', null, `${abc[i] || i + 1}) ${opt}` + (i === it.correct_index ? ' ✓' : '')));
+          card.appendChild(row);
+        });
+        const meta = [];
+        if (it.unanswered) meta.push(tr('admin.unanswered', 'bez odpovědi: {0}', it.unanswered));
+        if (it.discrimination !== null && it.discrimination !== undefined) {
+          meta.push(tr('admin.discrimination', 'rozlišení r = {0}', String(it.discrimination).replace('.', ',')));
+        }
+        if (meta.length) card.appendChild(el('div', 'muted', meta.join(' · ')));
+        if (it.explanation) card.appendChild(el('div', 'muted', it.explanation));
+        box.appendChild(card);
+      });
+      if (data.items.some(it => it.discrimination !== null && it.discrimination !== undefined)) {
+        box.appendChild(el('p', 'muted', tr('admin.discrimination_hint',
+          'Rozlišení r: jak dobře otázka oddělí žáky, kteří látku umí, od ostatních. Kolem 0,3 a víc je dobré; kolem nuly nebo záporné = zkontrolujte znění a klíč.')));
+      }
     }
 
     function escHtml(s) {
@@ -1745,6 +2000,8 @@
         document.getElementById('timingReveal').value = state.reveal_duration_sec || 5;
         document.getElementById('timingGetReady').value = state.get_ready_sec ?? 3;
         document.getElementById('timingFinalDouble').checked = !!state.final_double;
+        document.getElementById('timingSpeedBonus').checked = state.speed_bonus !== false;
+        document.getElementById('timingShowLeaderboard').checked = state.show_leaderboard !== false;
       } catch {}
     }
 
@@ -1947,6 +2204,8 @@
           reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
           get_ready_sec: parseInt(document.getElementById('timingGetReady').value),
           final_double: document.getElementById('timingFinalDouble').checked,
+          speed_bonus: document.getElementById('timingSpeedBonus').checked,
+          show_leaderboard: document.getElementById('timingShowLeaderboard').checked,
         });
         alert(i18n.t('admin.settings_saved'));
       } catch (e) { alert(e.message); }
@@ -2010,28 +2269,24 @@
           const date = new Date(h.timestamp);
           h4.textContent = `${date.toLocaleString('cs-CZ')} — ${h.player_count} ${i18n.t('admin.players_suffix')}, ${h.total_questions} ${i18n.t('admin.questions_suffix')}`;
           headerDiv.appendChild(h4);
-          const exportBtn = document.createElement('button');
-          exportBtn.className = 'btn secondary';
-          exportBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
-          exportBtn.textContent = i18n.t('admin.btn_export_csv');
-          exportBtn.addEventListener('click', () => {
-            const url = `/api/admin/history/export?game_id=${encodeURIComponent(h.id)}`;
-            // Fetch with auth header then trigger download
-            fetch(url, { headers: authHeaders() })
-              .then(res => {
-                if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Export failed'); });
-                return res.blob();
-              })
-              .then(blob => {
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `game_${h.id}_results.csv`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-              })
-              .catch(e => alert(e.message));
-          });
-          headerDiv.appendChild(exportBtn);
+          const actions = el('div', 'btn-row');
+          const details = el('div', 'analysis hide');
+          if (h.has_details) {
+            actions.appendChild(smallBtn(tr('admin.btn_show_analysis', 'Zobrazit rozbor'), '', async () => {
+              if (!details.classList.contains('hide')) { details.classList.add('hide'); return; }
+              try {
+                renderGameAnalysis(details, await api(`/api/admin/history/detail?game_id=${encodeURIComponent(h.id)}`));
+                details.classList.remove('hide');
+              } catch (e) { alert(e.message); }
+            }));
+          }
+          actions.appendChild(smallBtn(i18n.t('admin.btn_export_csv'), 'secondary',
+            () => downloadCsv(`/api/admin/history/export?game_id=${encodeURIComponent(h.id)}`, `game_${h.id}_results.csv`)));
+          if (h.has_details) {
+            actions.appendChild(smallBtn(tr('admin.csv_items', 'Rozbor otázek (CSV)'), 'secondary',
+              () => downloadCsv(`/api/admin/history/items.csv?game_id=${encodeURIComponent(h.id)}`, `hra-${h.id}-otazky.csv`)));
+          }
+          headerDiv.appendChild(actions);
           const delBtn = document.createElement('button');
           delBtn.className = 'btn warn';
           delBtn.style.cssText = 'padding:6px 12px;font-size:0.85rem;';
@@ -2043,8 +2298,9 @@
               loadHistory();
             } catch (e) { alert(e.message); }
           });
-          headerDiv.appendChild(delBtn);
+          actions.appendChild(delBtn);
           div.appendChild(headerDiv);
+          div.appendChild(details);
 
           const playersDiv = document.createElement('div');
           playersDiv.className = 'history-players';
@@ -2368,6 +2624,7 @@
       });
       loadExamConfig();
       refreshExamOverview();
+      loadSavedExams();
       startExamOverview();
     }
 
@@ -2445,23 +2702,76 @@
       try { await examHostAction('reset'); refreshExamOverview(); } catch (e) { alert(e.message); }
     });
 
-    document.getElementById('btnExamExport').addEventListener('click', async () => {
+    document.getElementById('btnExamExport').addEventListener('click',
+      () => downloadCsv('/api/admin/exam/results.csv', 'vysledky-pisemky.csv'));
+    document.getElementById('btnExamExportAnswers').addEventListener('click',
+      () => downloadCsv('/api/admin/exam/answers.csv', 'pisemka-odpovedi.csv'));
+    document.getElementById('btnExamExportItems').addEventListener('click',
+      () => downloadCsv('/api/admin/exam/items.csv', 'pisemka-rozbor-otazek.csv'));
+    document.getElementById('btnExamItems').addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/admin/exam/results.csv', {
-          headers: authHeaders(),
-        });
-        if (!res.ok) throw new Error('Export selhal');
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'vysledky-pisemky.csv';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        showAnalysis(tr('admin.exam_items_overlay', 'Rozbor otázek písemky'), await api('/api/admin/exam/items'));
       } catch (e) { alert(e.message); }
     });
+
+    // Full screen, no names or grades: safe to project to the class
+    function showAnalysis(title, data) {
+      document.getElementById('analysisTitle').textContent = title;
+      renderExamItems(document.getElementById('analysisBody'), data);
+      document.getElementById('analysisOverlay').classList.remove('hide');
+    }
+    document.getElementById('analysisClose').addEventListener('click',
+      () => document.getElementById('analysisOverlay').classList.add('hide'));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') document.getElementById('analysisOverlay').classList.add('hide');
+    });
+    document.getElementById('btnSavedExams').addEventListener('click', loadSavedExams);
+
+    async function loadSavedExams() {
+      const box = document.getElementById('savedExams');
+      let exams;
+      try { exams = await api('/api/admin/exams'); } catch (e) { box.textContent = e.message; return; }
+      box.innerHTML = '';
+      if (!exams.length) {
+        box.appendChild(el('p', 'muted', tr('admin.saved_exams_none', 'Zatím žádná uložená písemka.')));
+        return;
+      }
+      exams.forEach(x => {
+        const row = el('div', 'saved-exam');
+        const info = el('div');
+        const when = new Date(x.opened_at * 1000).toLocaleString();
+        info.appendChild(el('strong', null, `${when} — ${x.bank_name || '?'}`));
+        const meta = [tr('admin.saved_exam_students', 'žáků: {0}', x.students)];
+        if (x.avg_percent !== null && x.avg_percent !== undefined) meta.push(tr('admin.saved_exam_avg', 'průměr {0} %', x.avg_percent));
+        if (x.interrupted) meta.push(tr('admin.saved_exam_interrupted', 'přerušeno restartem serveru'));
+        else if (!x.ended_at) meta.push(tr('admin.saved_exam_running', 'právě probíhá'));
+        info.appendChild(el('div', 'muted', meta.join(' · ')));
+        row.appendChild(info);
+        const btns = el('div', 'btn-row');
+        btns.appendChild(smallBtn(tr('admin.csv_results', 'Výsledky (CSV)'), 'secondary',
+          () => downloadCsv(`/api/admin/exams/results.csv?id=${x.id}`, `pisemka-${x.id}-vysledky.csv`)));
+        btns.appendChild(smallBtn(tr('admin.csv_answers', 'Odpovědi žáků (CSV)'), 'secondary',
+          () => downloadCsv(`/api/admin/exams/answers.csv?id=${x.id}`, `pisemka-${x.id}-odpovedi.csv`)));
+        btns.appendChild(smallBtn(tr('admin.csv_items', 'Rozbor otázek (CSV)'), 'secondary',
+          () => downloadCsv(`/api/admin/exams/items.csv?id=${x.id}`, `pisemka-${x.id}-rozbor-otazek.csv`)));
+        btns.appendChild(smallBtn(tr('admin.btn_show_analysis', 'Zobrazit rozbor'), '', async () => {
+          try {
+            const d = await api(`/api/admin/exams/detail?id=${x.id}`);
+            showAnalysis(`${when} — ${x.bank_name || '?'}`, { students: d.students.length,
+              graded: d.students.filter(s => s.score !== null).length, items: d.items });
+          } catch (e) { alert(e.message); }
+        }));
+        if (x.ended_at) {  // a running exam cannot be deleted from under the students
+          btns.appendChild(smallBtn(tr('admin.btn_delete', 'Smazat'), 'warn', async () => {
+            if (!confirm(tr('admin.confirm_delete_exam', 'Smazat uloženou písemku i s výsledky všech žáků?'))) return;
+            try { await api('/api/admin/exams/delete', 'POST', { id: x.id }); loadSavedExams(); }
+            catch (e) { alert(e.message); }
+          }));
+        }
+        row.appendChild(btns);
+        box.appendChild(row);
+      });
+    }
 
     document.getElementById('btnExamRefresh').addEventListener('click', refreshExamOverview);
 

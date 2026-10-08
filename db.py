@@ -260,6 +260,35 @@ def init_db() -> None:
                 used_at     REAL
             );
             CREATE INDEX IF NOT EXISTS idx_user_tokens_user ON user_tokens(user_id);
+
+            -- Exams (pisemky): results are written as students answer, so a
+            -- restart loses nothing. The questions are stored as they were in
+            -- the exam: later edits of the bank never change old results.
+            CREATE TABLE IF NOT EXISTS exam_sessions (
+                id          TEXT PRIMARY KEY,
+                owner_id    INTEGER,
+                bank_name   TEXT,
+                questions   TEXT NOT NULL,
+                config      TEXT NOT NULL,
+                opened_at   REAL NOT NULL,
+                ended_at    REAL,
+                interrupted INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS exam_results (
+                session_id     TEXT NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
+                player_id      TEXT NOT NULL,
+                name           TEXT NOT NULL,
+                answers        TEXT NOT NULL DEFAULT '{}',
+                score          INTEGER,
+                grade          INTEGER,
+                submitted_at   REAL,
+                auto_submitted INTEGER NOT NULL DEFAULT 0,
+                blur_count     INTEGER NOT NULL DEFAULT 0,
+                away_ms        REAL NOT NULL DEFAULT 0,
+                updated_at     REAL NOT NULL,
+                PRIMARY KEY (session_id, player_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_exam_sessions_owner ON exam_sessions(owner_id);
         """)
         conn.commit()
     finally:
@@ -1427,6 +1456,161 @@ def cleanup_expired_selfpaced_sessions() -> None:
             (time.time(),),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# --- Exams (pisemky) ---
+
+def create_exam_session(session_id: str, owner_id: int | None, bank_name: str,
+                        questions: list, config: dict, opened_at: float) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO exam_sessions (id, owner_id, bank_name, questions, config, opened_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, owner_id, bank_name, json.dumps(questions, ensure_ascii=False),
+             json.dumps(config, ensure_ascii=False), opened_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_exam_result(session_id: str, player_id: str, row: dict) -> None:
+    """Insert or update one student's state in an exam (answers, grade, proctoring)."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO exam_results (session_id, player_id, name, answers, score, grade, submitted_at, "
+            "auto_submitted, blur_count, away_ms, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(session_id, player_id) DO UPDATE SET name = excluded.name, "
+            "answers = excluded.answers, score = excluded.score, grade = excluded.grade, "
+            "submitted_at = excluded.submitted_at, auto_submitted = excluded.auto_submitted, "
+            "blur_count = excluded.blur_count, away_ms = excluded.away_ms, updated_at = excluded.updated_at",
+            (session_id, player_id, row["name"], json.dumps(row.get("answers") or {}, ensure_ascii=False),
+             row.get("score"), row.get("grade"), row.get("submitted_at"),
+             1 if row.get("auto_submitted") else 0, int(row.get("blur_count") or 0),
+             float(row.get("away_ms") or 0.0), time.time()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def reopen_exam_session(session_id: str, config: dict) -> bool:
+    """An ended exam opened again (latecomers): running again, with current settings.
+
+    False when the saved exam no longer exists (the teacher deleted it).
+    """
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE exam_sessions SET ended_at = NULL, interrupted = 0, config = ? WHERE id = ?",
+                           (json.dumps(config, ensure_ascii=False), session_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def update_exam_session_config(session_id: str, config: dict) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE exam_sessions SET config = ? WHERE id = ?",
+                     (json.dumps(config, ensure_ascii=False), session_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def end_exam_session(session_id: str, ended_at: float, interrupted: bool = False) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE exam_sessions SET ended_at = ?, interrupted = ? WHERE id = ?",
+                     (ended_at, 1 if interrupted else 0, session_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _exam_session_row(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"], "owner_id": row["owner_id"], "bank_name": row["bank_name"] or "",
+        "questions": json.loads(row["questions"]), "config": json.loads(row["config"]),
+        "opened_at": row["opened_at"], "ended_at": row["ended_at"], "interrupted": bool(row["interrupted"]),
+    }
+
+
+def _exam_result_row(row: sqlite3.Row) -> dict:
+    return {
+        "player_id": row["player_id"], "name": row["name"], "answers": json.loads(row["answers"] or "{}"),
+        "score": row["score"], "grade": row["grade"], "submitted_at": row["submitted_at"],
+        "auto_submitted": bool(row["auto_submitted"]), "blur_count": row["blur_count"],
+        "away_ms": row["away_ms"], "updated_at": row["updated_at"],
+    }
+
+
+def get_exam_session(session_id: str) -> dict | None:
+    """One exam with all its student rows, or None."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM exam_sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            return None
+        session = _exam_session_row(row)
+        session["results"] = [_exam_result_row(r) for r in conn.execute(
+            "SELECT * FROM exam_results WHERE session_id = ? ORDER BY name COLLATE NOCASE", (session_id,))]
+        return session
+    finally:
+        conn.close()
+
+
+def list_exam_sessions(owner_id: int | None = None) -> list[dict]:
+    """Exams newest first (one teacher's, or all), with student counts and the average."""
+    conn = get_conn()
+    try:
+        where, args = ("WHERE s.owner_id = ?", (owner_id,)) if owner_id is not None else ("", ())
+        rows = conn.execute(f"""
+            SELECT s.id, s.owner_id, s.bank_name, s.questions, s.opened_at, s.ended_at, s.interrupted,
+                   COUNT(r.player_id) AS students,
+                   SUM(CASE WHEN r.submitted_at IS NOT NULL OR r.auto_submitted = 1 THEN 1 ELSE 0 END) AS graded,
+                   AVG(r.score) AS avg_score
+            FROM exam_sessions s LEFT JOIN exam_results r ON r.session_id = s.id
+            {where}
+            GROUP BY s.id ORDER BY s.opened_at DESC
+        """, args).fetchall()
+        out = []
+        for row in rows:
+            total = len(json.loads(row["questions"]))
+            avg = row["avg_score"]
+            out.append({
+                "id": row["id"], "owner_id": row["owner_id"], "bank_name": row["bank_name"] or "",
+                "opened_at": row["opened_at"], "ended_at": row["ended_at"],
+                "interrupted": bool(row["interrupted"]), "total_questions": total,
+                "students": row["students"], "graded": row["graded"] or 0,
+                "avg_percent": round(avg / total * 100) if avg is not None and total else None,
+            })
+        return out
+    finally:
+        conn.close()
+
+
+def list_open_exam_sessions() -> list[dict]:
+    """Exams without an end time, with their student rows (for closing after a restart)."""
+    conn = get_conn()
+    try:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM exam_sessions WHERE ended_at IS NULL")]
+    finally:
+        conn.close()
+    return [s for s in (get_exam_session(i) for i in ids) if s is not None]
+
+
+def delete_exam_session(session_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM exam_sessions WHERE id = ?", (session_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 

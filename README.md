@@ -98,7 +98,16 @@ V ucitelskem portalu (`/admin`) zalozka **Pisemka (test)**:
 2. **Pripravit pisemku** — aktivuje sadu do rezimu Pisemka (`/play` u zaku se automaticky prepne na `/exam`).
 3. **Spustit pisemku** — od ted bezi spolecny casovy limit.
 4. **Zivy prehled (dohled)** — u kazdeho zaka vidite: u ktere otazky je, kolik zodpovedel, **kolikrat opustil okno testu** a jak dlouho byl mimo, stav a vyslednou znamku.
-5. **Stahnout vysledky (CSV)** — otevrete v Excelu.
+5. **Stahnout vysledky (CSV)** — otevrete v Excelu. Krome souhrnu (body, procenta, znamka, dohled) maji
+   sloupce `O1…On` s 1/0 za kazdou otazku. Dalsi exporty: **Odpovedi zaku** (kazda odpoved oznacena
+   spravne / chybne / bez odpovedi) a **Rozbor otazek**.
+6. **Rozbor otazek** — bez jmen, lze ho promitnout tride: uspesnost kazde otazky, kolik zaku zvolilo
+   kterou moznost, nejcastejsi chybna odpoved a rozlisovaci schopnost otazky (korigovana korelace
+   polozky s celkem). Otazky pod 50 % jsou zvyraznene k opakovani.
+
+**Vysledky se ukladaji prubezne** (kazda odpoved, opusteni okna, odevzdani), takze se neztrati ani
+pri restartu serveru. Pisemku prerusenou restartem server pri dalsim startu ohodnoti podle ulozenych
+odpovedi. Vsechny pisemky najdete v portalu v casti **Ulozene pisemky** (CSV exporty, rozbor, smazani).
 
 **Dohled / anti-cheat:** detekce prepnuti aplikace/zalozky (Page Visibility API) s varovnim pres celou obrazovku, volitelne auto-odevzdani, zakaz kopirovani a michani poradi otazek i odpovedi kazdemu zakovi jinak. Pozn.: v mobilnim prohlizeci nelze vynutit tvrdy lockdown — opusteni okna se **meri a hlasi ucitelovi**, neda se mu zabranit.
 
@@ -145,6 +154,15 @@ Konfigurace AI serveru je v tabulce Pokrocile nastaveni.
 ### Historie her
 - Automaticke ukladani vysledku po kazde hre
 - Datum, pocet hracu, zebricek
+- **Rozbor hry**: uspesnost tridy u kazde otazky, nejcastejsi chybna odpoved, prumerny cas spravnych
+  odpovedi a matice **zaci × otazky** (✓ spravne, ½ castecne, ✗ spatne, – bez odpovedi)
+- Export CSV (poradi, body, sloupce `O1…On`) a CSV rozboru otazek
+
+### Rozbor otazek po hre
+Po posledni otazce ukaze host obrazovka tlacitko **Rozbor otazek**: u kazde otazky podil spravnych
+odpovedi, kolik hracu zvolilo kterou moznost (spravna zelene, nejcastejsi chyba cervene) a vysvetleni.
+Otazky pod 50 % jsou oznacene „projit znovu“ a lze je seradit od nejtezsi. Jmena se neukazuji, rozbor
+je urceny k promitnuti a spolecne reflexi chyb.
 
 ## Ovladani hry (Host obrazovka)
 
@@ -163,6 +181,12 @@ Konfigurace AI serveru je v tabulce Pokrocile nastaveni.
 - Spravna odpoved: **600 bodu** + bonus za rychlost (az +400)
 - Cim rychleji odpovis, tim vice bodu — odpocet "Priprav se" se od casu odecita, takze speed bonus bezi az od zobrazeni odpovedi
 - **Dvojnasobne body**: otazka oznacena v editoru (nebo posledni otazka pri zapnute volbe finale) se pocita 2x
+
+### Pravidla hry (portal → Nastaveni)
+- **Bonus za rychlost** (vychozi zapnuto): vypnuto = kazda spravna odpoved ma plnych 1000 bodu bez
+  ohledu na cas, pomalejsi zaci nejsou znevyhodneni.
+- **Ukazovat cely zebricek** (vychozi zapnuto): vypnuto = projektor ani mobily neukazuji poradi
+  ostatnich, na konci jen stupne vitezu; kazdy vidi jen sve body.
 
 ## QR kod pro pripojeni
 
@@ -318,9 +342,18 @@ PORT=48999 ./smoke_test.sh    # na jinem portu, kdyz je vychozi obsazeny
 | POST | `/api/admin/mode` | Prepnout rezim (`{"mode":"game\|exam"}`) |
 | GET/POST | `/api/admin/exam/config` | Cist/ulozit nastaveni pisemky |
 | GET | `/api/admin/exam/overview` | Zivy prehled zaku (dohled) |
-| GET | `/api/admin/exam/results.csv` | Export vysledku (CSV pro Excel) |
-| POST | `/api/admin/timing` | Nastavit casovani hry |
-| GET | `/api/admin/history` | Historie her |
+| GET | `/api/admin/exam/results.csv` | Export vysledku (CSV pro Excel, vc. sloupcu O1…On) |
+| GET | `/api/admin/exam/answers.csv` | Odpovedi zaku (kazda oznacena spravne/chybne) |
+| GET | `/api/admin/exam/items.csv` | Rozbor otazek (uspesnost, nejcastejsi chyba, korelace s celkem) |
+| GET | `/api/admin/exam/items` | Rozbor otazek jako JSON (bez jmen) |
+| GET | `/api/admin/exams` | Ulozene pisemky |
+| GET | `/api/admin/exams/{results,answers,items}.csv?id=X`, `/api/admin/exams/detail?id=X` | Exporty a rozbor ulozene pisemky |
+| POST | `/api/admin/exams/delete` | Smazat ulozenou pisemku (`{"id"}`) |
+| POST | `/api/admin/timing` | Casovani hry a pravidla (`speed_bonus`, `show_leaderboard`) |
+| GET | `/api/admin/history` | Historie her (bez detailu po otazkach) |
+| GET | `/api/admin/history/detail?game_id=X` | Hra vc. odpovedi po otazkach a rozboru |
+| GET | `/api/admin/history/export?game_id=X`, `/api/admin/history/items.csv?game_id=X` | CSV vysledku a rozboru otazek |
+| GET | `/api/admin/activity` | Kolik se prave hraje a pise, bez jmen (pri vice ucitelich jen spravce serveru s heslem portalu) |
 | POST | `/api/admin/ai/generate` | AI generovani otazek |
 
 ## Format otazek (JSON)

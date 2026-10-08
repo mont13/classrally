@@ -72,6 +72,9 @@ mimetypes.add_type("audio/webm", ".weba")
 
 # Game ID format: 12 hex chars
 GAME_ID_RE = re.compile(r"^[a-f0-9]{12}$")
+EXAM_ID_RE = GAME_ID_RE  # saved exams use the same 12-hex ids
+ACTIVITY_RECENT_SEC = 15 * 60  # a room used this recently counts as busy (deploy check)
+MIN_STUDENTS_FOR_DISCRIMINATION = 10  # below this the item-total correlation is noise
 
 
 # --- Admin auth ---
@@ -494,14 +497,115 @@ def questions_from_csv(csv_text: str) -> list[dict[str, Any]]:
     return questions
 
 
-def game_results_to_csv(record: dict[str, Any]) -> str:
-    """Serialize a game history record to CSV (rank, name, score)."""
+def _csv_cell(value: Any) -> Any:
+    if isinstance(value, float):
+        return str(value).replace(".", ",")  # decimal comma for Czech Excel
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value  # a student's name like =HYPERLINK(...) must not run as a formula
+    return value
+
+
+def _csv_text(rows: list[list[Any]]) -> str:
+    """CSV for Czech Excel: semicolons, BOM, decimal comma, no formula injection."""
     buf = io.StringIO()
-    writer = csv.writer(buf, lineterminator="\n")
-    writer.writerow(["rank", "name", "score"])
+    writer = csv.writer(buf, delimiter=";", lineterminator="\n")
+    for row in rows:
+        writer.writerow([_csv_cell(v) for v in row])
+    return "\ufeff" + buf.getvalue()
+
+
+def _letter(index: Any) -> str:
+    return chr(ord("A") + index) if isinstance(index, int) and 0 <= index < 26 else ""
+
+
+def _scored_questions(record: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    """(position in record["questions"], question) of the questions that give points."""
+    return [(i, q) for i, q in enumerate(record.get("questions") or [])
+            if q.get("type") not in UNSCORED_QUESTION_TYPES]
+
+
+def game_results_to_csv(record: dict[str, Any]) -> str:
+    """A game for Excel: rank, name, points and, per question, 1 (right) / 0 / empty (no answer)."""
+    scored = _scored_questions(record)
+    header = ["Poradi", "Jmeno", "Body"]
+    if scored:
+        header += ["Spravne", "Odpovedi"] + [f"O{q.get('index', i) + 1}" for i, q in scored]
+    rows = [header]
     for p in record.get("players", []):
-        writer.writerow([p.get("rank", ""), p.get("name", ""), p.get("score", 0)])
-    return buf.getvalue()
+        row = [p.get("rank", ""), p.get("name", ""), p.get("score", 0)]
+        if scored:
+            answers = p.get("answers") or []
+            marks = []
+            for i, _ in scored:
+                a = answers[i] if i < len(answers) else None
+                marks.append("" if not a else (1 if a.get("ok") else 0))
+            row += [sum(1 for m in marks if m == 1), sum(1 for m in marks if m != "")] + marks
+        rows.append(row)
+    return _csv_text(rows)
+
+
+def _top_wrong_answer(q: dict[str, Any]) -> str:
+    """The most common wrong answer of a logged game question ("" if none)."""
+    counts, correct = q.get("counts") or [], q.get("correct")
+    options = q.get("options") or []
+    if q.get("type") in ("choice", "truefalse", "multiselect") and counts:
+        right = set(correct) if isinstance(correct, list) else {correct}
+        wrong = [(c, -i) for i, c in enumerate(counts) if i not in right and c > 0]
+        if wrong:
+            i = -max(wrong)[1]
+            return f"{_letter(i)}) {options[i] if i < len(options) else ''}".strip()
+    if q.get("type") == "openended":
+        for item in q.get("top_answers") or []:
+            if len(item) >= 3 and item[2] is False:  # the grading's own verdict (it accepts small typos)
+                return item[0]
+    return ""
+
+
+def game_items(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per-question analysis of a game: success rate, most common wrong answer."""
+    items = []
+    for i, q in enumerate(record.get("questions") or []):
+        if q.get("type") == "slide":
+            continue
+        scored = q.get("type") not in UNSCORED_QUESTION_TYPES
+        players = q.get("players") or 0
+        correct = q.get("correct_count") if scored else None
+        items.append({
+            "number": q.get("index", i) + 1, "type": q.get("type"), "prompt": q.get("prompt", ""),
+            "players": players, "answered": q.get("answered", 0), "correct": correct,
+            "percent": round(correct / players * 100) if scored and players else None,
+            "top_wrong": _top_wrong_answer(q) if scored else "",
+            "avg_sec_correct": q.get("avg_sec_correct"),
+        })
+    return items
+
+
+def game_items_csv(record: dict[str, Any]) -> str:
+    rows = [["Otazka", "Typ", "Zneni", "Hracu", "Odpovedelo", "Spravne", "Uspesnost %",
+             "Nejcastejsi chybna odpoved", "Prumerny cas spravnych (s)"]]
+    for it in game_items(record):
+        rows.append([it["number"], it["type"], it["prompt"], it["players"], it["answered"],
+                     "" if it["correct"] is None else it["correct"],
+                     "" if it["percent"] is None else it["percent"], it["top_wrong"],
+                     "" if it["avg_sec_correct"] is None else float(it["avg_sec_correct"])])
+    return _csv_text(rows)
+
+
+def history_overview(record: dict[str, Any]) -> dict[str, Any]:
+    """A game record for the history list: without per-question detail and internal ids."""
+    out = {k: v for k, v in record.items() if k != "questions"}
+    out["players"] = [{k: v for k, v in p.items() if k not in ("answers", "player_id")}
+                      for p in record.get("players", [])]
+    out["has_details"] = bool(record.get("questions"))
+    return out
+
+
+def history_detail(record: dict[str, Any]) -> dict[str, Any]:
+    """A full game record for the teacher's analysis (no internal player ids)."""
+    out = dict(record)
+    out["players"] = [{k: v for k, v in p.items() if k != "player_id"} for p in record.get("players", [])]
+    out["items"] = game_items(record)
+    return out
 
 
 def load_default_questions() -> list[dict[str, Any]]:
@@ -524,15 +628,23 @@ def load_default_questions() -> list[dict[str, Any]]:
 # --- Scoring history ---
 
 def save_game_history(quiz_state: QuizState, class_id: int | None = None) -> dict[str, Any]:
+    # called with quiz_state._lock held
+    log = quiz_state.question_log
+    players = quiz_state._ranked_players_with_ids()
+    if log:
+        for row in players:  # per question: None (no answer) or {ok, points, choice, sec}
+            row["answers"] = [entry["results"].get(row["player_id"]) for entry in log]
     record = {
         "id": uuid.uuid4().hex[:12],
         "timestamp": datetime.now().isoformat(),
         "total_questions": len(quiz_state.questions),
         "question_duration_sec": quiz_state.question_duration_sec,
-        "players": quiz_state._ranked_players_with_ids(),
+        "speed_bonus": quiz_state.speed_bonus,
+        "players": players,
         "player_count": len(quiz_state.players),
         "bank_name": quiz_state._active_bank or "",
         "owner_id": quiz_state.owner_id,  # teacher whose room played it (None = default room)
+        "questions": quiz_state._question_summary_locked(),
     }
     # Save to JSON file (backward compat)
     filename = f"game_{record['id']}.json"
@@ -950,6 +1062,11 @@ TEAM_NAMES_DEFAULT: list[str] = ["Modri", "Cerveni", "Zeleni", "Zluti", "Fialovi
 TEAM_COLORS: list[str] = ["#1d4ed8", "#dc2626", "#16a34a", "#ca8a04", "#7c3aed", "#ea580c"]
 
 
+# Points: 600 for a correct answer + up to 400 for speed (10 per second left of 40).
+MAX_POINTS = 600 + 40 * 10
+UNSCORED_QUESTION_TYPES = ("poll", "wordcloud", "slide")
+
+
 @dataclass
 class Player:
     name: str
@@ -999,6 +1116,13 @@ class QuizState:
         self.team_mode: bool = False
         self.num_teams: int = 2
         self.team_names: list[str] = TEAM_NAMES_DEFAULT[:2]
+        # Didactic options (docs: "jen stupne vitezu" instead of the full ranking,
+        # no speed pressure for slower students)
+        self.speed_bonus: bool = True
+        self.show_leaderboard: bool = True
+        # One entry per evaluated question: what the class answered (formative
+        # analysis after the game, saved with the game history)
+        self.question_log: list[dict[str, Any]] = []
 
     def _notify(self) -> None:
         """Broadcast this game's state over WS (call only after releasing the lock)."""
@@ -1019,6 +1143,7 @@ class QuizState:
             self.scored_question_index = None
             self.scored_question_count = 0
             self._awards_cache = None
+            self.question_log = []
             for player in self.players.values():
                 player.score = 0
                 player.streak = 0
@@ -1033,8 +1158,13 @@ class QuizState:
                 player.team = None
 
     def set_timing(self, question_sec: int | None = None, reveal_sec: int | None = None,
-                   get_ready_sec: int | None = None, final_double: bool | None = None) -> None:
+                   get_ready_sec: int | None = None, final_double: bool | None = None,
+                   speed_bonus: bool | None = None, show_leaderboard: bool | None = None) -> None:
         with self._lock:
+            if speed_bonus is not None:
+                self.speed_bonus = bool(speed_bonus)
+            if show_leaderboard is not None:
+                self.show_leaderboard = bool(show_leaderboard)
             if question_sec is not None:
                 self.question_duration_sec = max(5, min(120, question_sec))
             if reveal_sec is not None:
@@ -1132,6 +1262,7 @@ class QuizState:
             self.scored_question_index = None
             self.scored_question_count = 0
             self._awards_cache = None
+            self.question_log = []
             self._mark_ws_state_locked()
         self._notify()
         return gone
@@ -1150,6 +1281,7 @@ class QuizState:
                 self.answers = {}
                 self.scored_question_index = None
                 self._awards_cache = None
+                self.question_log = []
             elif action == "reveal":
                 if self.phase != "question":
                     raise ValueError("Reveal je mozne jen ve fazi question")
@@ -1157,6 +1289,8 @@ class QuizState:
                 self.phase = "reveal"
                 self.reveal_started_at = now
             elif action == "next":
+                if self.phase == "finished":
+                    return {"ok": True}  # nothing left; advancing again would save the game twice
                 if self.phase == "question":
                     self._apply_scoring()
                 self._advance_to_next_question_locked(now)
@@ -1169,6 +1303,7 @@ class QuizState:
                 self.scored_question_index = None
                 self.scored_question_count = 0
                 self._awards_cache = None
+                self.question_log = []
                 for player in self.players.values():
                     player.score = 0
                     player.streak = 0
@@ -1282,6 +1417,7 @@ class QuizState:
         # No scoring for engagement-only types
         if q_type in ("poll", "wordcloud", "slide"):
             self.scored_question_index = self.current_index
+            self._safe_log_locked(question, q_type, {})
             self._record_midgame_rank_locked()
             return
 
@@ -1290,9 +1426,11 @@ class QuizState:
 
         # Track who answered for streak reset
         answered_pids = set(self.answers.keys())
+        awarded: dict[str, int] = {}
 
         for player_id, answer in self.answers.items():
-            points = self._calculate_points(question, q_type, answer, started, self.get_ready_sec)
+            points = self._calculate_points(question, q_type, answer, started, self.get_ready_sec,
+                                            speed_bonus_on=self.speed_bonus)
             is_correct = points > 0
             player = self.players[player_id]
             player.answered_count += 1
@@ -1320,6 +1458,7 @@ class QuizState:
                 player.streak = 0
 
             player.score += points
+            awarded[player_id] = points
 
         # Reset streak for players who didn't answer
         for pid, player in self.players.items():
@@ -1328,7 +1467,82 @@ class QuizState:
 
         self.scored_question_index = self.current_index
         self.scored_question_count += 1
+        self._safe_log_locked(question, q_type, awarded)
         self._record_midgame_rank_locked()
+
+    def _safe_log_locked(self, question: dict, q_type: str, awarded: dict[str, int]) -> None:
+        """The analysis log is extra: it must never break or repeat the scoring."""
+        try:
+            self._log_question_locked(question, q_type, awarded)
+        except Exception as e:  # noqa: BLE001
+            print(f"WARNING: question analysis not recorded: {type(e).__name__}: {e}", flush=True)
+
+    def _log_question_locked(self, question: dict, q_type: str, awarded: dict[str, int]) -> None:
+        """Record what the class answered to the current question. Must hold self._lock."""
+        scored = q_type not in UNSCORED_QUESTION_TYPES
+        started = self.question_started_at or time.time()
+        results: dict[str, dict[str, Any]] = {}
+        for pid, answer in self.answers.items():
+            row: dict[str, Any] = {
+                "choice": answer["choice"],
+                "sec": round(max(0.0, answer["time"] - started - self.get_ready_sec), 1),
+            }
+            if scored:
+                row["ok"] = self._full_credit(question, q_type, answer["choice"])
+                row["points"] = awarded.get(pid, 0)
+            results[pid] = row
+        entry: dict[str, Any] = {
+            "index": self.current_index,
+            "id": question.get("id"),
+            "type": q_type,
+            "prompt": str(question.get("prompt", ""))[:500],
+            "players": len(self.players),
+            "answered": len(results),
+            "double": self._question_is_double_locked(self.current_index),
+            "results": results,
+        }
+        if q_type in ("choice", "truefalse", "multiselect", "poll"):
+            entry["options"] = list(question.get("options", []))
+            entry["counts"] = self._vote_counts()
+        if q_type in ("choice", "truefalse"):
+            entry["correct"] = question.get("correct_index")
+        elif q_type == "multiselect":
+            entry["correct"] = sorted(question.get("correct_indices", []))
+        elif q_type == "ordering":
+            entry["items"] = list(question.get("items", []))  # listed in the correct order
+        elif q_type == "openended":
+            entry["correct"] = list(question.get("accepted_answers", []))
+        if q_type in ("openended", "wordcloud"):
+            # [text, count, graded right (None for a word cloud)], grouped the way the
+            # grading compares: case only matters for a case-sensitive question
+            keep_case = q_type == "openended" and bool(question.get("case_sensitive"))
+            texts: dict[str, list] = {}
+            for row in results.values():
+                text = str(row["choice"]).strip()
+                text = text if keep_case else text.lower()
+                if text:
+                    bucket = texts.setdefault(text, [0, False])
+                    bucket[0] += 1
+                    bucket[1] = bucket[1] or bool(row.get("ok"))
+            ranked = sorted(texts.items(), key=lambda kv: (-kv[1][0], kv[0]))[:8]
+            entry["top_answers"] = [[t, c, ok if scored else None] for t, (c, ok) in ranked]
+        if scored:
+            entry["correct_count"] = sum(1 for row in results.values() if row["ok"])
+            entry["explanation"] = str(question.get("explanation", ""))[:1000]
+            times = [row["sec"] for row in results.values() if row["ok"]]
+            entry["avg_sec_correct"] = round(sum(times) / len(times), 1) if times else None
+        self.question_log = [e for e in self.question_log if e["index"] != self.current_index]
+        self.question_log.append(entry)
+
+    @classmethod
+    def _full_credit(cls, question: dict, q_type: str, choice: Any) -> bool:
+        """True when an answer earns full points (partial credit and wrong = False)."""
+        at_once = {"choice": choice, "time": 0.0}
+        return cls._calculate_points(question, q_type, at_once, 0.0) == MAX_POINTS
+
+    def _question_summary_locked(self) -> list[dict[str, Any]]:
+        """The question log without who answered what (safe for the projector)."""
+        return [{k: v for k, v in entry.items() if k != "results"} for entry in self.question_log]
 
     def _question_is_double_locked(self, index: int) -> bool:
         """True when the question at index scores double points. Must hold self._lock."""
@@ -1348,15 +1562,16 @@ class QuizState:
 
     @staticmethod
     def _calculate_points(question: dict, q_type: str, answer: dict, started: float,
-                          get_ready_sec: int = 0) -> int:
+                          get_ready_sec: int = 0, speed_bonus_on: bool = True) -> int:
         """Calculate raw points for an answer (before streak multiplier).
 
         The "get ready" countdown is subtracted from elapsed time so the
-        speed bonus only starts ticking once answers are visible.
+        speed bonus only starts ticking once answers are visible. Without the
+        speed bonus a fully correct answer is worth the maximum at any time.
         """
         elapsed = max(0.0, answer["time"] - started)
         effective_elapsed = max(0.0, elapsed - get_ready_sec)
-        speed_bonus = max(0, 40 - int(effective_elapsed))
+        speed_bonus = max(0, 40 - int(effective_elapsed)) if speed_bonus_on else 40
 
         if q_type in ("choice", "truefalse"):
             correct = question["correct_index"]
@@ -1618,10 +1833,11 @@ class QuizState:
             _, _, _, pid, player = pool[0]
             return pid, player
 
-        # fastest_finger: lowest average time of correct answers (min 3 correct)
+        # fastest_finger: lowest average time of correct answers (min 3 correct);
+        # not awarded when the teacher switched the speed bonus off
         best = _best(
             [(pid, p) for pid, p in self.players.items()
-             if len(p.correct_times) >= AWARD_FASTEST_MIN_CORRECT],
+             if self.speed_bonus and len(p.correct_times) >= AWARD_FASTEST_MIN_CORRECT],
             lambda pid, p: sum(p.correct_times) / len(p.correct_times),
         )
         if best:
@@ -1715,6 +1931,8 @@ class QuizState:
                 "reveal_duration_sec": self.reveal_duration_sec,
                 "get_ready_sec": self.get_ready_sec,
                 "final_double": self.final_double,
+                "speed_bonus": self.speed_bonus,
+                "show_leaderboard": self.show_leaderboard,
                 "phase_time_left": self._phase_time_left_locked(now),
                 "auto_advance": True,
                 "active_bank": self._active_bank,
@@ -1734,10 +1952,20 @@ class QuizState:
                     {"key": a["key"], "player": a["player"], "avatar_id": a["avatar_id"], "value": a["value"]}
                     for a in self._awards_cache
                 ]
+                if host_view:
+                    response["question_summary"] = self._question_summary_locked()
+
+            # "Podium only": students see nobody else's rank, only the top 3 at the end
+            podium_only = not host_view and not self.show_leaderboard
+            if podium_only:
+                response["players"] = [p for p in ranked if p["rank"] <= 3] if self.phase == "finished" else []
 
             if player_id and player_id in self.players:
                 p = self.players[player_id]
                 my_rank, behind = self._rank_and_rival_locked(player_id)
+                if podium_only:
+                    my_rank = my_rank if self.phase == "finished" and my_rank <= 3 else None
+                    behind = None
                 me_data: dict[str, Any] = {
                     "name": p.name,
                     "score": p.score,
@@ -1933,6 +2161,59 @@ class ExamState:
         self.opened_at = 0.0
         self.ended_at = 0.0
         self._active_bank: str | None = None
+        # Saved exam (exam_sessions): every answer, proctoring event and grade is
+        # written as it happens, so a server restart loses no results.
+        self.owner_id: int | None = None
+        self.session_id: str | None = None
+
+    # -- saving (best effort: a database problem must never stop a running exam) --
+
+    @staticmethod
+    def _save(action: Any, *args: Any) -> None:
+        try:
+            action(*args)
+        except Exception as e:  # noqa: BLE001
+            print(f"WARNING: exam results not saved: {type(e).__name__}: {e}", flush=True)
+
+    def _save_student_locked(self, player_id: str, student: "ExamStudent") -> None:
+        if self.session_id is None:
+            return
+        self._save(user_db.save_exam_result, self.session_id, player_id, {
+            "name": student.name, "answers": dict(student.answers), "score": student.score,
+            "grade": student.grade, "submitted_at": student.submitted_at,
+            "auto_submitted": student.auto_submitted, "blur_count": student.blur_count,
+            "away_ms": student.away_ms,
+        })
+
+    def _start_session_locked(self) -> None:
+        if self.session_id is not None:
+            # opened again after the end (latecomers): the same saved exam runs on,
+            # unless the teacher deleted it in the meantime -> a new one below
+            reopened = False
+            try:
+                reopened = user_db.reopen_exam_session(self.session_id, self.config.to_dict())
+            except Exception as e:  # noqa: BLE001
+                print(f"WARNING: exam results not saved: {type(e).__name__}: {e}", flush=True)
+            if reopened:
+                for pid, student in self.students.items():
+                    self._save_student_locked(pid, student)
+                return
+        self.session_id = uuid.uuid4().hex[:12]
+        self._save(user_db.create_exam_session, self.session_id, self.owner_id, self._active_bank or "",
+                   self.questions, self.config.to_dict(), self.opened_at)
+        for pid, student in self.students.items():
+            self._save_student_locked(pid, student)
+
+    def _close_session_locked(self) -> None:
+        """Before the exam is cleared or replaced: grade, save and close it."""
+        if self.phase == "open":
+            self._end_locked(time.time())
+        self.session_id = None
+
+    def _rows_locked(self) -> list[dict[str, Any]]:
+        return [{"name": s.name, "answers": dict(s.answers), "score": s.score, "grade": s.grade,
+                 "submitted_at": s.submitted_at, "auto_submitted": s.auto_submitted,
+                 "blur_count": s.blur_count, "away_ms": s.away_ms} for s in self.students.values()]
 
     # -- setup --
 
@@ -1950,6 +2231,7 @@ class ExamState:
                 f"sada obsahuje: {', '.join(unsupported)}"
             )
         with self._lock:
+            self._close_session_locked()
             self.questions = questions
             self._active_bank = bank_name
             self.phase = "closed"
@@ -1959,8 +2241,18 @@ class ExamState:
 
     def update_config(self, data: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
+            self._sync_locked(time.time())  # the time may have just run out
+            if self.phase == "open":
+                # the form re-sends its time limit; during the exam only "extend" changes it
+                data = {k: v for k, v in data.items() if k != "time_limit_sec"}
             self.config.update(data)
+            self._save_config_locked()
             return self.config.to_dict()
+
+    def _save_config_locked(self) -> None:
+        """A running exam keeps its saved settings current (time limit, grading)."""
+        if self.session_id is not None and self.phase == "open":
+            self._save(user_db.update_exam_session_config, self.session_id, self.config.to_dict())
 
     def register_student(self, name: str) -> dict[str, Any]:
         clean = " ".join(name.strip().split())[:24]
@@ -1973,6 +2265,8 @@ class ExamState:
             if self.phase == "open":
                 self._build_order_locked(player_id, student)
             self.students[player_id] = student
+            if self.phase == "open":
+                self._save_student_locked(player_id, student)
             return {"player_id": player_id, "player_secret": secret, "name": clean}
 
     def verify_student(self, player_id: str, secret: str) -> bool:
@@ -2002,6 +2296,9 @@ class ExamState:
             if not self.questions:
                 raise ValueError("Pisemka nema otazky")
             now = time.time()
+            self._sync_locked(now)
+            if self.phase == "open":
+                return  # already running: a second click must not restart everyone's clock
             self.phase = "open"
             self.opened_at = now
             self.ended_at = 0.0
@@ -2009,6 +2306,7 @@ class ExamState:
                 if not student.order:
                     self._build_order_locked(pid, student)
                 student.started_at = now
+            self._start_session_locked()
 
     def end_exam(self) -> None:
         with self._lock:
@@ -2018,9 +2316,11 @@ class ExamState:
         with self._lock:
             seconds = max(-3600, min(3600, int(seconds)))
             self.config.time_limit_sec = max(30, self.config.time_limit_sec + seconds)
+            self._save_config_locked()
 
     def reset(self) -> None:
         with self._lock:
+            self._close_session_locked()
             self.phase = "closed"
             self.opened_at = 0.0
             self.ended_at = 0.0
@@ -2034,6 +2334,8 @@ class ExamState:
         for student in self.students.values():
             if student.submitted_at is None:
                 self._grade_locked(student, now, auto=True)
+        if self.session_id is not None:
+            self._save(user_db.end_exam_session, self.session_id, now)
 
     def _sync_locked(self, now: float) -> None:
         if self.phase == "open" and self.opened_at > 0:
@@ -2066,6 +2368,7 @@ class ExamState:
                 raise ValueError("Odpoved nelze zmenit")
             student.answers[qid] = choice
             student.last_seen = now
+            self._save_student_locked(player_id, student)
             return {"ok": True, "answered": len(student.answers)}
 
     def set_position(self, player_id: str, secret: str, pos: int) -> dict[str, Any]:
@@ -2097,6 +2400,8 @@ class ExamState:
                 if student.last_blur_at is not None:
                     student.away_ms += (now - student.last_blur_at) * 1000.0
                     student.last_blur_at = None
+            if event_type in ("blur", "focus"):
+                self._save_student_locked(player_id, student)
             return {"ok": True, "blur_count": student.blur_count}
 
     def submit(self, player_id: str, secret: str) -> dict[str, Any]:
@@ -2126,6 +2431,10 @@ class ExamState:
         if student.last_blur_at is not None:
             student.away_ms += (now - student.last_blur_at) * 1000.0
             student.last_blur_at = None
+        for pid, st in self.students.items():
+            if st is student:
+                self._save_student_locked(pid, student)
+                break
 
     def _result_payload_locked(self, student: ExamStudent) -> dict[str, Any]:
         total = len(self.questions)
@@ -2243,30 +2552,182 @@ class ExamState:
             }
 
     def results_csv(self) -> str:
-        import csv
-        import io
         with self._lock:
-            total = len(self.questions)
-            buf = io.StringIO()
-            writer = csv.writer(buf, delimiter=";")
-            writer.writerow(["Jmeno", "Spravne", "Celkem", "Procenta", "Znamka",
-                             "Odevzdano", "Auto", "Opusteni okna", "Cas mimo (s)"])
-            for student in sorted(self.students.values(), key=lambda s: s.name.lower()):
-                percent = round((student.score or 0) / total * 100) if total and student.score is not None else ""
-                submitted = (datetime.fromtimestamp(student.submitted_at).strftime("%Y-%m-%d %H:%M:%S")
-                             if student.submitted_at else "")
-                writer.writerow([
-                    student.name,
-                    student.score if student.score is not None else "",
-                    total,
-                    percent,
-                    student.grade if student.grade is not None else "",
-                    submitted,
-                    "ano" if student.auto_submitted else "ne",
-                    student.blur_count,
-                    round(student.away_ms / 1000),
-                ])
-            return buf.getvalue()
+            return exam_results_csv(self.questions, self._rows_locked())
+
+    def answers_csv(self) -> str:
+        with self._lock:
+            return exam_answers_csv(self.questions, self._rows_locked())
+
+    def items_csv(self) -> str:
+        with self._lock:
+            return exam_items_csv(self.questions, self._rows_locked())
+
+    def item_stats(self) -> dict[str, Any]:
+        """Anonymous per-question analysis of the graded students (for the projector)."""
+        with self._lock:
+            self._sync_locked(time.time())
+            rows = self._rows_locked()
+            return {"phase": self.phase, "students": len(rows),
+                    "graded": sum(1 for r in rows if r["score"] is not None),
+                    "items": exam_item_stats(self.questions, rows)}
+
+
+def _item_rest_correlation(marks: list[int], totals: list[int]) -> float | None:
+    """Corrected item-total correlation: item right/wrong vs. the score on the other items.
+
+    Around 0.3 and more = the question separates students who know the topic
+    from those who do not; near 0 or negative = check the question or its key.
+    """
+    n = len(marks)
+    if n < MIN_STUDENTS_FOR_DISCRIMINATION:
+        return None
+    rest = [t - m for m, t in zip(marks, totals)]
+    mean_m, mean_r = sum(marks) / n, sum(rest) / n
+    sxx = sum((m - mean_m) ** 2 for m in marks)
+    syy = sum((r - mean_r) ** 2 for r in rest)
+    if sxx == 0 or syy == 0:
+        return None
+    sxy = sum((m - mean_m) * (r - mean_r) for m, r in zip(marks, rest))
+    return round(sxy / math.sqrt(sxx * syy), 2)
+
+
+def exam_item_stats(questions: list[dict[str, Any]], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per-question analysis of an exam over the graded students (no names)."""
+    graded = [r for r in rows if r.get("score") is not None]
+    totals = [int(r["score"]) for r in graded]
+    items = []
+    for number, q in enumerate(questions, start=1):
+        options = list(q.get("options", []))
+        key = q.get("correct_index")
+        counts = [0] * len(options)
+        marks: list[int] = []
+        for r in graded:
+            a = (r.get("answers") or {}).get(q.get("id"))
+            if isinstance(a, int) and 0 <= a < len(options):
+                counts[a] += 1
+            marks.append(1 if a == key else 0)
+        answered = sum(counts)
+        correct = sum(marks)
+        wrong = [(c, -i) for i, c in enumerate(counts) if i != key and c > 0]
+        items.append({
+            "number": number, "id": q.get("id"), "prompt": q.get("prompt", ""), "options": options,
+            "correct_index": key, "counts": counts, "students": len(graded),
+            "correct": correct, "wrong": answered - (counts[key] if isinstance(key, int) and 0 <= key < len(counts) else 0),
+            "unanswered": len(graded) - answered,
+            "percent": round(correct / len(graded) * 100) if graded else None,
+            "top_wrong": -max(wrong)[1] if wrong else None,
+            "discrimination": _item_rest_correlation(marks, totals),
+            "explanation": q.get("explanation", ""),
+        })
+    return items
+
+
+def _submitted_text(ts: Any) -> str:
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S") if ts else ""
+
+
+def exam_results_csv(questions: list[dict[str, Any]], rows: list[dict[str, Any]]) -> str:
+    """Per student: the summary, proctoring and, per question, 1 (right) / 0 / empty."""
+    total = len(questions)
+    table = [["Jmeno", "Spravne", "Celkem", "Procenta", "Znamka", "Odevzdano", "Auto",
+              "Opusteni okna", "Cas mimo (s)"] + [f"O{n}" for n in range(1, total + 1)]]
+    for r in sorted(rows, key=lambda r: r["name"].lower()):
+        score = r.get("score")
+        answers = r.get("answers") or {}
+        marks = []
+        for q in questions:
+            a = answers.get(q.get("id"))
+            marks.append("" if a is None else (1 if a == q.get("correct_index") else 0))
+        table.append([
+            r["name"], "" if score is None else score, total,
+            round(score / total * 100) if total and score is not None else "",
+            "" if r.get("grade") is None else r["grade"], _submitted_text(r.get("submitted_at")),
+            "ano" if r.get("auto_submitted") else "ne", r.get("blur_count", 0),
+            round((r.get("away_ms") or 0) / 1000),
+        ] + marks)
+    return _csv_text(table)
+
+
+def exam_answers_csv(questions: list[dict[str, Any]], rows: list[dict[str, Any]]) -> str:
+    """Every student's answer to every question, marked right or wrong (long format)."""
+    def option(q: dict[str, Any], index: Any) -> str:
+        opts = q.get("options", [])
+        return f"{_letter(index)}) {opts[index]}" if isinstance(index, int) and 0 <= index < len(opts) else ""
+
+    table = [["Jmeno", "Otazka", "Zneni", "Odpoved", "Spravna odpoved", "Vysledek"]]
+    for r in sorted(rows, key=lambda r: r["name"].lower()):
+        answers = r.get("answers") or {}
+        for n, q in enumerate(questions, start=1):
+            a = answers.get(q.get("id"))
+            result = "bez odpovedi" if a is None else ("spravne" if a == q.get("correct_index") else "chybne")
+            table.append([r["name"], n, q.get("prompt", ""), option(q, a), option(q, q.get("correct_index")), result])
+    return _csv_text(table)
+
+
+def exam_items_csv(questions: list[dict[str, Any]], rows: list[dict[str, Any]]) -> str:
+    table = [["Otazka", "Zneni", "Spravna odpoved", "Spravne", "Chybne", "Bez odpovedi", "Uspesnost %",
+              "Nejcastejsi chybna odpoved", "Korelace s celkem"]]
+    for it in exam_item_stats(questions, rows):
+        key, wrong = it["correct_index"], it["top_wrong"]
+        opts = it["options"]
+        table.append([
+            it["number"], it["prompt"],
+            f"{_letter(key)}) {opts[key]}" if isinstance(key, int) and 0 <= key < len(opts) else "",
+            it["correct"], it["wrong"], it["unanswered"], "" if it["percent"] is None else it["percent"],
+            f"{_letter(wrong)}) {opts[wrong]}" if wrong is not None else "",
+            "" if it["discrimination"] is None else float(it["discrimination"]),
+        ])
+    return _csv_text(table)
+
+
+def close_interrupted_exams() -> int:
+    """Exams still open in the database were running when the server stopped:
+    grade what the students had answered and close them, so no result is lost."""
+    closed = 0
+    for session in user_db.list_open_exam_sessions():
+        config = ExamConfig()
+        config.update(session["config"])
+        questions = session["questions"]
+        total = len(questions)
+        last = session["opened_at"]
+        for row in session["results"]:
+            last = max(last, row["updated_at"])
+            if row["score"] is None:
+                correct = sum(1 for q in questions if row["answers"].get(q.get("id")) == q.get("correct_index"))
+                row.update(score=correct, auto_submitted=True,
+                           grade=config.grade_for_percent(correct / total * 100 if total else 0.0))
+                user_db.save_exam_result(session["id"], row["player_id"], row)
+        user_db.end_exam_session(session["id"], last, interrupted=True)
+        closed += 1
+    return closed
+
+
+def server_activity() -> dict[str, Any]:
+    """Is anybody using the server right now? Counts only (before a restart)."""
+    now = time.time()
+    rooms = ROOMS.all()
+    games = players = exams = writing = recent = 0
+    for room in rooms:
+        with room.quiz._lock:
+            if room.quiz.phase in ("question", "reveal"):
+                games += 1
+            players += len(room.quiz.players)
+            occupied = bool(room.quiz.players)
+        with room.exam._lock:  # one lock at a time
+            if room.exam.phase == "open":
+                exams += 1
+                writing += sum(1 for st in room.exam.students.values() if st.submitted_at is None)
+            occupied = occupied or bool(room.exam.students)
+        # an empty room (nobody joined) is not "in use" just because it was created recently
+        if occupied and now - room.last_active < ACTIVITY_RECENT_SEC:
+            recent += 1
+    ws = WS_MANAGER.connection_count
+    return {
+        "busy": bool(games or exams or ws or recent),
+        "rooms": len(rooms), "rooms_recent": recent, "games_running": games, "players": players,
+        "exams_open": exams, "exam_students_writing": writing, "websocket_clients": ws,
+    }
 
 
 # Sound roles from the file name: "loop" anywhere in the name = background
@@ -2384,6 +2845,7 @@ class RoomRegistry:
     def _add_locked(self, room: Room) -> Room:
         room.quiz.room_key = room.key
         room.quiz.owner_id = room.owner_id
+        room.exam.owner_id = room.owner_id
         self._by_pin[room.pin] = room
         self._by_key[room.key] = room
         self._by_token[room.host_token] = room
@@ -2953,6 +3415,15 @@ def build_server_info(
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ClassRally/2.1"
+
+    def _csv_response(self, text: str, filename: str) -> None:
+        body = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _json_response(self, payload: dict[str, Any] | list, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -3546,7 +4017,78 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/history":
             if not self._require_admin():
                 return
-            self._json_response(list_game_history(self._owner_scope()))
+            self._json_response([history_overview(r) for r in list_game_history(self._owner_scope())])
+            return
+
+        if path in ("/api/admin/history/detail", "/api/admin/history/items.csv"):
+            if not self._require_admin():
+                return
+            game_id = parse_qs(parsed.query).get("game_id", [""])[0]
+            record = load_game_record(game_id)
+            if record is None or not self._owns(record.get("owner_id")):
+                self._json_response({"error": "Game not found"}, status=404)
+                return
+            if path.endswith(".csv"):
+                self._csv_response(game_items_csv(record), f"hra-{game_id}-otazky.csv")
+            else:
+                self._json_response(history_detail(record))
+            return
+
+        if path == "/api/admin/activity":
+            # server administrator only (admin password): counts, no names
+            if not self._require_admin():
+                return
+            if self._owner_scope() is not None:
+                self._json_response({"error": "Jen pro spravce serveru"}, status=403)
+                return
+            self._json_response(server_activity())
+            return
+
+        if path == "/api/admin/exam/items":
+            if not self._require_admin():
+                return
+            self._json_response(self._admin_room().exam.item_stats())
+            return
+
+        if path in ("/api/admin/exam/answers.csv", "/api/admin/exam/items.csv"):
+            if not self._require_admin():
+                return
+            exam = self._admin_room().exam
+            if path.endswith("answers.csv"):
+                self._csv_response(exam.answers_csv(), "pisemka-odpovedi.csv")
+            else:
+                self._csv_response(exam.items_csv(), "pisemka-rozbor-otazek.csv")
+            return
+
+        if path == "/api/admin/exams":
+            if not self._require_admin():
+                return
+            self._json_response(user_db.list_exam_sessions(self._owner_scope()))
+            return
+
+        if path in ("/api/admin/exams/detail", "/api/admin/exams/results.csv",
+                    "/api/admin/exams/answers.csv", "/api/admin/exams/items.csv"):
+            if not self._require_admin():
+                return
+            exam_id = parse_qs(parsed.query).get("id", [""])[0]
+            session = user_db.get_exam_session(exam_id) if EXAM_ID_RE.match(exam_id) else None
+            if session is None or not self._owns(session["owner_id"]):
+                self._json_response({"error": "Exam not found"}, status=404)
+                return
+            questions, rows = session["questions"], session["results"]
+            if path.endswith("results.csv"):
+                self._csv_response(exam_results_csv(questions, rows), f"pisemka-{exam_id}-vysledky.csv")
+            elif path.endswith("answers.csv"):
+                self._csv_response(exam_answers_csv(questions, rows), f"pisemka-{exam_id}-odpovedi.csv")
+            elif path.endswith("items.csv"):
+                self._csv_response(exam_items_csv(questions, rows), f"pisemka-{exam_id}-rozbor-otazek.csv")
+            else:
+                self._json_response({
+                    **{k: v for k, v in session.items() if k not in ("results", "questions")},
+                    "total_questions": len(questions),
+                    "students": [{k: v for k, v in r.items() if k not in ("player_id", "answers")} for r in rows],
+                    "items": exam_item_stats(questions, rows),
+                })
             return
 
         if path == "/api/admin/exam/overview":
@@ -3564,14 +4106,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/exam/results.csv":
             if not self._require_admin():
                 return
-            csv_text = self._admin_room().exam.results_csv()
-            body = ("﻿" + csv_text).encode("utf-8")  # BOM for Excel
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="vysledky-pisemky.csv"')
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._csv_response(self._admin_room().exam.results_csv(), "vysledky-pisemky.csv")
             return
 
         if path == "/api/admin/ollama/models":
@@ -3681,19 +4216,7 @@ class Handler(BaseHTTPRequestHandler):
             if record is None or not self._owns(record.get("owner_id")):
                 self._json_response({"error": "Game not found"}, status=404)
                 return
-            try:
-                csv_text = game_results_to_csv(record)
-            except Exception as e:
-                self._json_response({"error": str(e)}, status=500)
-                return
-            body = csv_text.encode("utf-8")
-            out_filename = f"game_{game_id}_results.csv"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", f'attachment; filename="{out_filename}"')
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._csv_response(game_results_to_csv(record), f"game_{game_id}_results.csv")
             return
 
         if path == "/api/admin/bank/export/csv":
@@ -4107,12 +4630,16 @@ class Handler(BaseHTTPRequestHandler):
                 r_sec = data.get("reveal_duration_sec")
                 g_sec = data.get("get_ready_sec")
                 f_double = data.get("final_double")
+                speed = data.get("speed_bonus")
+                board = data.get("show_leaderboard")
                 quiz = self._admin_room().quiz
                 quiz.set_timing(
                     question_sec=int(q_sec) if q_sec is not None else None,
                     reveal_sec=int(r_sec) if r_sec is not None else None,
                     get_ready_sec=int(g_sec) if g_sec is not None else None,
                     final_double=bool(f_double) if f_double is not None else None,
+                    speed_bonus=bool(speed) if speed is not None else None,
+                    show_leaderboard=bool(board) if board is not None else None,
                 )
                 self._json_response({
                     "ok": True,
@@ -4120,6 +4647,8 @@ class Handler(BaseHTTPRequestHandler):
                     "reveal_duration_sec": quiz.reveal_duration_sec,
                     "get_ready_sec": quiz.get_ready_sec,
                     "final_double": quiz.final_double,
+                    "speed_bonus": quiz.speed_bonus,
+                    "show_leaderboard": quiz.show_leaderboard,
                 })
                 return
 
@@ -4139,6 +4668,21 @@ class Handler(BaseHTTPRequestHandler):
                     "team_names": quiz.team_names,
                     "team_colors": TEAM_COLORS[:len(quiz.team_names)],
                 })
+                return
+
+            if path == "/api/admin/exams/delete":
+                if not self._require_admin():
+                    return
+                exam_id = str(data.get("id", ""))
+                session = user_db.get_exam_session(exam_id) if EXAM_ID_RE.match(exam_id) else None
+                if session is None or not self._owns(session["owner_id"]):
+                    self._json_response({"error": "Not found"}, status=404)
+                elif session["ended_at"] is None:
+                    self._json_response({"error": "Pisemka prave probiha, nejdriv ji ukoncete."}, status=409)
+                elif user_db.delete_exam_session(exam_id):
+                    self._json_response({"ok": True})
+                else:
+                    self._json_response({"error": "Not found"}, status=404)
                 return
 
             if path == "/api/admin/history/delete":
@@ -4948,6 +5492,14 @@ def main() -> None:
 
     ThreadingHTTPServer.allow_reuse_address = True
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    # only now (the port is ours, so no other instance runs on this data): exams
+    # still open in the database were cut off by the last stop
+    try:
+        interrupted = close_interrupted_exams()
+        if interrupted:
+            print(f"Exams interrupted by the last restart: {interrupted} (graded from saved answers, see /admin)")
+    except Exception as e:  # noqa: BLE001
+        print(f"WARNING: could not close interrupted exams: {type(e).__name__}: {e}")
     print(f"Quiz server bind: {SERVER_INFO['bind_host']}:{SERVER_INFO['port']}")
     for url in SERVER_INFO["host_urls"]:
         print(f"  Host screen: {url}")

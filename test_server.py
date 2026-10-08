@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+import math
 import os
 import shutil
 import sqlite3
@@ -4538,6 +4539,594 @@ class TestBackup(unittest.TestCase):
                 backup.create(self.root, self.dest)
         self.assertIn("ne jako root", str(ctx.exception))
         self.assertFalse(self.dest.exists())
+
+
+class TestGameAnalysis(unittest.TestCase):
+    """Per-question log of a game, didactic options, history record and exports."""
+
+    QUESTIONS = [
+        {"id": "c1", "type": "choice", "prompt": "Port DNS?", "options": ["25", "53", "80", "110"],
+         "correct_index": 1, "explanation": "DNS = 53"},
+        {"id": "m1", "type": "multiselect", "prompt": "Sudá?", "options": ["1", "2", "3", "4"],
+         "correct_indices": [1, 3]},
+        {"id": "p1", "type": "poll", "prompt": "Bavilo vás to?", "options": ["ano", "ne"]},
+        {"id": "o1", "type": "openended", "prompt": "Jazyk?", "accepted_answers": ["Python"]},
+    ]
+
+    def setUp(self):
+        self.q = server.QuizState([dict(x) for x in self.QUESTIONS])
+        self.q.get_ready_sec = 0
+        self.p = {n: self.q.register_player(n) for n in ("Ema", "Jan", "Olga")}
+
+    def _answer(self, name, choice):
+        r = self.p[name]
+        self.q.submit_answer(r["player_id"], r["player_secret"], choice)
+
+    def _play(self):
+        """Ema right everywhere, Jan wrong / partial, Olga never answers."""
+        self.q.host_action("start")
+        self._answer("Ema", 1)
+        self._answer("Jan", 3)
+        self.q.host_action("reveal")
+        self.q.host_action("next")
+        self._answer("Ema", [1, 3])
+        self._answer("Jan", [1])  # partial credit
+        self.q.host_action("reveal")
+        self.q.host_action("next")
+        self._answer("Ema", 0)
+        self._answer("Jan", 0)
+        self.q.host_action("reveal")
+        self.q.host_action("next")
+        self._answer("Ema", "python")
+        self._answer("Jan", "Java")
+        self.q.host_action("reveal")
+        self.q.host_action("next")  # -> finished, history saved
+
+    def test_question_log_records_what_the_class_answered(self):
+        self._play()
+        self.assertEqual(self.q.phase, "finished")
+        log = self.q.question_log
+        self.assertEqual([e["type"] for e in log], ["choice", "multiselect", "poll", "openended"])
+        choice, multi, poll, open_ = log
+        self.assertEqual((choice["players"], choice["answered"], choice["correct_count"]), (3, 2, 1))
+        self.assertEqual(choice["counts"], [0, 1, 0, 1])
+        self.assertEqual(choice["correct"], 1)
+        ema, jan = self.p["Ema"]["player_id"], self.p["Jan"]["player_id"]
+        self.assertTrue(choice["results"][ema]["ok"])
+        self.assertFalse(choice["results"][jan]["ok"])
+        self.assertNotIn(self.p["Olga"]["player_id"], choice["results"])
+        # partial credit earns points but is not "correct"
+        self.assertGreater(multi["results"][jan]["points"], 0)
+        self.assertFalse(multi["results"][jan]["ok"])
+        self.assertEqual(multi["correct_count"], 1)
+        # a poll is logged but not scored
+        self.assertNotIn("correct_count", poll)
+        self.assertEqual(poll["counts"], [2, 0])
+        self.assertEqual(open_["top_answers"], [["java", 1, False], ["python", 1, True]])
+
+    def test_open_answers_follow_the_grading_verdict(self):
+        q = server.QuizState([
+            {"id": "k", "type": "openended", "prompt": "Hlavni mesto Danska?", "accepted_answers": ["Kodaň"]},
+            {"id": "c", "type": "openended", "prompt": "Prikaz pro zmenu adresare?", "accepted_answers": ["CD"],
+             "case_sensitive": True},
+        ])
+        q.get_ready_sec = 0
+        ids = [q.register_player(n) for n in ("A", "B", "C")]
+        q.host_action("start")
+        for r, text in zip(ids, ("kodan", "Kodan", "Praha")):  # a missing hacek is accepted
+            q.submit_answer(r["player_id"], r["player_secret"], text)
+        q.host_action("next")
+        for r, text in zip(ids, ("cd", "CD", "cd")):
+            q.submit_answer(r["player_id"], r["player_secret"], text)
+        q.host_action("next")
+        first, second = q.question_log
+        self.assertEqual(first["correct_count"], 2)
+        self.assertEqual(first["top_answers"], [["kodan", 2, True], ["praha", 1, False]])
+        self.assertEqual(second["top_answers"], [["cd", 2, False], ["CD", 1, True]])  # case matters here
+        record = {"questions": q._question_summary_locked()}
+        self.assertEqual([i["top_wrong"] for i in server.game_items(record)], ["praha", "cd"])
+
+    def test_open_answers_are_grouped_like_the_grading_compares_them(self):
+        q = server.QuizState([{"id": "o", "type": "openended", "prompt": "?", "accepted_answers": ["a b"]}])
+        q.get_ready_sec = 0
+        ids = [q.register_player(n) for n in ("A", "B")]
+        q.host_action("start")
+        q.submit_answer(ids[0]["player_id"], ids[0]["player_secret"], "a b")
+        q.submit_answer(ids[1]["player_id"], ids[1]["player_secret"], "a  b")  # graded wrong
+        q.host_action("next")
+        self.assertEqual(q.question_log[0]["top_answers"], [["a  b", 1, False], ["a b", 1, True]])
+
+    def test_slides_are_not_in_the_analysis_and_fastest_finger_needs_the_speed_bonus(self):
+        questions = [{"id": "s", "type": "slide", "prompt": "Uvod", "body": "..."}] + [
+            {"id": f"c{i}", "type": "choice", "prompt": f"Q{i}", "options": ["a", "b"], "correct_index": 0}
+            for i in range(3)]
+        for speed in (True, False):
+            q = server.QuizState([dict(x) for x in questions])
+            q.get_ready_sec = 0
+            q.set_timing(speed_bonus=speed)
+            r = q.register_player("Rychla")
+            q.host_action("start")
+            q.host_action("next")  # the slide
+            for _ in range(3):
+                q.submit_answer(r["player_id"], r["player_secret"], 0)
+                q.host_action("next")
+            self.assertEqual(q.phase, "finished")
+            keys = [a["key"] for a in q.public_state(host_view=True)["awards"]]
+            self.assertEqual("fastest_finger" in keys, speed)
+            record = {"questions": q._question_summary_locked()}
+            self.assertEqual([i["type"] for i in server.game_items(record)], ["choice"] * 3)
+
+    def test_host_gets_the_summary_after_the_game_students_do_not(self):
+        self._play()
+        host = self.q.public_state(host_view=True)
+        self.assertEqual(len(host["question_summary"]), 4)
+        self.assertNotIn("results", host["question_summary"][0])
+        self.assertNotIn("question_summary", self.q.public_state(player_id=self.p["Ema"]["player_id"]))
+
+    def test_history_record_and_exports(self):
+        self._play()
+        files = sorted(server.HISTORY_DIR.glob("game_*.json"), key=lambda f: f.stat().st_mtime)
+        record = json.loads(files[-1].read_text(encoding="utf-8"))
+        self.assertEqual(len(record["questions"]), 4)
+        self.assertTrue(record["speed_bonus"])
+        by_name = {p["name"]: p for p in record["players"]}
+        self.assertEqual([bool(a and a.get("ok")) for a in by_name["Ema"]["answers"]], [True, True, False, True])
+        self.assertNotIn("ok", by_name["Ema"]["answers"][2])  # the poll has no right answer
+        self.assertEqual(by_name["Olga"]["answers"], [None, None, None, None])
+
+        lines = server.game_results_to_csv(record).lstrip("﻿").splitlines()
+        self.assertEqual(lines[0], "Poradi;Jmeno;Body;Spravne;Odpovedi;O1;O2;O4")  # the poll gives no points
+        rows = {line.split(";")[1]: line.split(";") for line in lines[1:]}
+        self.assertEqual(rows["Ema"][3:], ["3", "3", "1", "1", "1"])
+        self.assertEqual(rows["Jan"][3:], ["0", "3", "0", "0", "0"])
+        self.assertEqual(rows["Olga"][3:], ["0", "0", "", "", ""])
+
+        items = server.game_items(record)
+        self.assertEqual([i["percent"] for i in items], [33, 33, None, 33])
+        self.assertEqual(items[0]["top_wrong"], "D) 110")
+        self.assertEqual(items[3]["top_wrong"], "java")
+        self.assertIn("Uspesnost %", server.game_items_csv(record))
+
+        overview = server.history_overview(record)
+        self.assertNotIn("questions", overview)
+        self.assertTrue(overview["has_details"])
+        self.assertFalse(any("answers" in p or "player_id" in p for p in overview["players"]))
+        self.assertFalse(any("player_id" in p for p in server.history_detail(record)["players"]))
+
+    def test_speed_bonus_can_be_switched_off(self):
+        q = {"correct_index": 0, "options": ["a", "b"]}
+        late = {"choice": 0, "time": 30.0}
+        self.assertEqual(server.QuizState._calculate_points(q, "choice", late, 0.0), 700)
+        self.assertEqual(server.QuizState._calculate_points(q, "choice", late, 0.0, speed_bonus_on=False), 1000)
+        self.q.set_timing(speed_bonus=False, question_sec=120)
+        self.q.host_action("start")
+        self.q.question_started_at -= 35  # a slow, correct answer
+        self._answer("Ema", 1)
+        self.q.host_action("reveal")
+        self.assertEqual(self.q.players[self.p["Ema"]["player_id"]].score, 1000)
+
+    def test_podium_only_hides_other_students_ranking(self):
+        self.q.set_timing(show_leaderboard=False)
+        self.q.host_action("start")
+        self._answer("Ema", 1)
+        self.q.host_action("reveal")
+        jan = self.q.public_state(player_id=self.p["Jan"]["player_id"])
+        self.assertEqual(jan["players"], [])
+        self.assertIsNone(jan["me"]["rank"])
+        self.assertIsNone(jan["me"]["behind"])
+        self.assertFalse(jan["show_leaderboard"])
+        self.assertEqual(len(self.q.public_state(host_view=True)["players"]), 3)  # the teacher still sees all
+        self.q.host_action("next")
+        self.q.host_action("next")
+        self.q.host_action("next")
+        self.q.host_action("next")
+        self.assertEqual(self.q.phase, "finished")
+        olga = self.q.public_state(player_id=self.p["Olga"]["player_id"])
+        self.assertEqual([p["rank"] for p in olga["players"]], [1, 2, 3])
+        self.assertEqual(olga["me"]["rank"], 3)  # third place may see the medal ...
+        self.q.players[self.q.register_player("Petr")["player_id"]].score = -1
+        petr_id = [pid for pid, pl in self.q.players.items() if pl.name == "Petr"][0]
+        self.assertIsNone(self.q.public_state(player_id=petr_id)["me"]["rank"])  # ... fourth place sees nothing
+
+    def test_reset_clears_the_log(self):
+        self._play()
+        self.q.host_action("reset")
+        self.assertEqual(self.q.question_log, [])
+
+
+class TestExamAnalysis(unittest.TestCase):
+    """Item analysis, exports and saving of exams (results survive a restart)."""
+
+    QUESTIONS = [{"id": f"q{i}", "prompt": f"Otazka {i}", "options": ["A", "B", "C"], "correct_index": 0}
+                 for i in range(1, 5)]
+
+    def setUp(self):
+        user_db_module().init_db()  # the saved-exam tables (idempotent)
+
+    def _exam(self):
+        e = server.ExamState([dict(q) for q in self.QUESTIONS])
+        e.update_config({"shuffle_questions": False, "shuffle_options": False})
+        return e
+
+    def _students(self, e, answers):
+        """answers: name -> list of choices (None = no answer); everyone submits."""
+        ids = {}
+        for name in answers:
+            r = e.register_student(name)
+            ids[name] = (r["player_id"], r["player_secret"])
+        e.open_exam()
+        for name, choices in answers.items():
+            pid, sec = ids[name]
+            for q, c in zip(self.QUESTIONS, choices):
+                if c is not None:
+                    e.save_answer(pid, sec, q["id"], c)
+            e.submit(pid, sec)
+        return ids
+
+    ANSWERS = {  # q1 easy, q4 separates, q2 has a popular wrong answer
+        "Ada": [0, 0, 0, 0],
+        "Bob": [0, 0, 0, 0],
+        "Cyril": [0, 1, 0, None],
+        "Dana": [0, 1, 1, 2],
+        "Eva": [0, 1, None, 1],
+    }
+
+    def test_item_stats(self):
+        e = self._exam()
+        self._students(e, self.ANSWERS)
+        stats = e.item_stats()
+        self.assertEqual((stats["students"], stats["graded"]), (5, 5))
+        q1, q2, q3, q4 = stats["items"]
+        self.assertEqual(q1["percent"], 100)
+        self.assertEqual((q2["correct"], q2["wrong"], q2["counts"], q2["top_wrong"]), (2, 3, [2, 3, 0], 1))
+        self.assertEqual((q3["correct"], q3["unanswered"]), (3, 1))
+        self.assertEqual((q4["correct"], q4["wrong"], q4["unanswered"]), (2, 2, 1))
+        self.assertIsNone(q4["discrimination"])  # 5 students: too few for a correlation
+
+        # ten students (the same answers twice): the corrected item-total correlation of q4
+        e = self._exam()
+        self._students(e, {f"{n}{k}": a for k in (1, 2) for n, a in self.ANSWERS.items()})
+        q1, _, _, q4 = e.item_stats()["items"]
+        self.assertIsNone(q1["discrimination"])  # everyone right: no spread
+        marks, totals = [1, 1, 0, 0, 0] * 2, [4, 4, 2, 1, 1] * 2
+        rest = [t - m for m, t in zip(marks, totals)]
+        mm, mr = sum(marks) / 10, sum(rest) / 10
+        r = (sum((m - mm) * (x - mr) for m, x in zip(marks, rest))
+             / math.sqrt(sum((m - mm) ** 2 for m in marks) * sum((x - mr) ** 2 for x in rest)))
+        self.assertAlmostEqual(q4["discrimination"], round(r, 2))
+        self.assertGreater(q4["discrimination"], 0.5)
+
+    def test_csv_cells_cannot_run_as_formulas(self):
+        e = self._exam()
+        self._students(e, {"=HYPERLINK(\"http://x\")": [0, 0, 0, 0], "-Nula": [1, 1, 1, 1]})
+        import csv as csv_module
+        cells = [c for text in (e.results_csv(), e.answers_csv())
+                 for row in csv_module.reader(text.lstrip("\ufeff").splitlines(), delimiter=";") for c in row]
+        self.assertFalse([c for c in cells if c[:1] in ("=", "+", "-", "@")])
+        self.assertIn("'=HYPERLINK(\"http://x\")", cells)
+        self.assertIn("'-Nula", cells)
+        items = e.items_csv()
+        self.assertNotIn("'", items.split("\n")[1].split(";")[-1])  # numbers stay numbers
+
+    def test_csv_exports(self):
+        e = self._exam()
+        self._students(e, self.ANSWERS)
+        results = e.results_csv().lstrip("﻿").splitlines()
+        self.assertTrue(results[0].endswith(";O1;O2;O3;O4"))
+        cyril = [line for line in results if line.startswith("Cyril;")][0].split(";")
+        self.assertEqual(cyril[-4:], ["1", "0", "1", ""])
+        answers = e.answers_csv()
+        self.assertIn("Dana;2;Otazka 2;B) B;A) A;chybne", answers)
+        self.assertIn("Eva;3;Otazka 3;;A) A;bez odpovedi", answers)
+        items = e.items_csv().lstrip("﻿").splitlines()
+        self.assertEqual(items[0].split(";")[-1], "Korelace s celkem")
+        self.assertTrue(items[4].endswith(";"))  # 5 students: no correlation yet
+        e10 = self._exam()
+        self._students(e10, {f"{n}{k}": a for k in (1, 2) for n, a in self.ANSWERS.items()})
+        self.assertRegex(e10.items_csv().splitlines()[4], r";0,\d+$")  # decimal comma for Czech Excel
+
+    def test_results_are_saved_as_students_work(self):
+        e = self._exam()
+        e.owner_id = None
+        ids = {}
+        for name in ("Ada", "Bob"):
+            r = e.register_student(name)
+            ids[name] = (r["player_id"], r["player_secret"])
+        e.open_exam()
+        sid = e.session_id
+        self.assertIsNotNone(sid)
+        e.save_answer(*ids["Ada"], "q1", 0)
+        e.record_event(*ids["Ada"], "blur")
+        saved = {r["name"]: r for r in user_db_module().get_exam_session(sid)["results"]}
+        self.assertEqual(saved["Ada"]["answers"], {"q1": 0})
+        self.assertEqual(saved["Ada"]["blur_count"], 1)
+        self.assertIsNone(saved["Ada"]["score"])
+        e.submit(*ids["Ada"])
+        e.end_exam()
+        session = user_db_module().get_exam_session(sid)
+        self.assertIsNotNone(session["ended_at"])
+        self.assertFalse(session["interrupted"])
+        saved = {r["name"]: r for r in session["results"]}
+        self.assertEqual((saved["Ada"]["score"], saved["Bob"]["score"]), (1, 0))
+        self.assertTrue(saved["Bob"]["auto_submitted"])
+        self.assertEqual(session["questions"][0]["prompt"], "Otazka 1")  # a snapshot of the questions
+
+    def test_interrupted_exam_is_graded_and_closed_after_a_restart(self):
+        e = self._exam()
+        r = e.register_student("Petra")
+        e.open_exam()
+        e.save_answer(r["player_id"], r["player_secret"], "q1", 0)
+        e.save_answer(r["player_id"], r["player_secret"], "q2", 0)
+        sid = e.session_id
+        # the server stops here; on the next start:
+        self.assertGreaterEqual(server.close_interrupted_exams(), 1)
+        session = user_db_module().get_exam_session(sid)
+        self.assertTrue(session["interrupted"])
+        self.assertIsNotNone(session["ended_at"])
+        petra = session["results"][0]
+        self.assertEqual((petra["score"], petra["auto_submitted"]), (2, True))
+        self.assertEqual(petra["grade"], server.ExamConfig().grade_for_percent(50))
+        self.assertEqual(server.close_interrupted_exams(), 0)  # nothing left open
+
+    def test_reopening_continues_the_same_saved_exam_and_keeps_its_settings(self):
+        e = self._exam()
+        a = e.register_student("Ada")
+        e.open_exam()
+        sid = e.session_id
+        e.save_answer(a["player_id"], a["player_secret"], "q1", 0)
+        e.extend(300)  # +5 minutes during the exam
+        saved = user_db_module().get_exam_session(sid)
+        self.assertEqual(saved["config"]["time_limit_sec"], e.config.time_limit_sec)
+        e.end_exam()
+        self.assertIsNotNone(user_db_module().get_exam_session(sid)["ended_at"])
+        b = e.register_student("Bob")  # a latecomer
+        e.open_exam()
+        self.assertEqual(e.session_id, sid)
+        self.assertIsNone(user_db_module().get_exam_session(sid)["ended_at"])
+        e.submit(b["player_id"], b["player_secret"])
+        e.end_exam()
+        rows = user_db_module().get_exam_session(sid)["results"]
+        self.assertEqual(sorted(r["name"] for r in rows), ["Ada", "Bob"])  # nobody twice
+        self.assertEqual(len([x for x in user_db_module().list_exam_sessions() if x["id"] == sid]), 1)
+
+    def test_reopening_after_the_saved_exam_was_deleted_saves_it_again(self):
+        e = self._exam()
+        a = e.register_student("Ada")
+        e.open_exam()
+        e.save_answer(a["player_id"], a["player_secret"], "q1", 0)
+        e.end_exam()
+        first = e.session_id
+        self.assertTrue(user_db_module().delete_exam_session(first))
+        late = e.register_student("Pozdni")
+        e.open_exam()
+        self.assertNotEqual(e.session_id, first)
+        saved = user_db_module().get_exam_session(e.session_id)
+        self.assertEqual(sorted(r["name"] for r in saved["results"]), ["Ada", "Pozdni"])  # saved right away
+        e.save_answer(late["player_id"], late["player_secret"], "q1", 0)
+        e.end_exam()
+        rows = {r["name"]: r for r in user_db_module().get_exam_session(e.session_id)["results"]}
+        self.assertEqual((rows["Ada"]["score"], rows["Pozdni"]["score"]), (1, 1))
+
+    def test_a_second_open_does_not_restart_the_clock(self):
+        e = self._exam()
+        e.register_student("Ada")
+        e.open_exam()
+        e.opened_at -= 600  # ten minutes into the exam
+        started = e.opened_at
+        e.extend(300)
+        limit = e.config.time_limit_sec
+        e.update_config({"time_limit_sec": 1800, "allow_back": False})  # the form re-sends its values
+        e.open_exam()  # second click on "Spustit"
+        self.assertEqual(e.opened_at, started)
+        self.assertEqual(e.config.time_limit_sec, limit)
+        self.assertFalse(e.config.allow_back)  # other settings still apply
+        self.assertEqual(user_db_module().get_exam_session(e.session_id)["config"]["time_limit_sec"], limit)
+
+        # the time ran out a moment ago and nobody polled: re-opening for latecomers takes the new limit
+        e.opened_at -= limit
+        e.update_config({"time_limit_sec": 600})
+        self.assertEqual((e.phase, e.config.time_limit_sec), ("ended", 600))
+
+    def test_an_interrupted_exam_ends_at_its_last_activity(self):
+        e = self._exam()
+        r = e.register_student("Iva")
+        e.open_exam()
+        sid = e.session_id
+        user_db_module().end_exam_session(sid, time.time())  # pretend it was opened long ago ...
+        conn = user_db_module().get_conn()
+        conn.execute("UPDATE exam_sessions SET opened_at = ?, ended_at = NULL WHERE id = ?", (time.time() - 7200, sid))
+        conn.commit()
+        conn.close()
+        e.save_answer(r["player_id"], r["player_secret"], "q1", 0)  # ... re-opened and answered now
+        answered_at = user_db_module().get_exam_session(sid)["results"][0]["updated_at"]
+        server.close_interrupted_exams()  # (grading the row writes it again, later)
+        self.assertGreaterEqual(user_db_module().get_exam_session(sid)["ended_at"], answered_at)
+
+    def test_reset_or_new_bank_never_loses_a_running_exam(self):
+        e = self._exam()
+        r = e.register_student("Ota")
+        e.open_exam()
+        e.save_answer(r["player_id"], r["player_secret"], "q1", 0)
+        sid = e.session_id
+        e.reset()
+        self.assertIsNone(e.session_id)
+        session = user_db_module().get_exam_session(sid)
+        self.assertIsNotNone(session["ended_at"])
+        self.assertEqual(session["results"][0]["score"], 1)
+        e.reload_questions([dict(q) for q in self.QUESTIONS])  # nothing open: nothing to close
+        self.assertIsNone(e.session_id)
+
+
+def user_db_module():
+    import db
+    return db
+
+
+class TestAnalysisHTTP(_AccountHTTPBase):
+    """Saved exams, history detail, options and activity over HTTP (multi-teacher server)."""
+
+    Q = [{"id": "q1", "prompt": "Q1?", "options": ["x", "y"], "correct_index": 0},
+         {"id": "q2", "prompt": "Q2?", "options": ["x", "y"], "correct_index": 1}]
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.orig = (server.ROOM_MODE, server.QUESTIONS_DIR, server.HISTORY_DIR)
+        server.ROOM_MODE = "multi"
+        server.QUESTIONS_DIR = cls.tmpdir / "questions"
+        server.HISTORY_DIR = cls.tmpdir / "history"
+        server.QUESTIONS_DIR.mkdir()
+        server.HISTORY_DIR.mkdir()
+        server.save_questions_to_file("sada.json", cls.Q)
+        cls.uid = {nick: cls.db.create_user(nick, f"{nick.lower()}-pass", "teacher")["id"]
+                   for nick in ("TeachE", "TeachF")}
+        server.ADMIN_AUTH.set_password("spravce-heslo-123")
+
+    @classmethod
+    def tearDownClass(cls):
+        # user ids start at 1 again in the next class's database: leave no rooms behind
+        for uid in cls.uid.values():
+            room = server.ROOMS._by_owner.get(uid)
+            if room is not None:
+                server.ROOMS.drop(room)
+        server.ADMIN_AUTH.set_password(None)
+        server.ROOM_MODE, server.QUESTIONS_DIR, server.HISTORY_DIR = cls.orig
+        super().tearDownClass()
+
+    def _login(self, nick):
+        code, r = self._post("/api/auth/login", {"nickname": nick, "password": f"{nick.lower()}-pass"})
+        self.assertEqual(code, 200, r)
+        return r["token"]
+
+    def _req(self, path, token=None, headers=None, data=None):
+        req = Request(f"{self.base_url}{path}", data=json.dumps(data).encode() if data is not None else None,
+                      headers={"Content-Type": "application/json", **(headers or {})},
+                      method="POST" if data is not None else "GET")
+        if token:
+            req.add_header("Authorization", f"UserToken {token}")
+        try:
+            with urlopen(req) as r:
+                body = r.read()
+                return r.status, (json.loads(body) if r.headers.get_content_type() == "application/json"
+                                  else body.decode("utf-8"))
+        except HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+
+    def _run_exam(self, token, students):
+        host = self._req("/api/host/token", token)[1]
+        self.assertEqual(self._req("/api/admin/bank/activate", token,
+                                   data={"filename": "sada.json", "mode": "exam"})[0], 200)
+        self._req("/api/host/exam-action", headers={"X-Host-Token": host["host_token"]}, data={"action": "reset"})
+        ids = []
+        for name, choices in students.items():
+            r = self._req("/api/register", data={"name": name, "pin": host["pin"]})[1]
+            ids.append((r, choices))
+        self._req("/api/host/exam-action", headers={"X-Host-Token": host["host_token"]}, data={"action": "open"})
+        for r, choices in ids:
+            for qid, c in zip(("q1", "q2"), choices):
+                self._req("/api/exam/answer", data={"player_id": r["player_id"], "player_secret": r["player_secret"],
+                                                    "question_id": qid, "choice": c})
+        self._req("/api/host/exam-action", headers={"X-Host-Token": host["host_token"]}, data={"action": "end"})
+        return host
+
+    def test_saved_exams_belong_to_their_teacher(self):
+        te, tf = self._login("TeachE"), self._login("TeachF")
+        self._run_exam(te, {"Ivan": [0, 1], "Jana": [1, 1]})
+        code, live = self._req("/api/admin/exam/items", te)
+        self.assertEqual((code, live["graded"], [i["percent"] for i in live["items"]]), (200, 2, [50, 100]))
+        self.assertIn("Jana", self._req("/api/admin/exam/answers.csv", te)[1])
+
+        exams = self._req("/api/admin/exams", te)[1]
+        self.assertEqual(len(exams), 1)
+        exam_id = exams[0]["id"]
+        self.assertEqual((exams[0]["students"], exams[0]["avg_percent"]), (2, 75))
+        self.assertEqual(self._req("/api/admin/exams", tf)[1], [])
+        for kind in ("results.csv", "answers.csv", "items.csv"):
+            self.assertEqual(self._req(f"/api/admin/exams/{kind}?id={exam_id}", tf)[0], 404)
+            code, body = self._req(f"/api/admin/exams/{kind}?id={exam_id}", te)
+            self.assertEqual(code, 200)
+            self.assertTrue(body.startswith("﻿"))
+        detail = self._req(f"/api/admin/exams/detail?id={exam_id}", te)[1]
+        self.assertEqual(sorted(s["name"] for s in detail["students"]), ["Ivan", "Jana"])
+        self.assertFalse(any("answers" in s or "player_id" in s for s in detail["students"]))
+        self.assertEqual(self._req("/api/admin/exams/detail?id=../../etc", te)[0], 404)
+        self.assertEqual(self._req("/api/admin/exams/delete", tf, data={"id": exam_id})[0], 404)
+        self.assertEqual(self._req("/api/admin/exams/delete", te, data={"id": exam_id})[0], 200)
+        self.assertEqual(self._req("/api/admin/exams", te)[1], [])
+
+    def test_a_running_exam_cannot_be_deleted(self):
+        te = self._login("TeachE")
+        host = self._req("/api/host/token", te)[1]
+        hdr = {"X-Host-Token": host["host_token"]}
+        self._req("/api/admin/bank/activate", te, data={"filename": "sada.json", "mode": "exam"})
+        self._req("/api/host/exam-action", headers=hdr, data={"action": "reset"})
+        self._req("/api/register", data={"name": "Lucie", "pin": host["pin"]})
+        self._req("/api/host/exam-action", headers=hdr, data={"action": "open"})
+        running = [x for x in self._req("/api/admin/exams", te)[1] if x["ended_at"] is None]
+        self.assertEqual(len(running), 1)
+        code, r = self._req("/api/admin/exams/delete", te, data={"id": running[0]["id"]})
+        self.assertEqual(code, 409, r)
+        self._req("/api/host/exam-action", headers=hdr, data={"action": "end"})
+        self.assertEqual(self._req("/api/admin/exams/delete", te, data={"id": running[0]["id"]})[0], 200)
+
+    def test_history_list_is_light_and_detail_is_owner_only(self):
+        te, tf = self._login("TeachE"), self._login("TeachF")
+        host = self._req("/api/host/token", te)[1]
+        self.assertEqual(self._req("/api/admin/bank/activate", te, data={"filename": "sada.json"})[0], 200)
+        hdr = {"X-Host-Token": host["host_token"]}
+        r = self._req("/api/register", data={"name": "Hrac", "pin": host["pin"]})[1]
+        self._req("/api/host/action", headers=hdr, data={"action": "start"})
+        self._req("/api/submit", data={"player_id": r["player_id"], "player_secret": r["player_secret"], "choice": 0})
+        for _ in range(4):  # 2 questions; "next" after the end must not save the game again
+            self._req("/api/host/action", headers=hdr, data={"action": "next"})
+        games = self._req("/api/admin/history", te)[1]
+        self.assertEqual(len(games), 1)
+        self.assertTrue(games[0]["has_details"])
+        self.assertNotIn("questions", games[0])
+        game_id = games[0]["id"]
+        detail = self._req(f"/api/admin/history/detail?game_id={game_id}", te)[1]
+        self.assertEqual(len(detail["questions"]), 2)
+        self.assertEqual(detail["players"][0]["answers"][0]["ok"], True)
+        self.assertEqual(self._req(f"/api/admin/history/detail?game_id={game_id}", tf)[0], 404)
+        code, body = self._req(f"/api/admin/history/items.csv?game_id={game_id}", te)
+        self.assertEqual(code, 200)
+        self.assertIn("Uspesnost %", body)
+        code, body = self._req(f"/api/admin/history/export?game_id={game_id}", te)
+        self.assertIn("O1;O2", body)
+
+    def test_options_are_set_per_room(self):
+        te, tf = self._login("TeachE"), self._login("TeachF")
+        code, r = self._req("/api/admin/timing", te, data={"speed_bonus": False, "show_leaderboard": False})
+        self.assertEqual((code, r["speed_bonus"], r["show_leaderboard"]), (200, False, False))
+        room_e = server.ROOMS.for_owner(self.uid["TeachE"])
+        room_f = server.ROOMS.for_owner(self.uid["TeachF"])
+        self.assertEqual((room_e.quiz.speed_bonus, room_e.quiz.show_leaderboard), (False, False))
+        self.assertEqual((room_f.quiz.speed_bonus, room_f.quiz.show_leaderboard), (True, True))
+
+    def test_activity_ignores_rooms_nobody_joined(self):
+        registry = server.RoomRegistry()
+        with mock.patch.object(server, "ROOMS", registry), \
+                mock.patch.object(type(server.WS_MANAGER), "connection_count", new_callable=mock.PropertyMock,
+                                  return_value=0):
+            room = registry.create(None, quiz=server.QuizState(list(self.Q)), exam=server.ExamState(list(self.Q)))
+            activity = server.server_activity()
+            self.assertEqual((activity["busy"], activity["rooms"], activity["rooms_recent"]), (False, 1, 0))
+            room.quiz.register_player("Ema")
+            room.touch()
+            activity = server.server_activity()
+            self.assertEqual((activity["busy"], activity["rooms_recent"], activity["players"]), (True, 1, 1))
+
+    def test_activity_is_for_the_server_admin_only(self):
+        te = self._login("TeachE")
+        self.assertEqual(self._req("/api/admin/activity")[0], 401)
+        self.assertEqual(self._req("/api/admin/activity", te)[0], 403)
+        code, r = self._req("/api/admin/login", data={"password": "spravce-heslo-123"})
+        self.assertEqual(code, 200, r)
+        code, activity = self._req("/api/admin/activity", headers={"Authorization": f"Bearer {r['token']}"})
+        self.assertEqual(code, 200)
+        self.assertEqual(set(activity), {"busy", "rooms", "rooms_recent", "games_running", "players",
+                                         "exams_open", "exam_students_writing", "websocket_clients"})
+        self.assertFalse(any(isinstance(v, (list, dict)) for v in activity.values()))  # counts, no names
 
 
 if __name__ == "__main__":
