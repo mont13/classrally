@@ -30,9 +30,15 @@ Povinný kredit — uveďte na slajdu / v popisu nahrávky:
 - `end_gong.ogg` — Interface Sounds (https://kenney.nl/assets/interface-sounds)
 - `win_jingle.ogg` — Music Jingles (https://kenney.nl/assets/music-jingles)
 
+## Vlastní skladby autora aplikace (Suno, placený tarif)
+
+- `last-second-heartbeat.mp3` a `last-second-heartbeat-extended.mp3` – „Last-Second Heartbeat“
+- `quiz-start-emotions.mp3` – „Quiz Start Emotions“
+
+Vytvořeno 4. 3. 2026 v nástroji Suno během placeného předplatného: skladby z placeného tarifu smí autor
+použít i komerčně a poskytnout je dál (bezplatný tarif by dovoloval jen nekomerční použití). Kredit není povinný.
+Soubory se do repozitáře necommitují (.gitignore) a nejsou součástí `download_free_quiz_music.sh`.
+
 ## Ostatní soubory
 
-Soubory přidané ručně (mimo tento skript) si licenčně ohlídejte sami:
-- `last-second-heartbeat-extended.mp3`
-- `last-second-heartbeat.mp3`
-- `quiz-start-emotions.mp3`
+Soubory přidané ručně (mimo tento skript) si licenčně ohlídejte sami.
