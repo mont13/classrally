@@ -12,6 +12,9 @@ data/
 # Images uploaded to questions at runtime
 static/uploads/
 
+# Teachers' private question banks on a multi-teacher server ("moje/...")
+questions/users/
+
 # Server configuration with passwords (deploy/classrally.env.example)
 .env
 
