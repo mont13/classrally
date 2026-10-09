@@ -465,7 +465,7 @@
           </div>
           <button class="btn good" id="btnExamPrepare">Připravit písemku</button>
 
-          <h3 style="margin-top:24px;">2. Ovladani</h3>
+          <h3 style="margin-top:24px;">2. Ovládání</h3>
           <div class="btn-row">
             <button class="btn good" id="btnExamOpen">Spustit písemku</button>
             <button class="btn warn" id="btnExamEnd">Ukončit pro všechny</button>
@@ -479,8 +479,8 @@
 
           <h3 style="margin-top:24px;">3. Živý přehled</h3>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-            <label class="check-row"><input type="checkbox" id="examAutoRefresh" checked /> Automaticky obnovovat (kazde 3 s)</label>
-            <button class="btn" id="btnExamRefresh" style="padding:6px 14px;">Obnovit ted</button>
+            <label class="check-row"><input type="checkbox" id="examAutoRefresh" checked /> Automaticky obnovovat (každé 3 s)</label>
+            <button class="btn" id="btnExamRefresh" style="padding:6px 14px;">Obnovit teď</button>
             <span id="examOverviewSummary" class="muted"></span>
           </div>
           <div id="examOverview" style="overflow-x:auto;"></div>
@@ -2799,7 +2799,7 @@
     }
     document.getElementById('examAutoRefresh').addEventListener('change', startExamOverview);
 
-    const phaseLabels = { closed: 'Pripraveno (ceka na spusteni)', open: 'PROBIHA', ended: 'Ukonceno' };
+    const phaseLabels = { closed: 'Připraveno (čeká na spuštění)', open: 'PROBÍHÁ', ended: 'Ukončeno' };
 
     async function refreshExamOverview() {
       try {
@@ -2808,8 +2808,8 @@
         const secs = (ov.time_left || 0) % 60;
         const phaseTxt = phaseLabels[ov.phase] || ov.phase;
         document.getElementById('examStatusLine').textContent =
-          `Stav: ${phaseTxt} | Otazek: ${ov.total_questions} | Zaku: ${ov.student_count} | Odevzdalo: ${ov.submitted_count}` +
-          (ov.phase === 'open' ? ` | Zbyva: ${mins}:${String(secs).padStart(2, '0')}` : '');
+          `Stav: ${phaseTxt} | Otázek: ${ov.total_questions} | Žáků: ${ov.student_count} | Odevzdalo: ${ov.submitted_count}` +
+          (ov.phase === 'open' ? ` | Zbývá: ${mins}:${String(secs).padStart(2, '0')}` : '');
 
         const box = document.getElementById('examOverview');
         box.innerHTML = '';
@@ -2826,7 +2826,7 @@
         const table = document.createElement('table');
         const thead = document.createElement('thead');
         const htr = document.createElement('tr');
-        ['Zak', 'Otazka', 'Zodpov.', 'Opusteni okna', 'Mimo (s)', 'Stav', 'Znamka'].forEach(h => {
+        ['Žák', 'Otázka', 'Zodpov.', 'Opuštění okna', 'Mimo (s)', 'Stav', 'Známka'].forEach(h => {
           const th = document.createElement('th'); th.textContent = h; htr.appendChild(th);
         });
         thead.appendChild(htr);
@@ -2861,11 +2861,11 @@
 
           const tdState = document.createElement('td');
           if (s.submitted) {
-            tdState.textContent = s.auto_submitted ? 'Auto-odevzdano' : 'Odevzdano';
+            tdState.textContent = s.auto_submitted ? 'Auto-odevzdáno' : 'Odevzdáno';
             tdState.style.color = s.auto_submitted ? '#b91c1c' : '#16a34a';
             tdState.style.fontWeight = '800';
           } else {
-            tdState.textContent = 'Pise...';
+            tdState.textContent = 'Píše…';
           }
           tr.appendChild(tdState);
 
