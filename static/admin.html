@@ -1446,6 +1446,9 @@
         }
         if (qType === 'openended') {
           q.accepted_answers = Array.from(ed.querySelectorAll('.q-accepted')).map(o => o.value).filter(v => v.trim());
+          const exactCb = ed.querySelector('.q-exact');
+          if (exactCb && exactCb.checked) q.exact = true;
+          else delete q.exact;
         }
         if (qType === 'poll') {
           q.options = Array.from(ed.querySelectorAll('.q-option')).map(o => o.value);
@@ -1896,6 +1899,16 @@
         renderEditor();
       });
       optGroup.appendChild(addBtn);
+      // Exact match: no typo tolerance (commands and ports one character apart)
+      const exactLabel = document.createElement('label');
+      exactLabel.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:0.9rem;margin-top:8px;cursor:pointer;';
+      const exactCb = document.createElement('input');
+      exactCb.type = 'checkbox';
+      exactCb.className = 'q-exact';
+      exactCb.checked = !!q.exact;
+      exactLabel.appendChild(exactCb);
+      exactLabel.appendChild(document.createTextNode(i18n.t('admin.exact_match_label')));
+      optGroup.appendChild(exactLabel);
       div.appendChild(optGroup);
     }
 

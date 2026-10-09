@@ -596,7 +596,8 @@
     "discrimination_hint": "Discrimination r: how well the question separates students who know the topic from the rest. About 0.3 and more is good; near zero or negative = check the wording and the answer key.",
     "close": "Close",
     "exam_items_overlay": "Test question analysis",
-    "exam_items_hint": "The analysis opens full screen, without names or grades, so you can project it to the class."
+    "exam_items_hint": "The analysis opens full screen, without names or grades, so you can project it to the class.",
+    "exact_match_label": "Exact match (no typo tolerance, e.g. for commands and port numbers)"
   },
   "profile": {
     "page_title": "ClassRally – My Profile",

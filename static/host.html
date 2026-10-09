@@ -1606,7 +1606,12 @@
             ansBig.classList.remove('hide');
             exp.textContent = state.question.explanation || '';
           } else if (qType === 'ordering') {
-            ansBig.textContent = i18n.t('host.correct_order');
+            // items arrive shuffled; correct_order lists their display positions in the right order
+            const items = state.question.items || [];
+            const order = state.question.correct_order || [];
+            ansBig.textContent = order.length === items.length && items.length
+              ? tr('host.analysis_order', 'Správné pořadí: {0}', order.map(i => items[i]).join(' → '))
+              : i18n.t('host.correct_order');
             ansBig.classList.remove('hide');
             exp.textContent = state.question.explanation || '';
           } else if (qType === 'multiselect') {

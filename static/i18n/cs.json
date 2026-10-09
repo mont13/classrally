@@ -437,6 +437,7 @@
     "btn_add_item": "+ Položka",
 
     "accepted_answers_label": "Přijímané odpovědi (každá na vlastní řádek)",
+    "exact_match_label": "Přesná shoda (bez tolerance překlepů, např. u příkazů a čísel portů)",
     "answer_placeholder": "Odpověď {0}",
     "btn_add_answer": "+ Další odpověď",
 

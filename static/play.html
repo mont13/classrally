@@ -2115,6 +2115,8 @@
           } else if (qType === 'multiselect') {
             const correct = (q.correct_indices || []).map(i => q.options[i]).join(', ');
             feedback.textContent = i18n.t('play.sp_wrong_correct', correct);
+          } else if (qType === 'ordering' && (q.correct_order || []).length === (q.items || []).length) {
+            feedback.textContent = i18n.t('play.correct_order') + q.correct_order.map(i => q.items[i]).join(' \u2192 ');
           } else {
             feedback.textContent = i18n.t('play.sp_wrong_plain');
           }

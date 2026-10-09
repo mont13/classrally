@@ -596,7 +596,8 @@
     "discrimination_hint": "Rozlíšenie r: ako dobre otázka oddelí žiakov, ktorí látku vedia, od ostatných. Okolo 0,3 a viac je dobré; okolo nuly alebo záporné = skontrolujte znenie a kľúč.",
     "close": "Zavrieť",
     "exam_items_overlay": "Rozbor otázok písomky",
-    "exam_items_hint": "Rozbor sa otvorí cez celú obrazovku, bez mien a známok, takže ho môžete premietnuť triede."
+    "exam_items_hint": "Rozbor sa otvorí cez celú obrazovku, bez mien a známok, takže ho môžete premietnuť triede.",
+    "exact_match_label": "Presná zhoda (bez tolerancie preklepov, napr. pri príkazoch a číslach portov)"
   },
   "profile": {
     "page_title": "ClassRally – Môj profil",

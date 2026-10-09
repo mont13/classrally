@@ -138,7 +138,7 @@
       "Dojde ke ztrátě veškerého členství ve skupinách",
       "Uživateli se změní Distinguished Name (DN) a začnou se na něj vztahovat GPO propojené s OU2",
       "Uživatelský účet je automaticky zablokován, dokud se znovu nenastaví heslo",
-      "Objekt si zachová zásady z OU1, dokud není uživatel ručně přihlášen k OÚ2"
+      "Objekt si zachová zásady z OU1, dokud není uživatel ručně přihlášen k OU2"
     ],
     "correct_index": 1,
     "explanation": "Přesunem objektu se změní jeho umístění ve stromové struktuře, tedy i Distinguished Name. Členství ve skupinách zůstává zachováno, ale začnou platit GPO navázané na novou OU (OU2) a projeví se při příští aktualizaci politik."

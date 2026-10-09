@@ -45,7 +45,7 @@
       "Nastavení virtuálního switche pro monitorování síťového provozu."
     ],
     "correct_index": 1,
-    "explanation": "Snapshot zachytí stav disku, paměti a nastavení VM v konkrétním čase. Umožňuje rychlý návrat do tohoto bodu, typicky před rizikovou změnou (např. instalací softwaru). Není to záloha hostitele ani síťová konfigurace."
+    "explanation": "Snapshot (checkpoint) zachytí stav disků a nastavení VM v konkrétním čase (standardní checkpoint i obsah paměti, produkční checkpoint v Hyper-V ne). Umožňuje rychlý návrat do tohoto bodu, typicky před rizikovou změnou. Není to záloha: leží na stejném úložišti jako VM a při jeho poruše zmizí s ní."
   },
   {
     "id": "q5",
@@ -112,11 +112,11 @@
     "prompt": "Pokud potřebujete na svém notebooku s Windows spustit krátkodobě testovací linuxový server, přičemž nechcete měnit nastavení bootování, který nástroj zvolíte?",
     "options": [
       "VMware ESXi",
-      "Hyper-V Server (samostatná bezplatná edice)",
-      "Microsoft Hyper-V (role ve Windows) nebo Oracle VirtualBox",
+      "Samostatný Hyper-V Server nainstalovaný místo Windows",
+      "Oracle VirtualBox (hypervizor typu 2)",
       "Docker bez jakékoli linuxové komponenty"
     ],
     "correct_index": 2,
-    "explanation": "Na notebooku s existující instalací Windows je vhodný hypervizor typu 2 (VirtualBox) nebo aktivace role Hyper-V (typ 1, ale integrovaný), aniž byste museli přeinstalovávat OS na ESXi. Docker na Windows pro Linuxové kontejnery vyžaduje linuxové jádro (přes WSL 2 nebo VM), takže odpověď s Dockerem 'bez linuxové komponenty' je zavádějící."
+    "explanation": "VirtualBox běží jako aplikace nad Windows, takže se nic nepřeinstalovává ani nemění v zavádění systému. VMware ESXi i samostatný Hyper-V Server by se instalovaly místo Windows a zapnutí funkce Hyper-V mění konfiguraci zavádění (hypervizor startuje před Windows). Linuxové kontejnery v Dockeru potřebují linuxové jádro (WSL 2 nebo VM)."
   }
 ]

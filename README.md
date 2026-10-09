@@ -11,6 +11,12 @@ Staci Python nebo Docker (Linux/Mac), na Windows hotovy ZIP s pribalenym Pythone
 
 > **Port:** vychozi je atypicky **48217** (aby nekolidoval na sdilenych strojich). Zmenite promennou `QUIZ_PORT`.
 
+> **Verze 3.0** (rijen 2026): rozbor vysledku po otazkach (hra i pisemka), trvale ukladane pisemky s exporty
+> a polozkovou analyzou, volby „bez bonusu za rychlost“ a „jen stupne vitezu“, ucty s e-mailem, mistnosti
+> s PINem pro vice ucitelu a zalohovani; polozky otazek na serazeni se zakum michaji a otevrena odpoved
+> muze vyzadovat presnou shodu (`"exact": true`). Verze 2.1 (cerven 2026) mela jen jednu tridu, souhrnne vysledky
+> a pisemku v pameti. Verzi hlasi `/api/health` (`"version": "3.0"`).
+
 ## Jak odehrat prvni hru
 
 1. **Spust server** — `./start.sh` (Docker) nebo `python3 server.py --host 0.0.0.0`

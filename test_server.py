@@ -545,6 +545,15 @@ class TestQuestionBanks(unittest.TestCase):
         banks = server.list_question_banks()
         self.assertEqual(len(banks), 2)
 
+    def test_bank_names_written_by_people_are_shown_as_written(self):
+        q = [{"id": "a1", "prompt": "?", "options": ["A", "B"], "correct_index": 0}]
+        for name in ("linux_sprava.json", "OS13-2_DNS_zóny_a_záznamy.json", "fyzika_č1.json"):
+            server.save_questions_to_file(name, q)
+        names = {b["filename"]: b["name"] for b in server.list_question_banks()}
+        self.assertEqual(names["linux_sprava.json"], "Linux Sprava")  # old snake_case names as before
+        self.assertEqual(names["OS13-2_DNS_zóny_a_záznamy.json"], "OS13-2 DNS zóny a záznamy")
+        self.assertEqual(names["fyzika_č1.json"], "fyzika č1")
+
     def test_delete_bank(self):
         q = [{"id": "d1", "prompt": "?", "options": ["A", "B"], "correct_index": 0}]
         server.save_questions_to_file("del.json", q)
@@ -705,7 +714,8 @@ class TestHTTPIntegration(unittest.TestCase):
     def test_health(self):
         data = self._get("/api/health")
         self.assertTrue(data["ok"])
-        self.assertEqual(data["version"], "2.1")
+        self.assertEqual(data["version"], server.APP_VERSION)
+        self.assertEqual(server.APP_VERSION, "3.0")
 
     def test_register_and_state(self):
         reg = self._post("/api/register", {"name": "TestPlayer"})
@@ -1837,6 +1847,33 @@ class TestQuestionTypes(unittest.TestCase):
 
     # --- Ordering (Kendall tau / inversion count) ---
 
+    def test_ordering_items_are_shuffled_and_answers_mapped_back(self):
+        items = ["Discover", "Offer", "Request", "Acknowledge"]
+        q = server.QuizState([{"id": "o", "type": "ordering", "prompt": "DORA?", "items": list(items)}])
+        q.get_ready_sec = 0
+        q.speed_bonus = False  # full points do not depend on how fast the test machine is
+        lazy, smart = q.register_player("Lina"), q.register_player("Bystra")
+        q.host_action("start")
+        shown = q.public_state(lazy["player_id"])["question"]["items"]
+        self.assertEqual(sorted(shown), sorted(items))
+        self.assertNotEqual(shown, items)  # never handed out in the right order
+        self.assertEqual(q.public_state(smart["player_id"])["question"]["items"], shown)  # same for all
+        self.assertNotIn("correct_order", q.public_state(lazy["player_id"])["question"])
+        # sending the order as shown is not a free answer any more
+        q.submit_answer(lazy["player_id"], lazy["player_secret"], list(range(4)))
+        right = [shown.index(x) for x in items]  # display positions in the right order
+        q.submit_answer(smart["player_id"], smart["player_secret"], right)
+        self.assertEqual(q.answers[smart["player_id"]]["choice"], [0, 1, 2, 3])  # stored as bank items
+        self.assertEqual(q.public_state()["phase"], "reveal")  # everybody answered
+        state = q.public_state(smart["player_id"])
+        self.assertEqual(state["question"]["items"], shown)
+        self.assertEqual(state["my_choice"], right)  # the player sees the answer the way it was shown
+        self.assertEqual([shown[i] for i in state["question"]["correct_order"]], items)
+        scores = {p.name: p.score for p in q.players.values()}
+        self.assertEqual(scores["Bystra"], 1000)
+        self.assertLess(scores["Lina"], 1000)
+        self.assertEqual(q.question_log[0]["items"], items)  # the analysis lists the right order
+
     def test_ordering_perfect_order_scores_full(self):
         q = {"type": "ordering", "items": ["A", "B", "C", "D"]}
         pts = server.QuizState._calculate_points(q, "ordering", self._answer([0, 1, 2, 3]), self._STARTED)
@@ -1887,6 +1924,39 @@ class TestQuestionTypes(unittest.TestCase):
         # "Javascrpyt" has edit distance 2 from "javascript"
         pts = server.QuizState._calculate_points(q, "openended", self._answer("Javascrpyt"), self._STARTED)
         self.assertGreater(pts, 0)
+
+    def test_openended_exact_turns_off_typo_tolerance(self):
+        """Commands or ports one or two characters apart must not pass for each other."""
+        cmd = {"type": "openended", "accepted_answers": ["Get-TimeZone"]}
+        self.assertGreater(server.QuizState._calculate_points(cmd, "openended", self._answer("Set-TimeZone"),
+                                                              self._STARTED), 0)  # the trap without "exact"
+        cmd["exact"] = True
+        for wrong in ("Set-TimeZone", "Get-TimeZon"):
+            self.assertEqual(server.QuizState._calculate_points(cmd, "openended", self._answer(wrong),
+                                                                self._STARTED), 0, wrong)
+        self.assertGreater(server.QuizState._calculate_points(cmd, "openended", self._answer("  get-timezone "),
+                                                              self._STARTED), 0)  # case and spaces still free
+        self.assertEqual(server._score_selfpaced_answer(cmd, "Set-TimeZone"), (False, 0))
+        self.assertEqual(server._score_selfpaced_answer(cmd, "GET-TIMEZONE"), (True, 600))
+        with self.assertRaises(RuntimeError):
+            server._validate_question({"id": "x", "prompt": "?", "type": "openended",
+                                       "accepted_answers": ["a"], "exact": "ano"}, 0)
+
+    def test_two_ordering_items_are_not_always_swapped(self):
+        """Always swapping two items would give the answer away just like never swapping."""
+        rng = server.random.Random(7)
+        orders = {tuple(server._shuffled_order(2, rng)) for _ in range(50)}
+        self.assertEqual(orders, {(0, 1), (1, 0)})
+        rng = server.random.Random(7)
+        self.assertNotIn((0, 1, 2), {tuple(server._shuffled_order(3, rng)) for _ in range(200)})
+
+    def test_ordering_answer_must_be_whole_numbers(self):
+        q = server.QuizState([{"id": "o", "type": "ordering", "prompt": "?", "items": ["a", "b", "c"]}])
+        q.get_ready_sec = 0
+        p = q.register_player("Ema")
+        q.host_action("start")
+        with self.assertRaises(ValueError):
+            q.submit_answer(p["player_id"], p["player_secret"], [0.0, 1.0, 2.0])
 
     def test_openended_no_match_scores_zero(self):
         q = {"type": "openended", "accepted_answers": ["Python"]}
@@ -3930,6 +4000,45 @@ class TestMultiTeacherData(_AccountHTTPBase):
         self.assertEqual(self._post("/api/selfpaced/answer", answer)[0], 404)
         code, r = self._post("/api/selfpaced/answer", dict(answer, secret=p["player_secret"]))
         self.assertEqual(code, 200, r)
+
+    def test_homework_ordering_items_are_shuffled_per_student(self):
+        tc = self._login("TeachC")
+        items = ["Ověřit", "Pojmenovat", "Čas", "Aktualizovat", "Síť"]
+        bank = [{"id": "o1", "type": "ordering", "prompt": "Postup po instalaci?", "items": list(items),
+                 "explanation": "Nejdřív ověřit, pak měnit."}]
+        self.assertEqual(self._post("/api/admin/bank/save", {"filename": "moje/poradi.json", "questions": bank},
+                                    token=tc)[0], 200)
+        sid = self._post("/api/selfpaced/start", {"filename": "moje/poradi.json"}, token=tc)[1]["session_id"]
+
+        def join(name):
+            p = self._post("/api/selfpaced/join", {"session_id": sid, "name": name})[1]
+            state = (f"/api/selfpaced/state?session_id={sid}&player_id={p['player_id']}"
+                     f"&secret={p['player_secret']}")
+            return p, state
+
+        ema, state_ema = join("Ema")
+        shown = self._get_json(state_ema)[1]["question"]["items"]
+        self.assertEqual(sorted(shown), sorted(items))
+        self.assertNotEqual(shown, items)
+        self.assertEqual(self._get_json(state_ema)[1]["question"]["items"], shown)  # same on reload
+        right = [shown.index(x) for x in items]
+        code, r = self._post("/api/selfpaced/answer", {"session_id": sid, "player_id": ema["player_id"],
+                                                       "secret": ema["player_secret"], "choice": right})
+        self.assertEqual(code, 200, r)
+        self.assertTrue(r["correct"])
+        self.assertEqual(r["choice"], right)
+        self.assertEqual([r["question"]["items"][i] for i in r["question"]["correct_order"]], items)
+        summary = self._get_json(state_ema)[1]["summary"][0]
+        self.assertEqual(summary["choice"], right)
+        self.assertEqual([summary["question"]["items"][i] for i in summary["choice"]], items)
+
+        # submitting the order as shown is wrong (it is never the right one)
+        ota, state_ota = join("Ota")
+        code, r = self._post("/api/selfpaced/answer", {"session_id": sid, "player_id": ota["player_id"],
+                                                       "secret": ota["player_secret"], "choice": [0, 1, 2, 3, 4]})
+        self.assertEqual(code, 200, r)
+        self.assertFalse(r["correct"])
+        self.assertTrue((server.user_db._DB_DIR / "item-order.key").is_file())
 
     def test_classes_and_students_are_per_teacher(self):
         tc, td = self._login("TeachC"), self._login("TeachD")

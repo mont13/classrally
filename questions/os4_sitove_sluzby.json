@@ -61,7 +61,7 @@
   },
   {
     "id": "q6",
-    "prompt": "Která z následujících dvojic portů se standardně používá pro nešifrovaný (FTP) a šifrovaný přenos webových stránek (HTTPS)?",
+    "prompt": "Které standardní porty používají řídicí spojení protokolu FTP a šifrovaný přenos webových stránek (HTTPS)?",
     "options": [
       "FTP: 21, HTTPS: 443",
       "FTP: 22, HTTPS: 80",
@@ -93,7 +93,7 @@
       "Klient: 80, Server: 443"
     ],
     "correct_index": 0,
-    "explanation": "DHCP klient odesílá požadavky ze zdrojového UDP portu 68 na cílový port 67 (server). Port 53 je DNS a porty 80/443 patří HTTP/HTTPS. V možnosti C jsou porty prohozené."
+    "explanation": "DHCP klient odesílá požadavky ze zdrojového UDP portu 68 na cílový port 67 (server). Port 53 je DNS a porty 80/443 patří HTTP/HTTPS. Přiřazení „klient 67, server 68“ má porty prohozené."
   },
   {
     "id": "q9",

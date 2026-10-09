@@ -596,7 +596,8 @@
     "discrimination_hint": "Trennschärfe r: wie gut die Frage Schüler, die den Stoff beherrschen, von den übrigen unterscheidet. Ab etwa 0,3 gut; um null oder negativ = Formulierung und Lösung prüfen.",
     "close": "Schließen",
     "exam_items_overlay": "Fragenanalyse des Tests",
-    "exam_items_hint": "Die Analyse öffnet sich im Vollbild, ohne Namen und Noten, sodass Sie sie der Klasse zeigen können."
+    "exam_items_hint": "Die Analyse öffnet sich im Vollbild, ohne Namen und Noten, sodass Sie sie der Klasse zeigen können.",
+    "exact_match_label": "Exakte Übereinstimmung (keine Tippfehlertoleranz, z. B. bei Befehlen und Portnummern)"
   },
   "profile": {
     "page_title": "ClassRally – Mein Profil",

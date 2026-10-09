@@ -51,6 +51,7 @@ UPLOADS_DIR = STATIC_DIR / "uploads"
 QUESTIONS_DIR = BASE_DIR / "questions"
 HISTORY_DIR = Path(os.environ["QUIZ_HISTORY_DIR"]) if os.environ.get("QUIZ_HISTORY_DIR") else BASE_DIR / "history"
 DEFAULT_QUESTIONS_FILE = "default.json"
+APP_VERSION = "3.0"  # /api/health and the Server header
 QUESTION_DURATION_SEC = 20
 REVEAL_DURATION_SEC = 5
 GET_READY_SEC = 3  # "Get ready" countdown before answers show (0 = off)
@@ -192,6 +193,13 @@ def _bank_path(filename: str, owner_id: int | None = None) -> tuple[Path, str]:
     return QUESTIONS_DIR / name, name
 
 
+def _bank_display_name(stem: str) -> str:
+    """Name shown in the portal: "linux_sprava" -> "Linux Sprava" as before; a name
+    someone wrote with capitals or diacritics ("OS13-2_DNS_zóny") stays as written."""
+    text = stem.replace("_", " ")
+    return text.title() if stem.isascii() and stem == stem.lower() else text
+
+
 def _bank_entries(folder: Path, prefix: str, scope: str, editable: bool) -> list[dict[str, Any]]:
     banks = []
     if not folder.is_dir():
@@ -205,7 +213,7 @@ def _bank_entries(folder: Path, prefix: str, scope: str, editable: bool) -> list
                 count = 0
             banks.append({
                 "filename": prefix + f.name,
-                "name": f.stem.replace("_", " ").title(),
+                "name": _bank_display_name(f.stem),
                 "question_count": count,
                 "scope": scope,
                 "editable": editable,
@@ -313,6 +321,10 @@ def _validate_question(q: dict, idx: int) -> None:
     if "double" in q:
         if not isinstance(q["double"], bool):
             raise RuntimeError(f"question {idx} double must be a boolean")
+
+    # Open answers: optional exact match (no typo tolerance)
+    if "exact" in q and not isinstance(q["exact"], bool):
+        raise RuntimeError(f"question {idx} exact must be a boolean")
 
 
 def load_questions_from_file(filename: str, owner_id: int | None = None) -> list[dict[str, Any]]:
@@ -1026,6 +1038,30 @@ class _PinGuessBlocked(Exception):
 
 # --- Quiz State ---
 
+def _open_answer_ok(question: dict, answer: Any) -> bool:
+    """Is an open answer one of the accepted ones?
+
+    Ends are trimmed and case is ignored unless the question is case_sensitive.
+    Longer answers tolerate small typos (5-8 characters one, more two) unless the
+    question asks for an exact match: commands such as Get-TimeZone / Set-TimeZone
+    or "port 389" / "port 3389" differ by just one or two characters.
+    """
+    case_sensitive = bool(question.get("case_sensitive", False))
+    compare = str(answer).strip()
+    compare = compare if case_sensitive else compare.lower()
+    for acc in question.get("accepted_answers", []):
+        target = str(acc).strip()
+        target = target if case_sensitive else target.lower()
+        if compare == target:
+            return True
+        if question.get("exact"):
+            continue
+        max_dist = 2 if len(target) > 8 else (1 if len(target) > 4 else 0)
+        if max_dist > 0 and _levenshtein(compare, target) <= max_dist:
+            return True
+    return False
+
+
 def _levenshtein(s1: str, s2: str) -> int:
     """Compute Levenshtein edit distance between two strings."""
     if len(s1) < len(s2):
@@ -1123,6 +1159,19 @@ class QuizState:
         # One entry per evaluated question: what the class answered (formative
         # analysis after the game, saved with the game history)
         self.question_log: list[dict[str, Any]] = []
+        # Ordering questions are shown shuffled (the bank lists the items in the
+        # right order): question index -> display position -> original item index
+        self._item_orders: dict[int, list[int]] = {}
+
+    def _item_order_locked(self, index: int) -> list[int] | None:
+        """Display order of an ordering question, never the right order itself."""
+        question = self.questions[index] if 0 <= index < len(self.questions) else {}
+        n = len(question.get("items", [])) if question.get("type") == "ordering" else 0
+        if n < 2:
+            return None
+        if index not in self._item_orders:
+            self._item_orders[index] = _shuffled_order(n, random.Random())
+        return self._item_orders[index]
 
     def _notify(self) -> None:
         """Broadcast this game's state over WS (call only after releasing the lock)."""
@@ -1144,6 +1193,7 @@ class QuizState:
             self.scored_question_count = 0
             self._awards_cache = None
             self.question_log = []
+            self._item_orders = {}
             for player in self.players.values():
                 player.score = 0
                 player.streak = 0
@@ -1263,6 +1313,7 @@ class QuizState:
             self.scored_question_count = 0
             self._awards_cache = None
             self.question_log = []
+            self._item_orders = {}
             self._mark_ws_state_locked()
         self._notify()
         return gone
@@ -1282,6 +1333,7 @@ class QuizState:
                 self.scored_question_index = None
                 self._awards_cache = None
                 self.question_log = []
+                self._item_orders = {}
             elif action == "reveal":
                 if self.phase != "question":
                     raise ValueError("Reveal je mozne jen ve fazi question")
@@ -1304,6 +1356,7 @@ class QuizState:
                 self.scored_question_count = 0
                 self._awards_cache = None
                 self.question_log = []
+                self._item_orders = {}
                 for player in self.players.values():
                     player.score = 0
                     player.streak = 0
@@ -1364,8 +1417,11 @@ class QuizState:
                 items = question.get("items", [])
                 if not isinstance(choice, list) or len(choice) != len(items):
                     raise ValueError("Ordering vyzaduje permutaci vsech polozek")
-                if sorted(choice) != list(range(len(items))):
+                if any(type(c) is not int for c in choice) or sorted(choice) != list(range(len(items))):
                     raise ValueError("Neplatna permutace")
+                order = self._item_order_locked(self.current_index)
+                if order:
+                    choice = [order[d] for d in choice]  # display positions -> items of the bank
             elif q_type == "openended":
                 if not isinstance(choice, str) or not choice.strip():
                     raise ValueError("Odpoved nesmi byt prazdna")
@@ -1610,23 +1666,7 @@ class QuizState:
             return int(600 * ratio)
 
         if q_type == "openended":
-            player_answer = str(answer["choice"]).strip().lower()
-            accepted = question.get("accepted_answers", [])
-            case_sensitive = question.get("case_sensitive", False)
-            for acc in accepted:
-                target = acc.strip() if case_sensitive else acc.strip().lower()
-                compare = answer["choice"].strip() if case_sensitive else player_answer
-                if compare == target:
-                    return 600 + speed_bonus * 10
-                # Fuzzy match: allow small edit distance for longer answers
-                max_dist = 0
-                if len(target) > 8:
-                    max_dist = 2
-                elif len(target) > 4:
-                    max_dist = 1
-                if max_dist > 0 and _levenshtein(compare, target) <= max_dist:
-                    return 600 + speed_bonus * 10
-            return 0
+            return 600 + speed_bonus * 10 if _open_answer_ok(question, answer["choice"]) else 0
 
         return 0
 
@@ -1992,7 +2032,11 @@ class QuizState:
                     me_data["team_score"] = ts.get(p.team, 0)
                 response["me"] = me_data
                 if player_id in self.answers:
-                    response["my_choice"] = self.answers[player_id]["choice"]
+                    my_choice = self.answers[player_id]["choice"]
+                    order = self._item_order_locked(self.current_index)
+                    if order and isinstance(my_choice, list):
+                        my_choice = [order.index(i) for i in my_choice]
+                    response["my_choice"] = my_choice
 
             if self.current_index >= 0:
                 q = self.questions[self.current_index]
@@ -2011,9 +2055,10 @@ class QuizState:
                 # Type-specific fields
                 if q_type in ("choice", "truefalse", "multiselect", "poll"):
                     q_public["options"] = q["options"]
+                item_order = self._item_order_locked(self.current_index) if q_type == "ordering" else None
                 if q_type == "ordering":
-                    # Send items in shuffled order during question phase
-                    q_public["items"] = q["items"]
+                    # shuffled for everybody alike; the client answers with display positions
+                    q_public["items"] = [q["items"][i] for i in item_order] if item_order else q["items"]
                 if q_type == "openended":
                     q_public["max_length"] = 200
                 if q_type == "slide":
@@ -2041,7 +2086,9 @@ class QuizState:
                     elif q_type == "multiselect":
                         q_public["correct_indices"] = q.get("correct_indices", [])
                     elif q_type == "ordering":
-                        q_public["correct_order"] = list(range(len(q.get("items", []))))
+                        n_items = len(q.get("items", []))
+                        q_public["correct_order"] = ([item_order.index(k) for k in range(n_items)]
+                                                     if item_order else list(range(n_items)))
                     elif q_type == "openended":
                         q_public["accepted_answers"] = q.get("accepted_answers", [])
                     if q_type not in ("poll", "wordcloud", "slide"):
@@ -3037,24 +3084,41 @@ def _score_selfpaced_answer(question: dict, choice: Any) -> tuple[bool, int]:
         return False, 0
 
     if q_type == "openended":
-        player_answer = str(choice).strip().lower()
-        accepted = question.get("accepted_answers", [])
-        case_sensitive = question.get("case_sensitive", False)
-        for acc in accepted:
-            target = acc.strip() if case_sensitive else acc.strip().lower()
-            compare = str(choice).strip() if case_sensitive else player_answer
-            if compare == target:
-                return True, 600
-            max_dist = 2 if len(target) > 8 else (1 if len(target) > 4 else 0)
-            if max_dist > 0 and _levenshtein(compare, target) <= max_dist:
-                return True, 600
-        return False, 0
+        return (True, 600) if _open_answer_ok(question, choice) else (False, 0)
 
     return False, 0
 
 
-def _public_question_for_selfpaced(question: dict, reveal: bool = False) -> dict:
-    """Return the public view of a question for self-paced mode."""
+def _shuffled_order(n: int, rng: random.Random) -> list[int]:
+    """A random order of n items. From three items on it is never the original
+    one (handing out the answer); two items are swapped or not at random, since
+    "always swapped" would give the answer away just the same."""
+    order = list(range(n))
+    rng.shuffle(order)
+    while n >= 3 and order == sorted(order):
+        rng.shuffle(order)
+    return order
+
+
+def _selfpaced_item_order(question: dict, session_id: str, player_id: str) -> list[int] | None:
+    """Homework: each student gets the ordering items shuffled, the same way on
+    every reload, from a server secret the student cannot compute."""
+    n = len(question.get("items", [])) if question.get("type") == "ordering" else 0
+    if n < 2:
+        return None
+    seed = hmac.new(user_db.server_secret("item-order"),
+                    f"{session_id}|{player_id}|{question.get('id')}".encode("utf-8"), hashlib.sha256).digest()
+    return _shuffled_order(n, random.Random(seed))
+
+
+def _public_question_for_selfpaced(question: dict, reveal: bool = False,
+                                   item_order: list[int] | None = None) -> dict:
+    """Return the public view of a question for self-paced mode.
+
+    item_order: how the ordering items were shown to this student (display
+    position -> item of the bank); the right order is then given in display
+    positions as well.
+    """
     q_type = question.get("type", "choice")
     q_public: dict[str, Any] = {
         "id": question["id"],
@@ -3064,7 +3128,7 @@ def _public_question_for_selfpaced(question: dict, reveal: bool = False) -> dict
     if q_type in ("choice", "truefalse", "multiselect"):
         q_public["options"] = question["options"]
     if q_type == "ordering":
-        q_public["items"] = question["items"]
+        q_public["items"] = [question["items"][i] for i in item_order] if item_order else question["items"]
     if q_type == "openended":
         q_public["max_length"] = 200
 
@@ -3074,7 +3138,9 @@ def _public_question_for_selfpaced(question: dict, reveal: bool = False) -> dict
         elif q_type == "multiselect":
             q_public["correct_indices"] = question.get("correct_indices", [])
         elif q_type == "ordering":
-            q_public["correct_order"] = list(range(len(question.get("items", []))))
+            n_items = len(question.get("items", []))
+            q_public["correct_order"] = ([item_order.index(k) for k in range(n_items)]
+                                         if item_order else list(range(n_items)))
         elif q_type == "openended":
             q_public["accepted_answers"] = question.get("accepted_answers", [])
         q_public["explanation"] = question.get("explanation", "")
@@ -3414,7 +3480,7 @@ def build_server_info(
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ClassRally/2.1"
+    server_version = f"ClassRally/{APP_VERSION}"
 
     def _csv_response(self, text: str, filename: str) -> None:
         body = text.encode("utf-8")
@@ -3900,7 +3966,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/health":
-            self._json_response({"ok": True, "service": "classrally", "version": "2.1"})
+            self._json_response({"ok": True, "service": "classrally", "version": APP_VERSION})
             return
 
         if path == "/api/mode":
@@ -4299,9 +4365,13 @@ class Handler(BaseHTTPRequestHandler):
                 summary = []
                 for i, ans_rec in enumerate(progress["answers"]):
                     q_data = questions[i] if i < len(questions) else {}
+                    shown = ans_rec.get("item_order")  # answers from before the shuffle have none
+                    choice = ans_rec.get("choice")
+                    if shown and isinstance(choice, list):
+                        choice = [shown.index(c) for c in choice]
                     summary.append({
-                        "question": _public_question_for_selfpaced(q_data, reveal=True),
-                        "choice": ans_rec.get("choice"),
+                        "question": _public_question_for_selfpaced(q_data, reveal=True, item_order=shown),
+                        "choice": choice,
                         "correct": ans_rec.get("correct", False),
                         "points": ans_rec.get("points", 0),
                     })
@@ -4320,7 +4390,8 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "question",
                 "question_index": answered_count,
                 "total_questions": len(questions),
-                "question": _public_question_for_selfpaced(current_q, reveal=False),
+                "question": _public_question_for_selfpaced(
+                    current_q, reveal=False, item_order=_selfpaced_item_order(current_q, session_id, player_id)),
                 "score": progress["score"],
                 "player_name": progress["player_name"],
                 "bank_name": session["bank_name"],
@@ -5282,7 +5353,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(choice, list) or len(choice) != len(items):
                         self._json_response({"error": "choice must be permutation of all items"}, status=400)
                         return
-                    if sorted(choice) != list(range(len(items))):
+                    if any(type(c) is not int for c in choice) or sorted(choice) != list(range(len(items))):
                         self._json_response({"error": "Invalid permutation"}, status=400)
                         return
                 elif q_type == "openended":
@@ -5291,15 +5362,22 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     choice = choice.strip()[:200]
 
+                item_order = _selfpaced_item_order(question, session_id, player_id)
+                shown_choice = choice
+                if item_order:
+                    choice = [item_order[d] for d in choice]  # display positions -> items of the bank
                 is_correct, points = _score_selfpaced_answer(question, choice)
 
                 # Build new answers list
                 new_answers = list(progress["answers"])
-                new_answers.append({
+                answer_record = {
                     "choice": choice,
                     "correct": is_correct,
                     "points": points,
-                })
+                }
+                if item_order:
+                    answer_record["item_order"] = item_order  # how the items were shown (summary)
+                new_answers.append(answer_record)
                 new_score = progress["score"] + points
                 finished = len(new_answers) >= len(questions)
 
@@ -5315,7 +5393,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
 
                 # Build reveal info for this question
-                reveal_q = _public_question_for_selfpaced(question, reveal=True)
+                reveal_q = _public_question_for_selfpaced(question, reveal=True, item_order=item_order)
                 self._json_response({
                     "ok": True,
                     "correct": is_correct,
@@ -5325,7 +5403,7 @@ class Handler(BaseHTTPRequestHandler):
                     "total_questions": len(questions),
                     "finished": finished,
                     "question": reveal_q,
-                    "choice": choice,
+                    "choice": shown_choice,
                 })
                 return
 

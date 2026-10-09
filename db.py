@@ -44,6 +44,38 @@ def set_db_path(path: str | Path) -> None:
     global _DB_PATH, _DB_DIR
     _DB_PATH = Path(path)
     _DB_DIR = _DB_PATH.parent
+    _secrets.clear()
+
+
+_secrets: dict[tuple[str, str], bytes] = {}
+_secrets_lock = threading.Lock()
+
+
+def server_secret(name: str) -> bytes:
+    """A random key kept in the data folder (<name>.key, mode 600), e.g. for
+    shuffling homework items unpredictably. It survives restarts and is part of
+    the backups (backup.py takes the data folder except the database files)."""
+    with _secrets_lock:
+        cached = _secrets.get((str(_DB_DIR), name))
+        if cached:
+            return cached
+        path = _DB_DIR / f"{name}.key"
+        try:
+            key = path.read_bytes()
+        except FileNotFoundError:
+            key = b""
+        if len(key) < 16:  # missing, or cut short by a crash or a full disk
+            key = secrets.token_bytes(32)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(key)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        _secrets[(str(_DB_DIR), name)] = key
+        return key
 
 
 # Password hashing: salted PBKDF2-HMAC-SHA256. Older databases store unsalted

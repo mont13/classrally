@@ -57,7 +57,7 @@
       "Klíč lze přeskočit pouze při instalaci edice Datacenter Server Core."
     ],
     "correct_index": 2,
-    "explanation": "Instalační program Windows Serveru umožňuje zvolit 'Nemám kód Product Key' a pokračovat. Systém se nainstaluje jako zkušební verze, kterou je nutné později aktivovat standardním klíčem."
+    "explanation": "Instalační program Windows Serveru umožňuje zvolit „Nemám kód Product Key“ a pokračovat. Systém se nainstaluje bez aktivace a aktivovat ho lze později zadáním platného klíče. (U zkušební verze Evaluation se klíč nezadává, ale do 10 dnů se musí aktivovat přes internet; pak běží 180 dní.)"
   },
   {
     "id": "q6",
@@ -109,7 +109,7 @@
   },
   {
     "id": "q10",
-    "prompt": "Pomocí kterého modulu v prostředí PowerShell lze nainstalovat roli Active Directory Domain Services na Windows Server s již dokončenou instalací operačního systému?",
+    "prompt": "Kterou rutinou (cmdletem) PowerShellu nainstalujete roli Active Directory Domain Services na Windows Server s již dokončenou instalací operačního systému?",
     "options": [
       "Add-Feature",
       "Install-ADDSDomainController",
