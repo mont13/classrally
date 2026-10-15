@@ -161,7 +161,6 @@ def build_report(data: dict[str, Any], *, role: str, reporter: str | None,
         "popis": popis,
         "typ": typ,
         "url": path[:500],
-        "oblast": page,
         "userAgent": user_agent[:400],
         "technicke_detaily": {
             "aplikace": "ClassRally",

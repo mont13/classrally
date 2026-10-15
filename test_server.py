@@ -5341,6 +5341,12 @@ class TestBugReportBridge(unittest.TestCase):
         self.assertEqual(sent["origin"], "https://classrally.example.com")
         self.assertIsNone(sent["admin"])
         payload = sent["json"]
+        # Only fields of the collector's ReportCreate schema, with their types
+        # (e.g. "oblast" is a marked screenshot area object, not a page name).
+        self.assertLessEqual(set(payload), {"projectKey", "popis", "typ", "url", "technicke_detaily",
+                                            "screenshot_data_url", "userAgent", "reporter"})
+        self.assertIsInstance(payload["technicke_detaily"], dict)
+        self.assertEqual(payload["technicke_detaily"]["stranka"], "play")
         self.assertEqual(payload["projectKey"], "classrally")
         self.assertEqual(payload["url"], "/play")  # no PIN or other query in the report
         self.assertEqual(payload["technicke_detaily"]["role"], "anonymous")
