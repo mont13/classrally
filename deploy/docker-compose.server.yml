@@ -16,7 +16,8 @@
 #   QUIZ_BASE_URL         public URL, e.g. https://classrally.example.com
 #   QUIZ_ADMIN_PASSWORD   /admin password — without it the admin portal is
 #                         open to anyone until the first teacher registers
-# Optional: AI_* (question generator), MAIL_MODE/MAIL_FROM/SMTP_* (e-mail,
+# Optional: BUGGY_URL/BUGGY_PROJECT_KEY/BUGGY_ORIGIN (bug reports, widget files
+# in CLASSRALLY_DATA_DIR/buggy), AI_* (question generator), MAIL_MODE/MAIL_FROM/SMTP_* (e-mail,
 # default MAIL_MODE=log writes messages to data/outbox and sends nothing),
 # QUIZ_ROOMS=multi (several teachers: a room with a PIN per teacher and
 # separate data; default single = one shared game)
@@ -44,6 +45,9 @@ services:
       - ${CLASSRALLY_DATA_DIR:?set CLASSRALLY_DATA_DIR}/questions:/app/questions
       - ${CLASSRALLY_DATA_DIR:?set CLASSRALLY_DATA_DIR}/uploads:/app/static/uploads
       - ${CLASSRALLY_DATA_DIR:?set CLASSRALLY_DATA_DIR}/audio:/app/static/audio:ro
+      # Optional bug-report widget files (widget.js, widget.css, capture.css);
+      # an empty or missing directory simply leaves bug reporting off.
+      - ${CLASSRALLY_DATA_DIR:?set CLASSRALLY_DATA_DIR}/buggy:/app/buggy-widget:ro
     environment:
       QUIZ_PORT: "48217"
       QUIZ_BASE_URL: ${QUIZ_BASE_URL:?set QUIZ_BASE_URL}
@@ -61,6 +65,11 @@ services:
       SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Bug reports to a central collector (bugreport.py); off when unset
+      BUGGY_URL: ${BUGGY_URL:-}
+      BUGGY_PROJECT_KEY: ${BUGGY_PROJECT_KEY:-}
+      BUGGY_ORIGIN: ${BUGGY_ORIGIN:-}
+      BUGGY_WIDGET_DIR: /app/buggy-widget
     # A runaway process must not starve other containers on a shared host.
     mem_limit: 512m
     cap_drop:

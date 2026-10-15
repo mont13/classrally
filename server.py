@@ -40,6 +40,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 from qrgen import generate_qr_svg
+import bugreport
 import db as user_db
 import mailer
 from ws import WSConnection, WSConnectionManager, ws_handshake_response
@@ -987,6 +988,10 @@ MAIL_LIMITER_USER = _RegistrationRateLimiter(max_requests=3, window_sec=3600)
 SET_EMAIL_LIMITER = _RegistrationRateLimiter(max_requests=10, window_sec=3600)
 VERIFY_MAIL_IP = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
 INVITE_LIMITER = _RegistrationRateLimiter(max_requests=20, window_sec=3600)
+# Bug reports: a whole class behind one school NAT may report at once, but one
+# address must not flood the central collector.
+BUG_REPORT_LIMITER_IP = _RegistrationRateLimiter(max_requests=60, window_sec=600)
+BUG_REPORT_LIMITER_ALL = _RegistrationRateLimiter(max_requests=300, window_sec=3600)
 # Hard cap on all outgoing account e-mail of the server.
 GLOBAL_MAIL_LIMITER = _RegistrationRateLimiter(max_requests=200, window_sec=3600)
 class _GuessLimiter:
@@ -3969,6 +3974,24 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response({"ok": True, "service": "classrally", "version": APP_VERSION})
             return
 
+        if path == "/api/bug-report/config":
+            self._json_response(bugreport.public_config())
+            return
+
+        if path.startswith("/buggy/"):
+            asset = bugreport.widget_file(path.removeprefix("/buggy/"))
+            if asset is None:
+                self._text_response("Not found", status=404)
+                return
+            body, content_type = asset
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/mode":
             pin = parse_qs(parsed.query).get("pin", [None])[0]
             room = self._join_room(pin)
@@ -4431,6 +4454,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path
+            if path == "/api/bug-report":
+                self._handle_bug_report()
+                return
             data = self._read_json()
 
             if path == "/api/register":
@@ -5421,6 +5447,64 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response({"error": str(exc)}, status=400)
         except Exception as exc:
             self._json_response({"error": f"Server error: {exc}"}, status=500)
+
+    def _bug_reporter(self) -> tuple[str, str | None]:
+        """Role of the reporter and, for teachers only, their nickname.
+
+        Pupils are reported without any name: the report needs the page, not
+        the child. A teacher's nickname lets the maintainer ask back.
+        """
+        uid = self._get_user_id_from_token()
+        if uid is not None:
+            user = user_db.get_user(uid)
+            if user and user["role"] == "teacher":
+                return "teacher", str(user["nickname"])
+            if user:
+                return "student", None
+        if ADMIN_AUTH.enabled and ADMIN_AUTH.validate_session(self._get_admin_token()):
+            return "teacher", None
+        return "anonymous", None
+
+    def _handle_bug_report(self) -> None:
+        """POST /api/bug-report: validate, redact and forward to the collector."""
+        if not bugreport.enabled():
+            self._json_response({"error": "Hlaseni chyb neni zapnute", "code": "disabled"}, status=404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = -1
+        if length <= 0 or length > bugreport.MAX_BODY_BYTES:
+            self.close_connection = True
+            self._json_response({"error": "Request too large", "code": "too_large"}, status=413)
+            return
+        client_ip = self._get_client_ip()
+        if not (BUG_REPORT_LIMITER_IP.is_allowed(client_ip) and BUG_REPORT_LIMITER_ALL.is_allowed("all")):
+            self.rfile.read(length)
+            self._json_response({"error": "Prilis mnoho hlaseni, zkuste to za chvili",
+                                 "code": "rate_limited"}, status=429)
+            return
+        try:
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            self._json_response({"error": "Invalid JSON", "code": "invalid"}, status=400)
+            return
+        if not isinstance(data, dict):
+            self._json_response({"error": "Invalid JSON", "code": "invalid"}, status=400)
+            return
+        role, reporter = self._bug_reporter()
+        try:
+            payload = bugreport.build_report(data, role=role, reporter=reporter,
+                                             user_agent=self.headers.get("User-Agent", ""))
+        except bugreport.BadReport as exc:
+            self._json_response({"error": str(exc), "code": str(exc)}, status=400)
+            return
+        try:
+            result = bugreport.forward(payload, data.get("clientRequestId"))
+        except bugreport.DeliveryError as exc:
+            self._json_response({"error": "Hlaseni se nepodarilo predat", "code": exc.code}, status=502)
+            return
+        self._json_response(result, status=201)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         return

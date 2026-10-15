@@ -648,7 +648,7 @@
 
           <h3 style="margin-top: 24px;" data-i18n="admin.host_token_title">Pristupovy klic pro ovladani hry</h3>
           <p class="muted" data-i18n="admin.host_token_desc">Klic pro ovladani hry z host obrazovky. Kliknete pro kopirovani.</p>
-          <div id="hostTokenBox" class="host-token-box" style="cursor:pointer;" data-i18n="admin.loading">Nacitam...</div>
+          <div id="hostTokenBox" class="host-token-box" data-buggy-secret style="cursor:pointer;" data-i18n="admin.loading">Nacitam...</div>
         </div>
 
         <div id="tab-history" class="tab-content">
@@ -3315,5 +3315,6 @@
       checkAuth();
     });
   </script>
+  <script src="/static/buggy-host.js" defer></script>
 </body>
 </html>

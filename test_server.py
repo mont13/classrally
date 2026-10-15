@@ -5238,5 +5238,195 @@ class TestAnalysisHTTP(_AccountHTTPBase):
         self.assertFalse(any(isinstance(v, (list, dict)) for v in activity.values()))  # counts, no names
 
 
+
+class _FakeCollector(BaseHTTPRequestHandler):
+    """Stands in for the central bug collector: records what it receives."""
+    received: list = []
+    status = 201
+
+    def do_POST(self):  # noqa: N802
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        type(self).received.append({"path": self.path, "origin": self.headers.get("Origin"),
+                                    "admin": self.headers.get("X-Admin-Token"),
+                                    "json": json.loads(body)})
+        answer = json.dumps({"id": len(type(self).received)}).encode()
+        self.send_response(type(self).status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(answer)))
+        self.end_headers()
+        self.wfile.write(answer)
+
+    def log_message(self, *args):
+        pass
+
+
+_PNG_1X1 = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+            "2mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+
+class TestBugReportBridge(unittest.TestCase):
+    """POST /api/bug-report: validation, redaction, forwarding, limits, widget assets."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.collector = ThreadingHTTPServer(("127.0.0.1", 0), _FakeCollector)
+        threading.Thread(target=cls.collector.serve_forever, daemon=True).start()
+        cls.widget_dir = Path(tempfile.mkdtemp())
+        (cls.widget_dir / "widget.js").write_text("window.InvoAIMBuggy={};")
+        (cls.widget_dir / "widget.css").write_text("a{}")
+        (cls.widget_dir / "capture.css").write_text("b{}")
+        (cls.widget_dir / "build-manifest.json").write_text(
+            json.dumps({"assets": {"widget.js": {"sha256": "abcdef0123456789"}}}))
+        cls.patches = [
+            mock.patch.object(server.bugreport, "URL", f"http://127.0.0.1:{cls.collector.server_address[1]}"),
+            mock.patch.object(server.bugreport, "PROJECT_KEY", "classrally"),
+            mock.patch.object(server.bugreport, "ORIGIN", "https://classrally.example.com"),
+            mock.patch.object(server.bugreport, "WIDGET_DIR", cls.widget_dir),
+        ]
+        for patch in cls.patches:
+            patch.start()
+        cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        cls.base_url = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.collector.shutdown()
+        for patch in cls.patches:
+            patch.stop()
+        shutil.rmtree(cls.widget_dir)
+
+    def setUp(self):
+        _FakeCollector.received = []
+        _FakeCollector.status = 201
+        server.BUG_REPORT_LIMITER_IP._attempts.clear()
+        server.BUG_REPORT_LIMITER_ALL._attempts.clear()
+
+    def _req(self, path, data=None, headers=None, raw=None):
+        body = raw if raw is not None else (json.dumps(data).encode() if data is not None else None)
+        req = Request(f"{self.base_url}{path}", data=body, method="POST" if body is not None else "GET",
+                      headers={"Content-Type": "application/json", **(headers or {})})
+        try:
+            with urlopen(req) as r:
+                return r.status, r.read(), r.headers
+        except HTTPError as e:
+            return e.code, e.read(), e.headers
+
+    def _report(self, **extra):
+        data = {"popis": "Tlačítko Odpovědět nereaguje", "typ": "CHYBA", "page": "play",
+                "url": "/play?pin=123456", "viewport": {"w": 390, "h": 844}, **extra}
+        code, body, _ = self._req("/api/bug-report", data)
+        return code, json.loads(body)
+
+    def test_config_points_to_versioned_widget(self):
+        code, body, _ = self._req("/api/bug-report/config")
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body), {"enabled": True, "script": "/buggy/widget.js?v=abcdef012345",
+                                            "style": "/buggy/widget.css?v=abcdef012345"})
+
+    def test_widget_assets_are_served_and_nothing_else(self):
+        code, body, headers = self._req("/buggy/widget.js")
+        self.assertEqual((code, body), (200, b"window.InvoAIMBuggy={};"))
+        self.assertTrue(headers["Content-Type"].startswith("application/javascript"))
+        self.assertEqual(self._req("/buggy/build-manifest.json")[0], 404)
+        self.assertEqual(self._req("/buggy/../server.py")[0], 404)
+
+    def test_report_is_forwarded_with_origin_and_without_admin_token(self):
+        code, result = self._report(screenshotDataUrl=_PNG_1X1, clientRequestId="1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed")
+        self.assertEqual(code, 201, result)
+        self.assertEqual(result, {"id": 1, "screenshotSaved": True})
+        sent = _FakeCollector.received[0]
+        self.assertEqual(sent["path"], "/api/reports")
+        self.assertEqual(sent["origin"], "https://classrally.example.com")
+        self.assertIsNone(sent["admin"])
+        payload = sent["json"]
+        self.assertEqual(payload["projectKey"], "classrally")
+        self.assertEqual(payload["url"], "/play")  # no PIN or other query in the report
+        self.assertEqual(payload["technicke_detaily"]["role"], "anonymous")
+        self.assertNotIn("reporter", payload)  # pupils are never named
+        self.assertEqual(payload["screenshot_data_url"], _PNG_1X1)
+
+    def test_repeated_click_is_one_report(self):
+        rid = "2c9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
+        first = self._report(clientRequestId=rid)
+        second = self._report(clientRequestId=rid)
+        self.assertEqual(first, second)
+        self.assertEqual(len(_FakeCollector.received), 1)
+
+    def test_secrets_and_emails_are_redacted(self):
+        code, _ = self._report(popis="heslo: Tajne123 a mail jan@skola.cz, token " + "a" * 40)
+        self.assertEqual(code, 201)
+        popis = _FakeCollector.received[0]["json"]["popis"]
+        self.assertNotIn("Tajne123", popis)
+        self.assertNotIn("jan@skola.cz", popis)
+        self.assertNotIn("a" * 40, popis)
+
+    def test_invalid_reports_are_rejected_before_forwarding(self):
+        self.assertEqual(self._report(popis="  ")[0], 400)
+        self.assertEqual(self._report(screenshotDataUrl="data:image/png;base64,AAAA")[1]["code"],
+                         "screenshot_invalid")
+        self.assertEqual(self._report(screenshotDataUrl="data:image/svg+xml;base64,PHN2Zz4=")[0], 400)
+        code, _, _ = self._req("/api/bug-report", raw=b"not json")
+        self.assertEqual(code, 400)
+        self.assertEqual(_FakeCollector.received, [])
+
+    def test_too_large_body_is_refused(self):
+        import socket
+        sock = socket.create_connection(("127.0.0.1", self.httpd.server_address[1]), timeout=5)
+        sock.sendall((f"POST /api/bug-report HTTP/1.0\r\nHost: x\r\nContent-Type: application/json\r\n"
+                      f"Content-Length: {server.bugreport.MAX_BODY_BYTES + 1}\r\n\r\n{{}}").encode())
+        data = b""
+        while chunk := sock.recv(65536):
+            data += chunk
+        sock.close()
+        self.assertIn(b" 413 ", data.split(b"\r\n", 1)[0])
+        self.assertEqual(_FakeCollector.received, [])
+
+    def test_collector_failure_is_reported_not_retried(self):
+        _FakeCollector.status = 500
+        code, result = self._report()
+        self.assertEqual((code, result["code"]), (502, "unavailable"))
+        self.assertEqual(len(_FakeCollector.received), 1)
+
+    def test_rate_limit_per_address(self):
+        with mock.patch.object(server.BUG_REPORT_LIMITER_IP, "max_requests", 2):
+            self.assertEqual(self._report()[0], 201)
+            self.assertEqual(self._report()[0], 201)
+            self.assertEqual(self._report()[0], 429)
+        self.assertEqual(len(_FakeCollector.received), 2)
+
+    def test_teacher_is_named_pupil_is_not(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.addCleanup(_db.set_db_path, _db._DB_PATH)
+        _db.set_db_path(os.path.join(tmp, "bug.db"))
+        _db._migrated = False
+        _db.init_db()
+        teacher = _db.create_user("BugTeacher", "Heslo-dlouhe-12345", role="teacher")["id"]
+        pupil = _db.create_user("BugPupil", "heslo-dlouhe-2")["id"]
+        for uid, role, name in ((teacher, "teacher", {"name": "BugTeacher"}), (pupil, "student", None)):
+            _FakeCollector.received = []
+            token = _db.create_session(uid)
+            code, body, _ = self._req("/api/bug-report", {"popis": "x", "page": "host"},
+                                      headers={"Authorization": f"UserToken {token}"})
+            self.assertEqual(code, 201, body)
+            payload = _FakeCollector.received[0]["json"]
+            self.assertEqual(payload["technicke_detaily"]["role"], role)
+            self.assertEqual(payload.get("reporter"), name)
+
+    def test_disabled_without_configuration(self):
+        with mock.patch.object(server.bugreport, "URL", ""):
+            self.assertEqual(self._report()[0], 404)
+            code, body, _ = self._req("/api/bug-report/config")
+            self.assertEqual(json.loads(body), {"enabled": False})
+            self.assertEqual(self._req("/buggy/widget.js")[0], 404)
+
+    def test_every_page_loads_the_host_script(self):
+        for name in ("play", "host", "admin", "exam", "profile", "account", "landing"):
+            html = (server.STATIC_DIR / f"{name}.html").read_text(encoding="utf-8")
+            self.assertIn('<script src="/static/buggy-host.js" defer></script>', html, name)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

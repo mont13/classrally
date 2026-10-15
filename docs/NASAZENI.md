@@ -288,6 +288,21 @@ Generator vola OpenAI-kompatibilni API (napr. Ollama nebo jinou sluzbu): `AI_BAS
   text (napr. odstavec z ucebnice) — otazky pak vzniknou jen z nej. Poradi odpovedi se po
   vygenerovani nahodne zamicha.
 
+### 2.7a Hlaseni chyb do centralniho collectoru (volitelne)
+
+Kdyz bezi vlastni sluzba na sber hlaseni (API `POST /api/reports` s `projectKey`), muze
+ClassRally na kazde strance ukazat tlacitko pro nahlaseni chyby se snimkem obrazovky.
+
+- Nastaveni serveru: `BUGGY_URL` (adresa collectoru), `BUGGY_PROJECT_KEY` (klic projektu),
+  `BUGGY_ORIGIN` (verejna adresa ClassRally, ktera je v collectoru povolena) a
+  `BUGGY_WIDGET_DIR` se soubory widgetu (`widget.js`, `widget.css`, `capture.css`). Ve
+  variante B patri soubory do `CLASSRALLY_DATA_DIR/buggy`. Bez techto hodnot je hlaseni vypnute.
+- Prohlizec posila hlaseni jen na vlastni server (`/api/bug-report`); ten ho zkontroluje,
+  odstrani z popisu e-maily, hesla a tokeny a preda ho collectoru jednim pokusem. Zadny
+  administratorsky klic collectoru server nepotrebuje.
+- Ve snimku jsou zakryta pole hesel a tokenu. Zaci se do hlaseni nepodepisuji, u ucitele se
+  prida jeho prezdivka. Omezeni: 60 hlaseni za 10 minut z jedne adresy, 300 za hodinu celkem.
+
 ### 2.8 Vice ucitelu na jednom serveru (mistnosti s PINem)
 
 Vychozi `QUIZ_ROOMS=single` je jedna spolecna hra — stejne jako na notebooku ve tride.
