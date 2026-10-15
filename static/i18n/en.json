@@ -109,7 +109,8 @@
     "pin_unknown": "There is no game with this PIN. Check the PIN.",
     "pin_required": "Enter the game PIN.",
     "pin_guesses": "Too many PIN attempts. Try again in a few minutes.",
-    "finish_points": "Your points: {0}"
+    "finish_points": "Your points: {0}",
+    "kicked_notice": "The teacher removed you from the game. If you should keep playing, join again (maybe with another nickname)."
   },
   "fun": {
     "correct": {
@@ -148,7 +149,7 @@
     "btn_start": "Start",
     "btn_reveal": "Reveal",
     "btn_next": "Next question",
-    "btn_reset": "Reset game (clears scores!)",
+    "btn_reset": "Play again (same players, scores to 0)",
     "btn_music_on": "Music ON",
     "btn_music_off": "Music OFF",
     "btn_stinger": "Sound effect",
@@ -217,9 +218,9 @@
     "music_credit": "Music: {0}",
     "pin_label": "Game PIN:",
     "internet_hint": "Students open the link or scan the QR code – any internet connection works.",
-    "new_pin": "New PIN",
-    "new_pin_title": "Next lesson: an empty lobby and a PIN the previous class does not know",
-    "new_pin_confirm": "Create a new PIN? Players in the lobby and in the current game are removed and join again with the new PIN.",
+    "new_pin": "New class – empty the lobby",
+    "new_pin_title": "For the next lesson: disconnects all players and creates a new PIN the previous class does not know",
+    "new_pin_confirm": "New class?\n\nAll connected players ({0}) are disconnected – from the lobby and from a running game – and their scores are deleted. A new PIN and QR code are created.\n\nJust want to play again with the same students? Cancel and use “Play again”.",
     "btn_analysis": "Question analysis",
     "leaderboard_hidden": "The leaderboard is hidden: only the podium is shown at the end.",
     "analysis_title": "Question analysis",
@@ -229,7 +230,14 @@
     "analysis_summary": "Questions: {0}, below 50 % correct: {1}.",
     "analysis_hotspot": "go over again",
     "analysis_order": "Correct order: {0}",
-    "analysis_answered": "Answered {0} of {1}."
+    "analysis_answered": "Answered {0} of {1}.",
+    "new_pin_help": "“New class” disconnects all players and changes the PIN. “Play again” keeps the players and only resets the scores.",
+    "reset_confirm": "Play again with the same players?\n\nAll scores are reset to 0 and the game returns to the lobby. Players stay connected.",
+    "start_confirm": "A game is running. Restart it from the first question? Players keep their points.",
+    "kick": "Remove",
+    "kick_title": "Remove player “{0}” from the game",
+    "kick_confirm": "Remove player “{0}” from the game?\n\nTheir score is deleted and their device shows that the teacher removed them. They can join again with the same PIN – to prevent that, change the PIN with “New class”.",
+    "music_panel": "Music and sound effects"
   },
   "exam": {
     "page_title": "ClassRally - Test",
@@ -353,7 +361,7 @@
     "active_label": "ACTIVE",
     "btn_activate": "Activate",
     "btn_delete": "Delete",
-    "bank_activated": "Bank activated! Game reset.",
+    "bank_activated": "The set is ready. Players stay in the lobby – start the game on the Host screen with Start.",
     "confirm_delete_bank": "Really delete {0}?",
     "create_new_bank": "Create new bank",
     "bank_name_label": "Question bank name",
@@ -597,7 +605,8 @@
     "close": "Close",
     "exam_items_overlay": "Test question analysis",
     "exam_items_hint": "The analysis opens full screen, without names or grades, so you can project it to the class.",
-    "exact_match_label": "Exact match (no typo tolerance, e.g. for commands and port numbers)"
+    "exact_match_label": "Exact match (no typo tolerance, e.g. for commands and port numbers)",
+    "activate_running_confirm": "A game is running. Activating another set ends it and returns to the lobby (players stay connected, this round's points are lost). Continue?"
   },
   "profile": {
     "page_title": "ClassRally – My Profile",

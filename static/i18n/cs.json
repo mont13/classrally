@@ -110,7 +110,8 @@
     "pin_unknown": "Hra s tímto PINem neexistuje. Zkontroluj PIN.",
     "pin_required": "Zadej PIN hry.",
     "pin_guesses": "Příliš mnoho pokusů o PIN. Zkus to za pár minut.",
-    "finish_points": "Tvoje body: {0}"
+    "finish_points": "Tvoje body: {0}",
+    "kicked_notice": "Učitel tě odebral ze hry. Pokud máš hrát dál, připoj se znovu (třeba s jinou přezdívkou)."
   },
 
   "fun": {
@@ -151,7 +152,7 @@
     "btn_start": "Start",
     "btn_reveal": "Vyhodnotit",
     "btn_next": "Další otázka",
-    "btn_reset": "Reset hry (smaže body!)",
+    "btn_reset": "Hrát znovu (stejní hráči, body na 0)",
     "btn_music_on": "Hudba ON",
     "btn_music_off": "Hudba OFF",
     "btn_stinger": "Zvukový efekt",
@@ -220,9 +221,9 @@
     "music_credit": "Hudba: {0}",
     "pin_label": "PIN hry:",
     "internet_hint": "Žáci otevřou odkaz nebo naskenují QR kód – stačí jim připojení k internetu.",
-    "new_pin": "Nový PIN",
-    "new_pin_title": "Další hodina: prázdná čekárna a PIN, který předchozí třída nezná",
-    "new_pin_confirm": "Vytvořit nový PIN? Hráči z čekárny i z rozehrané hry se odpojí a připojí se znovu s novým PINem.",
+    "new_pin": "Nová třída – vyprázdnit čekárnu",
+    "new_pin_title": "Pro další hodinu: odpojí všechny hráče a vytvoří nový PIN, který předchozí třída nezná",
+    "new_pin_confirm": "Nová třída?\n\nVšichni připojení hráči ({0}) se odpojí – z čekárny i z rozehrané hry – a jejich body se smažou. Vznikne nový PIN a nový QR kód.\n\nChceš jen hrát znovu se stejnými žáky? Zruš a použij „Hrát znovu“.",
     "btn_analysis": "Rozbor otázek",
     "leaderboard_hidden": "Žebříček je skrytý: na konci se ukážou jen stupně vítězů.",
     "analysis_title": "Rozbor otázek",
@@ -232,7 +233,14 @@
     "analysis_summary": "Otázek: {0}, z toho pod 50 % správně: {1}.",
     "analysis_hotspot": "projít znovu",
     "analysis_order": "Správné pořadí: {0}",
-    "analysis_answered": "Odpovědělo {0} z {1}."
+    "analysis_answered": "Odpovědělo {0} z {1}.",
+    "new_pin_help": "„Nová třída“ odpojí všechny hráče a změní PIN. „Hrát znovu“ nechá hráče připojené a jen vynuluje body.",
+    "reset_confirm": "Hrát znovu se stejnými hráči?\n\nVšechna skóre se vynulují a hra se vrátí do čekárny. Hráči zůstanou připojení (nikdo se neodpojí).",
+    "start_confirm": "Hra právě běží. Spustit ji znovu od první otázky? Body hráčů zůstanou.",
+    "kick": "Vyhodit",
+    "kick_title": "Odebrat hráče „{0}“ ze hry",
+    "kick_confirm": "Vyhodit hráče „{0}“ ze hry?\n\nJeho body se smažou a na mobilu uvidí, že ho učitel odebral. Může se znovu připojit stejným PINem – pokud nemá, změň PIN tlačítkem „Nová třída“.",
+    "music_panel": "Hudba a zvukové efekty"
   },
 
   "exam": {
@@ -371,7 +379,7 @@
     "active_label": "AKTIVNÍ",
     "btn_activate": "Aktivovat",
     "btn_delete": "Smazat",
-    "bank_activated": "Sada aktivována! Hra resetována.",
+    "bank_activated": "Sada je připravená. Hráči zůstávají v čekárně – hru spustíš na Host obrazovce tlačítkem Start.",
     "confirm_delete_bank": "Opravdu smazat {0}?",
     "create_new_bank": "Vytvořit novou sadu",
     "bank_name_label": "Název sady otázek",
@@ -639,7 +647,8 @@
     "discrimination_hint": "Rozlišení r: jak dobře otázka oddělí žáky, kteří látku umí, od ostatních. Kolem 0,3 a víc je dobré; kolem nuly nebo záporné = zkontrolujte znění a klíč.",
     "close": "Zavřít",
     "exam_items_overlay": "Rozbor otázek písemky",
-    "exam_items_hint": "Rozbor se otevře přes celou obrazovku, bez jmen a známek, takže ho můžete promítnout třídě."
+    "exam_items_hint": "Rozbor se otevře přes celou obrazovku, bez jmen a známek, takže ho můžete promítnout třídě.",
+    "activate_running_confirm": "Právě běží hra. Aktivací jiné sady se rozehraná hra ukončí a vrátí do čekárny (hráči zůstanou připojení, body z tohoto kola se ztratí). Pokračovat?"
   },
 
   "profile": {

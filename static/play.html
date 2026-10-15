@@ -15,38 +15,65 @@
     #pinRow { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
     #pinRow.hide { display: none; }
     #pinInput { font-size: 1.6rem; letter-spacing: 6px; text-align: center; font-weight: 800; }
-    .countdown-bar { width: 100%; height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin: 10px 0 16px; }
+    .countdown-bar { width: 100%; height: 8px; background: var(--pp-soft); border-radius: 99px; overflow: hidden; margin: 8px 0 0; }
     .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
       background: linear-gradient(90deg, #14b8a6, #2563eb); }
     .countdown-fill.warning { background: linear-gradient(90deg, #f59e0b, #e11d48); }
-    .kahoot-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .kahoot-options { grid-template-columns: 1fr; } }
-    .kahoot-btn { border: 0; border-radius: 8px; padding: 22px 18px; text-align: center;
-      font-size: 1.45rem; font-weight: 900; cursor: pointer; color: #fff;
-      transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
-      box-shadow: 0 14px 24px rgba(15,23,42,0.14); min-height: 88px;
-      display: flex; align-items: center; justify-content: center; gap: 10px; }
-    .kahoot-btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.02);
-      box-shadow: 0 18px 30px rgba(15,23,42,0.2); }
-    .kahoot-btn:active:not(:disabled) { transform: translateY(0); }
-    .kahoot-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-    .kahoot-btn.c0 { background: #e11d48; }
-    .kahoot-btn.c1 { background: #2563eb; }
-    .kahoot-btn.c2 { background: #f59e0b; }
-    .kahoot-btn.c3 { background: #16a34a; }
-    .kahoot-btn.selected { outline: 4px solid #fff; outline-offset: -4px;
-      box-shadow: 0 0 0 6px rgba(255,255,255,0.5), 0 8px 20px rgba(0,0,0,0.3); }
-    .kahoot-btn.correct-answer { outline: 4px solid #16a34a; outline-offset: -4px;
-      box-shadow: 0 0 20px rgba(22,163,74,0.5); opacity: 1 !important; }
-    .kahoot-btn.wrong-answer { opacity: 0.35 !important; }
-    .kahoot-btn .shape { font-size: 1.4em; }
+    /* ---- Answer cards (choice / poll): one column on phones, two on wider screens ---- */
+    #options { display: block; }
+    .kahoot-options, .ms-options { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 700px) { .kahoot-options, .ms-options { grid-template-columns: 1fr 1fr; gap: 12px; } }
+    .kahoot-btn { position: relative; border: 0; border-radius: 12px; padding: 12px 14px; text-align: left;
+      font: inherit; font-size: 1.12rem; font-weight: 700; line-height: 1.3; cursor: pointer; color: #fff;
+      min-height: 64px; width: 100%; display: flex; align-items: center; gap: 12px;
+      overflow-wrap: anywhere;
+      box-shadow: 0 3px 0 rgba(15,23,42,0.28), 0 8px 18px rgba(15,23,42,0.10);
+      transition: transform 120ms ease, box-shadow 120ms ease, opacity 150ms ease, filter 150ms ease; }
+    @media (min-width: 700px) { .kahoot-btn { min-height: 96px; font-size: 1.2rem; padding: 16px 18px; } }
+    .kahoot-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+    .kahoot-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 rgba(15,23,42,0.28); }
+    .kahoot-btn:disabled { cursor: default; }
+    /* kahoot hues darkened so white text passes WCAG AA (>= 4.5:1) */
+    .kahoot-btn.c0 { background: #be123c; }
+    .kahoot-btn.c1 { background: #1d4ed8; }
+    .kahoot-btn.c2 { background: #b45309; }
+    .kahoot-btn.c3 { background: #15803d; }
+    .kahoot-btn.c4 { background: #7e22ce; }
+    .kahoot-btn.c5 { background: #0e7490; }
+    .opt-badge { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+      min-width: 44px; height: 44px; padding: 0 6px; border-radius: 10px; background: rgba(255,255,255,0.2);
+      font-weight: 900; font-size: 1rem; line-height: 1; }
+    .opt-badge .shape { font-size: 0.8em; opacity: 0.9; }
+    .opt-text { flex: 1 1 auto; min-width: 0; }
+    .opt-meta { flex: 0 0 auto; margin-left: auto; font-size: 0.9rem; font-weight: 800; text-align: right;
+      background: rgba(0,0,0,0.18); border-radius: 8px; padding: 4px 8px; white-space: nowrap; }
+    /* after answering: my pick stays bright with a ring, the rest steps back */
+    .kahoot-btn:disabled:not(.selected):not(.correct-answer) { opacity: 0.4; filter: saturate(0.6); }
+    .kahoot-btn.selected { opacity: 1; box-shadow: 0 0 0 4px var(--pp-card), 0 0 0 7px var(--pp-ink); }
+    .kahoot-btn.selected::after, .tf-btn.selected::after { content: "\2713"; position: absolute; top: -10px; right: -8px;
+      width: 28px; height: 28px; border-radius: 50%; background: var(--pp-ink); color: var(--pp-card);
+      display: flex; align-items: center; justify-content: center; font-size: 0.95rem; font-weight: 900; }
+    .kahoot-btn.correct-answer, .tf-btn.correct-answer { opacity: 1 !important; filter: none;
+      box-shadow: 0 0 0 4px var(--pp-card), 0 0 0 8px #16a34a; }
+    .kahoot-btn.correct-answer::after, .tf-btn.correct-answer::after { content: "\2713"; position: absolute; top: -10px; right: -8px;
+      width: 28px; height: 28px; border-radius: 50%; background: #16a34a; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 900; }
+    .kahoot-btn.wrong-answer, .tf-btn.wrong-answer { opacity: 0.35 !important; }
+    .kahoot-btn.selected.wrong-answer, .tf-btn.selected.wrong-answer { opacity: 0.75 !important;
+      box-shadow: 0 0 0 4px var(--pp-card), 0 0 0 7px #dc2626; }
+    .kahoot-btn.selected.wrong-answer::after, .tf-btn.selected.wrong-answer::after { content: "\2717"; background: #dc2626; color: #fff; }
+    .kahoot-btn .shape { font-size: 0.8em; }
     .shapes { display: inline; }
-    .result-banner { text-align: center; padding: 20px; border-radius: 8px; margin: 14px 0;
-      font-size: 1.8rem; font-weight: 900; }
-    .result-banner.correct-banner { background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-      color: #166534; border: 3px solid #16a34a; }
-    .result-banner.wrong-banner { background: linear-gradient(135deg, #fee2e2, #fecaca);
-      color: #991b1b; border: 3px solid #dc2626; }
+    .result-banner { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 14px 12px 52px;
+      position: relative; border-radius: 12px; margin: 10px 0; font-size: 1.15rem; font-weight: 800; line-height: 1.3;
+      overflow-wrap: anywhere; }
+    .result-banner::before { position: absolute; left: 12px; top: 12px; width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.05rem; font-weight: 900; }
+    .result-banner.correct-banner { background: var(--pp-ok-soft); color: var(--pp-ok-ink); border: 2px solid #16a34a; }
+    .result-banner.correct-banner::before { content: "\2713"; background: #16a34a; }
+    .result-banner.wrong-banner { background: var(--pp-bad-soft); color: var(--pp-bad-ink); border: 2px solid #dc2626; }
+    .result-banner.wrong-banner::before { content: "\2717"; background: #dc2626; }
+    @media (min-width: 700px) { .result-banner { font-size: 1.35rem; } }
     .waiting-pulse { animation: pulse 2s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
     .score-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -55,60 +82,66 @@
     @keyframes scoreUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(0.5); }
       30% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
       100% { opacity: 0; transform: translate(-50%, -80%) scale(0.8); } }
-    .podium { display: flex; justify-content: center; gap: 20px; margin: 20px 0; align-items: flex-end; }
-    .podium-place { text-align: center; border-radius: 12px; padding: 16px; min-width: 100px; }
+    .podium { display: flex; justify-content: center; gap: 8px; margin: 16px 0; align-items: flex-end; }
+    .podium-place { flex: 1 1 0; min-width: 0; max-width: 180px; text-align: center; border-radius: 12px; padding: 12px 6px;
+      color: #0f172a; overflow-wrap: anywhere; }
     .podium-1 { background: linear-gradient(135deg, #fef3c7, #fde68a); order: 2; min-height: 160px; }
-    .podium-2 { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); order: 1; min-height: 120px; }
-    .podium-3 { background: linear-gradient(135deg, #fed7aa, #fdba74); order: 3; min-height: 90px; }
-    .podium-rank { font-size: 2.5rem; font-weight: 900; }
-    .podium-name { font-size: 1.3rem; font-weight: 800; margin-top: 6px; }
-    .podium-score { font-size: 1.1rem; color: #475569; }
-    @media (max-width: 600px) { .kahoot-btn { font-size: 1.18rem; } }
+    .podium-2 { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); order: 1; min-height: 130px; }
+    .podium-3 { background: linear-gradient(135deg, #fed7aa, #fdba74); order: 3; min-height: 110px; }
+    .podium-rank { font-size: 2rem; font-weight: 900; }
+    .podium-name { font-size: 1.05rem; font-weight: 800; margin-top: 4px; }
+    .podium-score { font-size: 0.95rem; color: #334155; }
     .logged-in-badge { display: inline-block; background: #dcfce7; color: #166534; font-size: 0.75rem;
       font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
     /* True/False big buttons */
-    .tf-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .tf-btn { border: none; border-radius: 14px; padding: 30px 18px; text-align: center;
-      font-size: 1.8rem; font-weight: 900; cursor: pointer; color: #fff;
-      transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.18); min-height: 100px; }
-    .tf-btn.tf-true { background: linear-gradient(135deg, #16a34a, #22c55e); }
-    .tf-btn.tf-false { background: linear-gradient(135deg, #dc2626, #ef4444); }
-    .tf-btn:hover:not(:disabled) { transform: translateY(-3px) scale(1.02); }
-    .tf-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-    .tf-btn.selected { outline: 4px solid #fff; outline-offset: -4px; }
-    .tf-btn.correct-answer { outline: 4px solid #16a34a; outline-offset: -4px; opacity: 1 !important; }
-    .tf-btn.wrong-answer { opacity: 0.35 !important; }
-    /* Multiselect checkboxes */
-    .ms-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .ms-options { grid-template-columns: 1fr; } }
-    .ms-btn { border: 3px solid #cbd5e1; border-radius: 14px; padding: 18px; text-align: center;
-      font-size: clamp(1.1rem, 2vw, 1.6rem); font-weight: 800; cursor: pointer; color: #1e293b;
-      background: #fff; transition: all 150ms ease; min-height: 70px;
-      display: flex; align-items: center; justify-content: center; gap: 10px; }
-    .ms-btn:hover:not(:disabled) { border-color: #3b82f6; background: #eff6ff; }
-    .ms-btn.ms-checked { border-color: #3b82f6; background: #dbeafe; color: #1e40af; }
-    .ms-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-    .ms-btn.correct-answer { border-color: #16a34a; background: #dcfce7; opacity: 1 !important; }
-    .ms-btn.wrong-answer { opacity: 0.35 !important; }
-    .ms-confirm { margin-top: 12px; }
+    .tf-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tf-btn { position: relative; border: none; border-radius: 12px; padding: 20px 12px; text-align: center;
+      font: inherit; font-size: 1.5rem; font-weight: 900; cursor: pointer; color: #fff;
+      transition: transform 120ms ease, box-shadow 120ms ease, opacity 150ms ease;
+      box-shadow: 0 3px 0 rgba(15,23,42,0.28), 0 8px 18px rgba(15,23,42,0.10); min-height: 88px; overflow-wrap: anywhere; }
+    .tf-btn.tf-true { background: #15803d; }
+    .tf-btn.tf-false { background: #be123c; }
+    .tf-btn:hover:not(:disabled) { transform: translateY(-2px); }
+    .tf-btn:disabled { cursor: default; }
+    .tf-btn:disabled:not(.selected):not(.correct-answer) { opacity: 0.4; }
+    .tf-btn.selected { opacity: 1; box-shadow: 0 0 0 4px var(--pp-card), 0 0 0 7px var(--pp-ink); }
+    /* Multiselect: checkbox cards */
+    .ms-btn { position: relative; border: 2px solid var(--pp-line-strong); border-radius: 12px; padding: 12px 14px 12px 52px;
+      text-align: left; font: inherit; font-size: 1.1rem; font-weight: 700; line-height: 1.3; cursor: pointer;
+      color: var(--pp-ink); background: var(--pp-card); transition: border-color 120ms ease, background 120ms ease;
+      min-height: 64px; width: 100%; display: flex; align-items: center; overflow-wrap: anywhere; }
+    .ms-btn::before { content: ""; position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--pp-muted); background: var(--pp-card);
+      display: flex; align-items: center; justify-content: center; font-size: 0.95rem; font-weight: 900; color: #fff; }
+    .ms-btn:hover:not(:disabled) { border-color: #2563eb; }
+    .ms-btn.ms-checked { border-color: #2563eb; background: var(--pp-sel-soft); }
+    .ms-btn.ms-checked::before { content: "\2713"; background: #2563eb; border-color: #2563eb; }
+    .ms-btn:disabled { cursor: default; }
+    .ms-btn:disabled:not(.ms-checked):not(.correct-answer) { opacity: 0.55; }
+    .ms-btn.correct-answer { border-color: #16a34a; background: var(--pp-ok-soft); opacity: 1 !important; }
+    .ms-btn.correct-answer::after { content: "\2713"; margin-left: auto; padding-left: 10px; color: #16a34a; font-weight: 900; font-size: 1.2rem; }
+    .ms-btn.wrong-answer { opacity: 0.45 !important; }
+    .ms-btn.ms-checked.wrong-answer { opacity: 0.85 !important; border-color: #dc2626; background: var(--pp-bad-soft); }
+    .ms-btn.ms-checked.wrong-answer::before { background: #dc2626; border-color: #dc2626; }
+    .ms-confirm, .oe-submit { margin-top: 12px; width: 100%; min-height: 52px; font-size: 1.15rem; }
     /* Ordering */
     .ord-list { list-style: none; padding: 0; margin: 0; }
-    .ord-item { display: flex; align-items: center; gap: 10px; padding: 14px; margin: 6px 0;
-      background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 1.1rem; font-weight: 700; }
-    .ord-item .ord-num { width: 30px; height: 30px; border-radius: 50%; background: #3b82f6; color: #fff;
+    .ord-item { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; margin: 8px 0;
+      background: var(--pp-card); color: var(--pp-ink); border: 2px solid var(--pp-line-strong); border-radius: 12px;
+      font-size: 1.05rem; font-weight: 700; line-height: 1.3; min-height: 64px; overflow-wrap: anywhere; }
+    .ord-item .ord-num { width: 32px; height: 32px; border-radius: 50%; background: #1d4ed8; color: #fff;
       display: flex; align-items: center; justify-content: center; font-weight: 900; flex-shrink: 0; }
-    .ord-item .ord-arrows { display: flex; flex-direction: column; gap: 2px; margin-left: auto; }
-    .ord-arrow { border: none; background: #e2e8f0; border-radius: 6px; width: 32px; height: 28px;
-      cursor: pointer; font-size: 1rem; font-weight: 900; }
-    .ord-arrow:hover { background: #3b82f6; color: #fff; }
-    .ord-item.correct-pos { border-color: #16a34a; background: #dcfce7; }
-    .ord-item.wrong-pos { border-color: #dc2626; background: #fee2e2; }
+    .ord-item .ord-arrows { display: flex; flex-direction: column; gap: 4px; margin-left: auto; flex-shrink: 0; }
+    .ord-arrow { border: 1px solid var(--pp-line-strong); background: var(--pp-soft); color: var(--pp-ink); border-radius: 8px;
+      width: 48px; height: 44px; cursor: pointer; font-size: 1rem; font-weight: 900; }
+    .ord-arrow:hover:not(:disabled) { background: #1d4ed8; color: #fff; }
+    .ord-arrow:disabled { opacity: 0.35; cursor: default; }
+    .ord-item.correct-pos { border-color: #16a34a; background: var(--pp-ok-soft); }
+    .ord-item.wrong-pos { border-color: #dc2626; background: var(--pp-bad-soft); }
     /* Open-ended */
-    .oe-input { width: 100%; padding: 16px; font-size: 1.3rem; border: 3px solid #cbd5e1;
-      border-radius: 14px; box-sizing: border-box; font-weight: 700; }
-    .oe-input:focus { outline: none; border-color: #3b82f6; }
-    .oe-submit { margin-top: 12px; }
+    .oe-input { width: 100%; padding: 14px 16px; font: inherit; font-size: 1.3rem; border: 2px solid var(--pp-line-strong);
+      border-radius: 12px; box-sizing: border-box; font-weight: 700; color: var(--pp-ink); background: var(--pp-card); }
+    .oe-input:focus { outline: 3px solid #2563eb; outline-offset: 1px; border-color: #2563eb; }
     /* Streak indicator */
     .streak-badge { display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(135deg, #ff4500, #ff8c00);
       color: #fff; font-size: 0.85rem; font-weight: 800; padding: 3px 10px; border-radius: 99px; margin-left: 8px; }
@@ -119,7 +152,7 @@
     .team-announce { padding: 14px 18px; border-radius: 14px; font-size: 1.2rem; font-weight: 800;
       margin: 10px 0; text-align: center; color: #fff; }
     .team-score-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700;
-      padding: 6px 0; color: #475569; }
+      padding: 6px 0; color: var(--pp-muted); }
     /* Random nick button spin */
     @keyframes spinOnce { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spin-once { animation: spinOnce 0.4s ease-out; }
@@ -168,13 +201,13 @@
     }
     /* --- Rank + rival card --- */
     .rank-card { display: flex; align-items: center; justify-content: center; gap: 10px;
-      background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 10px 14px;
+      background: var(--pp-soft); color: var(--pp-ink); border: 1px solid var(--pp-line); border-radius: 12px; padding: 10px 14px;
       margin: 10px 0; font-weight: 800; font-size: 1.05rem; flex-wrap: wrap; text-align: center; }
     .rank-arrow { font-weight: 900; font-size: 1.2rem; }
     .rank-arrow.up { color: #16a34a; }
     .rank-arrow.down { color: #dc2626; }
     .rank-arrow.same { color: #94a3b8; }
-    .rank-rival { color: #475569; font-size: 0.95rem; font-weight: 700; }
+    .rank-rival { color: var(--pp-muted); font-size: 0.95rem; font-weight: 700; }
     /* --- Streak fire levels + popup toast --- */
     .streak-badge.lvl4 { font-size: 1rem; box-shadow: 0 0 12px rgba(255,110,0,0.75); }
     .streak-badge.lvl5 { font-size: 1.12rem; box-shadow: 0 0 18px rgba(255,70,0,0.95); }
@@ -198,16 +231,16 @@
     .fun-line { font-size: 1.05rem; font-weight: 800; margin-top: 6px; opacity: 0.95; }
     /* --- Sound / vibration mini toggles --- */
     .mini-toggles { display: inline-flex; gap: 6px; }
-    .mini-toggle { border: 2px solid #e2e8f0; background: #fff; border-radius: 99px;
-      min-width: 44px; height: 36px; font-size: 1.05rem; cursor: pointer; padding: 2px 10px;
+    .mini-toggle { border: 1px solid var(--pp-line-strong); background: var(--pp-card); border-radius: 99px;
+      min-width: 44px; height: 44px; font-size: 1.05rem; cursor: pointer; padding: 2px 10px;
       line-height: 1; }
     .mini-toggle.off { filter: grayscale(1); opacity: 0.5; }
     /* --- Finished screen: personal card + awards --- */
     .finish-card { text-align: center; padding: 18px; border-radius: 14px; margin: 12px 0;
-      background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 2px solid #bae6fd; }
+      background: var(--pp-soft); color: var(--pp-ink); border: 1px solid var(--pp-line); }
     .finish-medal { font-size: 3.2rem; line-height: 1; }
     .finish-title { font-size: 1.5rem; font-weight: 900; margin: 6px 0 2px; }
-    .award-card { display: flex; align-items: center; gap: 10px; background: #fffbeb;
+    .award-card { display: flex; align-items: center; gap: 10px; background: #fffbeb; color: #1f2937;
       border: 2px solid #fcd34d; border-radius: 12px; padding: 10px 14px; margin: 8px 0;
       text-align: left; flex-wrap: wrap; }
     .award-emoji { font-size: 1.8rem; }
@@ -215,7 +248,7 @@
     .award-value { color: #92400e; font-weight: 700; font-size: 0.9rem; margin-left: auto; }
     .awards-list { margin-top: 6px; }
     .awards-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-      border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; margin: 4px 0;
+      border-radius: 10px; background: var(--pp-card); color: var(--pp-ink); border: 1px solid var(--pp-line); margin: 4px 0;
       font-size: 0.95rem; text-align: left; flex-wrap: wrap; }
     /* --- Avatar picker (join screen) --- */
     .avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
@@ -290,9 +323,9 @@
     </section>
 
     <section id="gameCard" class="card hide">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2 style="margin:0;"><span id="playerAvatarEmoji"></span><span data-i18n="play.greeting">Ahoj, </span><span id="playerName">-</span><span id="loggedInBadge" class="logged-in-badge hide" data-i18n="play.logged_in_badge">Přihlášen</span><span id="streakBadge" class="streak-badge hide"></span><span id="teamBadge" class="team-badge hide"></span></h2>
-        <span style="display:inline-flex;align-items:center;gap:8px;">
+      <div class="play-head">
+        <h2 class="play-name"><span id="playerAvatarEmoji"></span><span data-i18n="play.greeting">Ahoj, </span><span id="playerName">-</span><span id="loggedInBadge" class="logged-in-badge hide" data-i18n="play.logged_in_badge">Přihlášen</span><span id="streakBadge" class="streak-badge hide"></span><span id="teamBadge" class="team-badge hide"></span></h2>
+        <span class="play-head-tools">
           <span class="mini-toggles">
             <button id="sfxToggle" class="mini-toggle off" type="button" aria-pressed="false"
               data-i18n-title="play.sound_toggle" title="Zapnout/vypnout zvuk"
@@ -306,33 +339,35 @@
       </div>
       <div id="teamAnnounce" class="team-announce hide"></div>
 
-      <div class="kpi" style="margin:12px 0;">
-        <div class="item"><div class="label" data-i18n="play.label_score">Skóre</div><div class="value" id="myScore">0</div></div>
-        <div class="item"><div class="label" data-i18n="play.label_question">Otázka</div><div class="value" id="qNo">-</div></div>
-        <div class="item"><div class="label" data-i18n="play.label_answered">Odpovědělo</div><div class="value" id="answered">0</div></div>
-        <div class="item"><div class="label" data-i18n="play.label_players">Hráči</div><div class="value" id="players">0</div></div>
-        <div class="item team-score-item hide"><div class="label" data-i18n="play.label_team">Tým</div><div class="value" id="teamScore">0</div></div>
-        <div class="item timer"><div class="label" data-i18n="play.label_countdown">Odpočet</div><div class="value" id="timer">-</div></div>
+      <!-- status strip: sticks to the top while a long question is scrolled -->
+      <div class="play-status">
+        <div class="kpi play-kpi">
+          <div class="item"><div class="label" data-i18n="play.label_score">Skóre</div><div class="value" id="myScore">0</div></div>
+          <div class="item"><div class="label" data-i18n="play.label_question">Otázka</div><div class="value" id="qNo">-</div></div>
+          <div class="item"><div class="label" data-i18n="play.label_answered">Odpovědělo</div><div class="value" id="answered">0</div></div>
+          <div class="item kpi-players"><div class="label" data-i18n="play.label_players">Hráči</div><div class="value" id="players">0</div></div>
+          <div class="item team-score-item hide"><div class="label" data-i18n="play.label_team">Tým</div><div class="value" id="teamScore">0</div></div>
+          <div class="item timer" id="timerItem"><div class="label" data-i18n="play.label_countdown">Odpočet</div><div class="value" id="timer">-</div></div>
+        </div>
+        <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
       </div>
 
-      <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
-
       <div id="doubleChip" class="double-chip hide"><span data-i18n="play.double_chip">&#x26A1;&#xD7;2 BODY</span></div>
-      <div id="mainMessage" class="question" data-i18n="play.wait_for_teacher">Čekej na start od učitele.</div>
+      <div id="mainMessage" class="question play-question" data-i18n="play.wait_for_teacher">Čekej na start od učitele.</div>
       <img id="questionImage" class="hide" style="max-width:100%;max-height:200px;display:block;margin:10px auto;border-radius:10px;" />
       <div id="resultBanner" class="hide"></div>
       <div id="rankCard" class="rank-card hide"></div>
-      <p id="explanation" class="muted"></p>
+      <p id="explanation" class="muted play-note" aria-live="polite"></p>
       <div id="answerArea">
-        <div id="options" class="kahoot-options"></div>
+        <div id="options"></div>
         <div id="getReadyOverlay" class="get-ready-overlay hide" aria-live="polite">
           <div class="gr-label" data-i18n="play.get_ready">Připrav se!</div>
           <div class="gr-num" id="grNum">3</div>
         </div>
       </div>
-      <div id="podium" class="hide"></div>
       <div id="finishCard" class="finish-card hide"></div>
-      <p class="help" data-i18n="play.answer_final">Odpověď je po odeslání finální.</p>
+      <div id="podium" class="hide"></div>
+      <p id="finalHint" class="help play-final-hint hide" data-i18n="play.answer_final">Odpověď je po odeslání finální.</p>
     </section>
 
     <!-- ======= SELF-PACED / HOMEWORK CARD ======= -->
@@ -352,7 +387,7 @@
       <!-- Question screen -->
       <div id="spQuestionPane" class="hide">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <span id="spProgressLabel" style="font-weight:700;color:#475569;font-size:0.95rem;"></span>
+          <span id="spProgressLabel" style="font-weight:700;color:var(--pp-muted);font-size:0.95rem;"></span>
           <span id="spScoreLabel" style="font-weight:800;color:#0284c7;font-size:1rem;"></span>
         </div>
         <div class="sp-progress-wrap"><div class="sp-progress-bar" id="spProgressBar" style="width:0%"></div></div>
@@ -399,6 +434,13 @@
       el.setAttribute('data-i18n', key);
       el.textContent = i18n.t(key);
     }
+    const KICKED_KEY = 'classrally_kicked';
+    try {
+      if (sessionStorage.getItem(KICKED_KEY)) {
+        sessionStorage.removeItem(KICKED_KEY);
+        setJoinMessage('play.kicked_notice');
+      }
+    } catch (_) {}
     if (urlPin) {
       if (localStorage.getItem('quiz_player_id') && localStorage.getItem(PIN_KEY) !== urlPin) forgetPlayer();
       localStorage.setItem(PIN_KEY, urlPin);
@@ -565,6 +607,7 @@
     let finishCelebrated = false;
     let prevRevealRank = null;   // my rank at the previous reveal (for the arrow)
     let rankArrow = '';          // '', 'up', 'down', 'same'
+    let revealOutcomes = {};     // question index -> 'correct'|'wrong' seen at the reveal edge
 
     // What happened to me this question? 'correct' | 'wrong' | 'timeout' | 'none'
     function revealOutcome(state, scoreDelta) {
@@ -595,6 +638,7 @@
         rankArrow = '';
         currentFunMsg = null;
         finishCelebrated = false;
+        revealOutcomes = {};
       }
       if (edges.enteredQuestion) {
         currentFunMsg = null;
@@ -605,6 +649,7 @@
       }
       if (edges.enteredReveal) {
         const outcome = revealOutcome(state, edges.scoreDelta);
+        revealOutcomes[state.current_index] = outcome;
         if (outcome === 'correct' || outcome === 'wrong') {
           flashScreen(outcome === 'correct' ? 'flash-good' : 'flash-bad');
           vibrate(outcome === 'correct' ? [40, 60, 40] : [250]);
@@ -761,7 +806,7 @@
       card.appendChild(title);
 
       const rankLine = document.createElement('div');
-      rankLine.style.cssText = 'font-weight:800;color:#475569;';
+      rankLine.style.cssText = 'font-weight:800;color:var(--pp-muted);';
       rankLine.textContent = me.rank
         ? tfb('play.rank_place', '{0}. místo', me.rank)
         : tfb('play.finish_points', 'Tvoje body: {0}', me.score || 0);  // teacher hid the ranking
@@ -815,7 +860,7 @@
           const who = document.createElement('span');
           who.textContent = getAvatarEmoji(a.avatar_id) + ' ' + a.player;
           const val = document.createElement('span');
-          val.style.cssText = 'margin-left:auto;color:#64748b;font-weight:700;';
+          val.style.cssText = 'margin-left:auto;color:var(--pp-muted);font-weight:700;';
           val.textContent = a.value || '';
           row.appendChild(em);
           row.appendChild(nm);
@@ -843,8 +888,9 @@
       box.innerHTML = '';
       if (!state.question) return;
 
+      // the finished screen belongs to the podium and the personal card
+      if (state.phase === 'finished') return;
       const qType = state.question.type || 'choice';
-      const isReveal = state.phase === 'reveal' || state.phase === 'finished';
 
       if (qType === 'choice' || qType === 'truefalse') {
         renderChoiceOptions(box, state, playerId, qType);
@@ -863,6 +909,28 @@
       }
     }
 
+    // Answer card content: a letter + shape badge (shapes help colour-blind
+    // players and match the projector) and the answer text itself.
+    function appendOptionContent(btn, i, text) {
+      const badge = document.createElement('span');
+      badge.className = 'opt-badge';
+      badge.setAttribute('aria-hidden', 'true');
+      const shape = document.createElement('span');
+      shape.className = 'shape';
+      shape.textContent = shapes[i] || '';
+      const letter = document.createElement('span');
+      letter.textContent = abc[i] || '';
+      badge.appendChild(shape);
+      badge.appendChild(letter);
+      const textSpan = document.createElement('span');
+      textSpan.className = 'opt-text';
+      textSpan.textContent = text;
+      btn.appendChild(badge);
+      btn.appendChild(textSpan);
+      btn.setAttribute('aria-label', `${abc[i] || ''}) ${text}`);
+      return textSpan;
+    }
+
     function renderChoiceOptions(box, state, playerId, qType) {
       if (!state.question.options) return;
       const myChoice = state.my_choice;
@@ -879,13 +947,7 @@
           btn.textContent = opt;
         } else {
           btn.className = `kahoot-btn c${i}`;
-          const shapeSpan = document.createElement('span');
-          shapeSpan.className = 'shape';
-          shapeSpan.textContent = shapes[i] || '';
-          const textSpan = document.createElement('span');
-          textSpan.textContent = `${abc[i]}) ${opt}`;
-          btn.appendChild(shapeSpan);
-          btn.appendChild(textSpan);
+          appendOptionContent(btn, i, opt);
         }
 
         if (myChoice === i) btn.classList.add('selected');
@@ -1030,8 +1092,8 @@
 
       if (isReveal && correctOrder) {
         const correctLabel = document.createElement('p');
-        correctLabel.className = 'muted';
-        correctLabel.style.marginTop = '8px';
+        correctLabel.className = 'play-note reveal-note';
+        correctLabel.style.marginTop = '12px';
         correctLabel.textContent = i18n.t('play.correct_order') + correctOrder.map(i => items[i]).join(' \u2192 ');
         box.appendChild(correctLabel);
       }
@@ -1054,27 +1116,11 @@
       const isReveal = state.phase === 'reveal' || state.phase === 'finished';
       const submitted = myChoice !== undefined;
 
-      if (isReveal) {
-        if (submitted) {
-          const p = document.createElement('p');
-          p.style.fontSize = '1.2rem';
-          p.style.fontWeight = '700';
-          p.textContent = i18n.t('play.your_answer') + myChoice;
-          box.appendChild(p);
-        }
-        if (state.question.accepted_answers) {
-          const ans = document.createElement('p');
-          ans.className = 'muted';
-          ans.textContent = i18n.t('play.accepted_answers') + state.question.accepted_answers.join(', ');
-          box.appendChild(ans);
-        }
-        return;
-      }
+      if (isReveal) return;  // the result banner shows your answer and the accepted ones
 
       if (submitted) {
         const p = document.createElement('p');
-        p.style.fontSize = '1.2rem';
-        p.style.fontWeight = '700';
+        p.className = 'oe-sent';
         p.textContent = i18n.t('play.answer_sent_prefix') + myChoice;
         box.appendChild(p);
         return;
@@ -1084,6 +1130,8 @@
       input.className = 'oe-input';
       input.type = 'text';
       input.placeholder = i18n.t('play.answer_placeholder');
+      input.setAttribute('aria-label', i18n.t('play.answer_placeholder'));
+      input.autocomplete = 'off';
       input.maxLength = state.question.max_length || 200;
       box.appendChild(input);
 
@@ -1119,15 +1167,13 @@
       state.question.options.forEach((opt, i) => {
         const btn = document.createElement('button');
         btn.className = `kahoot-btn c${i}`;
-        const textSpan = document.createElement('span');
-        textSpan.textContent = `${abc[i]}) ${opt}`;
-        btn.appendChild(textSpan);
+        appendOptionContent(btn, i, opt);
         if (submitted || isReveal) {
           const count = votes[i] || 0;
           const pct = Math.round(count / totalVotes * 100);
           const pctSpan = document.createElement('span');
-          pctSpan.style.cssText = 'display:block;font-size:0.75em;font-weight:700;opacity:0.9;';
-          pctSpan.textContent = `${pct}% (${count})`;
+          pctSpan.className = 'opt-meta';
+          pctSpan.textContent = `${pct} % (${count})`;
           btn.appendChild(pctSpan);
         }
         if (myChoice === i) btn.classList.add('selected');
@@ -1206,11 +1252,18 @@
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmBtn.click(); });
     }
 
-    // --- Slide: students just see a waiting message ---
+    // --- Slide: students read the slide on their own device (no projector needed) ---
     function renderSlide(box, state) {
+      const body = (state.question && state.question.body) || '';
+      if (body) {
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'slide-body';
+        bodyEl.textContent = body;
+        box.appendChild(bodyEl);
+        return;
+      }
       const p = document.createElement('p');
-      p.className = 'muted waiting-pulse';
-      p.style.cssText = 'font-size:1.3rem;text-align:center;margin-top:16px;';
+      p.className = 'muted waiting-pulse play-waiting';
       p.textContent = i18n.t('play.slide_waiting');
       box.appendChild(p);
     }
@@ -1256,6 +1309,7 @@
         const pct = Math.max(0, (state.phase_time_left || 0) / state.question_duration_sec * 100);
         fill.style.width = pct + '%';
         fill.classList.toggle('warning', pct < 30);
+        document.getElementById('timerItem').classList.toggle('warning', pct < 30);
       } else if (state.phase === 'reveal' && state.reveal_duration_sec > 0) {
         const pct = Math.max(0, (state.phase_time_left || 0) / state.reveal_duration_sec * 100);
         fill.style.width = pct + '%';
@@ -1264,6 +1318,7 @@
         fill.style.width = '100%';
         fill.classList.remove('warning');
       }
+      if (state.phase !== 'question') document.getElementById('timerItem').classList.remove('warning');
     }
 
     function updateStreakBadge(me) {
@@ -1331,9 +1386,20 @@
           banner.className = 'result-banner wrong-banner';
           banner.textContent = i18n.t('play.timeout_prefix') + accepted.join(', ');
         } else {
-          // We can't perfectly check on client — server already scored it
-          banner.className = 'result-banner wrong-banner';
-          banner.textContent = i18n.t('play.your_answer') + '"' + myChoice + '". ' + i18n.t('play.accepted_answers') + accepted.join(', ');
+          // The server scored it: points gained at the reveal edge mean correct.
+          // After a reload (no edge seen) fall back to a plain text comparison.
+          let outcome = revealOutcomes[state.current_index];
+          if (outcome !== 'correct' && outcome !== 'wrong') {
+            const norm = (v) => String(v).trim().toLowerCase();
+            outcome = accepted.some(a => norm(a) === norm(myChoice)) ? 'correct' : 'wrong';
+          }
+          if (outcome === 'correct') {
+            banner.className = 'result-banner correct-banner';
+            banner.textContent = i18n.t('play.correct_prefix') + myChoice;
+          } else {
+            banner.className = 'result-banner wrong-banner';
+            banner.textContent = i18n.t('play.your_answer') + '"' + myChoice + '". ' + i18n.t('play.accepted_answers') + accepted.join(', ');
+          }
         }
       } else if (qType === 'poll') {
         const myChoice2 = state.my_choice;
@@ -1409,7 +1475,7 @@
 
       document.getElementById('playerName').textContent = me.name || '-';
       document.getElementById('myScore').textContent = `${me.score ?? 0}`;
-      document.getElementById('answered').textContent = `${state.answer_count ?? 0}`;
+      document.getElementById('answered').textContent = `${state.answer_count ?? 0}/${state.total_players ?? 0}`;
       document.getElementById('players').textContent = `${state.total_players ?? 0}`;
       document.getElementById('qNo').textContent = state.current_index >= 0 ? `${state.current_index + 1}/${state.total_questions}` : '-';
       document.getElementById('timer').textContent = formatSecondsLeft(state.phase_time_left);
@@ -1435,7 +1501,14 @@
 
       const qImg = document.getElementById('questionImage');
 
-      if (!state.question) {
+      const answeredNow = state.phase === 'question' && state.my_choice !== undefined;
+      const curType = state.question ? (state.question.type || 'choice') : '';
+      exp.classList.toggle('answered-note', answeredNow && curType !== 'slide');
+      exp.classList.toggle('reveal-note', state.phase === 'reveal');
+      document.getElementById('finalHint').classList.toggle('hide',
+        !(state.phase === 'question' && !answeredNow && curType && curType !== 'slide' && curType !== 'poll'));
+
+      if (!state.question || state.phase === 'finished') {
         if (state.phase === 'finished') {
           main.textContent = i18n.t('play.quiz_ended');
           renderPodium(state.players);
@@ -1518,6 +1591,13 @@
         }
         render(state, playerId);
       } catch (e) {
+        if (e.code === 'player_kicked') {
+          // removed by the teacher: say so on the join screen, joining again is allowed
+          forgetPlayer();
+          try { sessionStorage.setItem(KICKED_KEY, '1'); } catch (_) {}
+          location.reload();
+          return;
+        }
         if (e.code === 'player_unknown' || e.code === 'pin_required') {
           // the server restarted, the room closed or got a new PIN: join again
           forgetPlayer();

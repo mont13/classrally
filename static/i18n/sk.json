@@ -109,7 +109,8 @@
     "pin_unknown": "Hra s týmto PINom neexistuje. Skontroluj PIN.",
     "pin_required": "Zadaj PIN hry.",
     "pin_guesses": "Príliš veľa pokusov o PIN. Skús to o pár minút.",
-    "finish_points": "Tvoje body: {0}"
+    "finish_points": "Tvoje body: {0}",
+    "kicked_notice": "Učiteľ ťa odobral z hry. Ak máš hrať ďalej, pripoj sa znova (napríklad s inou prezývkou)."
   },
   "fun": {
     "correct": {
@@ -148,7 +149,7 @@
     "btn_start": "Štart",
     "btn_reveal": "Vyhodnotiť",
     "btn_next": "Ďalšia otázka",
-    "btn_reset": "Reset hry (zmaže body!)",
+    "btn_reset": "Hrať znova (rovnakí hráči, body na 0)",
     "btn_music_on": "Hudba ON",
     "btn_music_off": "Hudba OFF",
     "btn_stinger": "Zvukový efekt",
@@ -217,9 +218,9 @@
     "music_credit": "Hudba: {0}",
     "pin_label": "PIN hry:",
     "internet_hint": "Žiaci otvoria odkaz alebo naskenujú QR kód – stačí im pripojenie na internet.",
-    "new_pin": "Nový PIN",
-    "new_pin_title": "Ďalšia hodina: prázdna čakáreň a PIN, ktorý predchádzajúca trieda nepozná",
-    "new_pin_confirm": "Vytvoriť nový PIN? Hráči z čakárne aj z rozohranej hry sa odpoja a pripoja sa znova s novým PINom.",
+    "new_pin": "Nová trieda – vyprázdniť čakáreň",
+    "new_pin_title": "Na ďalšiu hodinu: odpojí všetkých hráčov a vytvorí nový PIN, ktorý predchádzajúca trieda nepozná",
+    "new_pin_confirm": "Nová trieda?\n\nVšetci pripojení hráči ({0}) sa odpoja – z čakárne aj z rozohranej hry – a ich body sa zmažú. Vznikne nový PIN a nový QR kód.\n\nChceš len hrať znova s rovnakými žiakmi? Zruš a použi „Hrať znova“.",
     "btn_analysis": "Rozbor otázok",
     "leaderboard_hidden": "Rebríček je skrytý: na konci sa ukážu len stupne víťazov.",
     "analysis_title": "Rozbor otázok",
@@ -229,7 +230,14 @@
     "analysis_summary": "Otázok: {0}, z toho pod 50 % správne: {1}.",
     "analysis_hotspot": "prejsť znova",
     "analysis_order": "Správne poradie: {0}",
-    "analysis_answered": "Odpovedalo {0} z {1}."
+    "analysis_answered": "Odpovedalo {0} z {1}.",
+    "new_pin_help": "„Nová trieda“ odpojí všetkých hráčov a zmení PIN. „Hrať znova“ nechá hráčov pripojených a len vynuluje body.",
+    "reset_confirm": "Hrať znova s rovnakými hráčmi?\n\nVšetky skóre sa vynulujú a hra sa vráti do čakárne. Hráči zostanú pripojení.",
+    "start_confirm": "Hra práve beží. Spustiť ju znova od prvej otázky? Body hráčov zostanú.",
+    "kick": "Vyhodiť",
+    "kick_title": "Odobrať hráča „{0}“ z hry",
+    "kick_confirm": "Vyhodiť hráča „{0}“ z hry?\n\nJeho body sa zmažú a na mobile uvidí, že ho učiteľ odobral. Môže sa znova pripojiť rovnakým PINom – ak nemá, zmeň PIN tlačidlom „Nová trieda“.",
+    "music_panel": "Hudba a zvukové efekty"
   },
   "exam": {
     "page_title": "ClassRally - Písomka",
@@ -353,7 +361,7 @@
     "active_label": "AKTÍVNA",
     "btn_activate": "Aktivovať",
     "btn_delete": "Zmazať",
-    "bank_activated": "Sada aktivovaná! Hra resetovaná.",
+    "bank_activated": "Sada je pripravená. Hráči zostávajú v čakárni – hru spustíš na Host obrazovke tlačidlom Start.",
     "confirm_delete_bank": "Naozaj zmazať {0}?",
     "create_new_bank": "Vytvoriť novú sadu",
     "bank_name_label": "Názov sady otázok",
@@ -597,7 +605,8 @@
     "close": "Zavrieť",
     "exam_items_overlay": "Rozbor otázok písomky",
     "exam_items_hint": "Rozbor sa otvorí cez celú obrazovku, bez mien a známok, takže ho môžete premietnuť triede.",
-    "exact_match_label": "Presná zhoda (bez tolerancie preklepov, napr. pri príkazoch a číslach portov)"
+    "exact_match_label": "Presná zhoda (bez tolerancie preklepov, napr. pri príkazoch a číslach portov)",
+    "activate_running_confirm": "Práve beží hra. Aktivácia inej sady rozohranú hru ukončí a vráti do čakárne (hráči zostanú pripojení, body z tohto kola sa stratia). Pokračovať?"
   },
   "profile": {
     "page_title": "ClassRally – Môj profil",

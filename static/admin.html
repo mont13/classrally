@@ -1231,8 +1231,20 @@
 
     document.getElementById('bankSearch').addEventListener('input', renderBanks);
 
+    // Activating a bank sends the running game back to the lobby (players stay
+    // connected, the round is lost) — ask first when a game is in progress.
+    async function gameInProgress() {
+      try {
+        if (!hostToken) { const d = await api('/api/host/token'); hostToken = d.host_token; }
+        const res = await fetch('/api/state?host=1', { headers: { 'X-Host-Token': hostToken } });
+        const st = await res.json();
+        return st.phase === 'question' || st.phase === 'reveal';
+      } catch (e) { return false; }
+    }
+
     async function activateBank(filename) {
       try {
+        if (await gameInProgress() && !confirm(i18n.t('admin.activate_running_confirm'))) return;
         await api('/api/admin/bank/activate', 'POST', { filename });
         alert(i18n.t('admin.bank_activated'));
         loadBanks();

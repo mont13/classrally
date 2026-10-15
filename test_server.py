@@ -3706,6 +3706,41 @@ class TestRoomsMulti(_AccountHTTPBase):
         state = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
         self.assertEqual(state["total_players"], 1)
 
+    def test_kicked_player_is_told_and_may_join_again(self):
+        self.db.create_user("TeachKick", "teachkick-pass", "teacher")
+        ha = self._host(self._login("TeachKick"))
+        hdr = {"Content-Type": "application/json", "X-Host-Token": ha["host_token"]}
+        _, p1 = self._post("/api/register", {"name": "Rusil", "pin": ha["pin"]})
+        _, p2 = self._post("/api/register", {"name": "Hodny", "pin": ha["pin"]})
+        # without the host token nobody can kick
+        req = Request(f"{self.base_url}/api/host/kick", method="POST",
+                      data=json.dumps({"player_id": p1["player_id"]}).encode(),
+                      headers={"Content-Type": "application/json"})
+        with self.assertRaises(HTTPError) as ctx:
+            urlopen(req)
+        self.assertEqual(ctx.exception.code, 403)
+        req = Request(f"{self.base_url}/api/host/kick", method="POST",
+                      data=json.dumps({"player_id": p1["player_id"]}).encode(), headers=hdr)
+        with urlopen(req) as r:
+            self.assertTrue(json.loads(r.read())["ok"])
+        code, r = self._get_json(f"/api/state?player_id={p1['player_id']}")
+        self.assertEqual((code, r.get("code")), (404, "player_kicked"))
+        # the other player plays on; the kicked one can join again as a new player
+        self.assertIn("me", self._get_json(f"/api/state?player_id={p2['player_id']}")[1])
+        code, again = self._post("/api/register", {"name": "Rusil", "pin": ha["pin"]})
+        self.assertEqual(code, 200, again)
+        self.assertNotEqual(again["player_id"], p1["player_id"])
+        state = self._get_json("/api/state?host=1", {"X-Host-Token": ha["host_token"]})[1]
+        self.assertEqual(state["total_players"], 2)
+
+    def test_kicked_players_memory_is_bounded(self):
+        kicked = server._KickedPlayers(limit=3)
+        for i in range(5):
+            kicked.add(f"p{i}")
+        self.assertNotIn("p0", kicked)
+        self.assertNotIn("p1", kicked)
+        self.assertIn("p4", kicked)
+
     def test_pin_guessing_is_limited_per_address(self):
         orig = server.PIN_FAIL_IP
         server.PIN_FAIL_IP = server._GuessLimiter(max_guesses=3, window_sec=600)

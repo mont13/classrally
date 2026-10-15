@@ -17,7 +17,7 @@
       margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
     #teamPodiumOverlay, #podiumOverlay { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
       align-items: center; justify-content: flex-end;
-      background: linear-gradient(180deg, #071428ee 0%, #0f2a50dd 60%, #071428f5 100%);
+      background: linear-gradient(180deg, #071428fa 0%, #0f2a50f2 60%, #071428fc 100%);
       padding-bottom: 0; opacity: 0; pointer-events: none; transition: opacity 0.6s ease; }
     #teamPodiumOverlay.visible, #podiumOverlay.visible { opacity: 1; pointer-events: all; }
     /* Question analysis after the game (projector: big, no names) */
@@ -170,18 +170,18 @@
         <p class="eyebrow">Live classroom mode</p>
         <h1 data-i18n="host.heading">ClassRally</h1>
         <p class="muted" data-i18n="host.subheading">Herní režie pro projektor.</p>
-        <div class="hero-badges">
-          <span>Offline</span>
-          <span>Zdarma</span>
-          <span>Bez účtů</span>
-        </div>
         <div class="btn-row" style="margin-bottom:10px;">
           <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;" data-i18n="host.admin_portal">Učitelský portál</a>
         </div>
         <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url" data-i18n="host.loading">Načítám...</span></p>
-        <p id="pinRow" class="hide"><strong data-i18n="host.pin_label">PIN hry:</strong> <span id="roomPin" class="join-url" style="font-size:1.6rem;letter-spacing:4px;"></span>
-          <button class="btn secondary" id="btnNewPin" type="button" style="font-size:0.85rem;padding:6px 12px;margin-left:8px;"
-                  data-i18n="host.new_pin" data-i18n-title="host.new_pin_title">Nový PIN</button></p>
+        <div id="pinRow" class="pin-row hide">
+          <p class="pin-line"><strong data-i18n="host.pin_label">PIN hry:</strong> <span id="roomPin" class="join-url room-pin"></span></p>
+          <div class="class-switch">
+            <button class="btn secondary" id="btnNewPin" type="button"
+                    data-i18n="host.new_pin" data-i18n-title="host.new_pin_title">Nová třída – vyprázdnit čekárnu</button>
+            <p class="class-switch-help" data-i18n="host.new_pin_help">„Nová třída“ odpojí všechny hráče a změní PIN. „Hrát znovu“ nechá hráče připojené a jen vynuluje body.</p>
+          </div>
+        </div>
         <p class="muted" id="joinHint" data-i18n="host.wifi_hint">Mobily musí být ve stejné Wi-Fi/LAN.</p>
         <ul id="joinExtra" class="join-extra hide"></ul>
       </div>
@@ -196,11 +196,12 @@
         <button class="btn good" id="btnStart" data-i18n="host.btn_start">Start</button>
         <button class="btn secondary" id="btnReveal" data-i18n="host.btn_reveal">Ukázat správnou</button>
         <button class="btn" id="btnNext" data-i18n="host.btn_next">Další otázka</button>
-        <button class="btn warn" id="btnReset" data-i18n="host.btn_reset">Reset hry</button>
+        <button class="btn warn" id="btnReset" data-i18n="host.btn_reset">Hrát znovu (stejní hráči, body na 0)</button>
         <button class="btn secondary hide" id="btnAnalysis" data-i18n="host.btn_analysis">Rozbor otázek</button>
       </div>
 
-      <div class="music-controls">
+      <details class="music-controls" id="musicPanel">
+        <summary data-i18n="host.music_panel">Hudba a zvukové efekty</summary>
         <div class="btn-row">
           <button class="btn ghost" id="btnMusicStart" data-i18n="host.btn_music_on">Hudba ON</button>
           <button class="btn secondary" id="btnMusicStop" data-i18n="host.btn_music_off">Hudba OFF</button>
@@ -225,7 +226,7 @@
         <p id="musicTrackInfo" class="help" data-i18n="host.track_none">Track: -</p>
         <p id="musicState" class="help" data-i18n="host.music_off">Hudba: vypnuta</p>
         <p id="musicCredits" class="help hide"></p>
-      </div>
+      </details>
     </section>
 
     <section class="grid">
@@ -262,7 +263,7 @@
         <h2 id="leaderboardTitle" data-i18n="host.leaderboard">Žebříček</h2>
         <p id="leaderboardHidden" class="muted hide" data-i18n="host.leaderboard_hidden">Žebříček je skrytý: na konci se ukážou jen stupně vítězů.</p>
         <table>
-          <thead><tr><th>#</th><th data-i18n="host.th_name">Jméno</th><th data-i18n="host.th_score">Body</th></tr></thead>
+          <thead><tr><th>#</th><th data-i18n="host.th_name">Jméno</th><th data-i18n="host.th_score">Body</th><th class="kick-col"></th></tr></thead>
           <tbody id="scoreBody"></tbody>
         </table>
       </div>
@@ -758,7 +759,8 @@
     // Room PIN from /api/host/token (multi-room servers only); refreshes the join link.
     // Next lesson: empty lobby and a PIN the previous class does not know.
     document.getElementById('btnNewPin').addEventListener('click', async () => {
-      if (!confirm(i18n.t('host.new_pin_confirm'))) return;
+      const playerCount = Number((appState.lastState && appState.lastState.total_players) || 0);
+      if (!confirm(i18n.t('host.new_pin_confirm', playerCount))) return;
       try {
         const data = await hostApi('/api/host/new-pin', 'POST', {});
         setRoom(data);
@@ -975,7 +977,9 @@
       body.innerHTML = '';
       players.forEach(p => {
         const tr = document.createElement('tr');
-        if (p.rank <= 3) tr.classList.add(`rank-${p.rank}`);
+        // lobby: a plain list of who joined, no podium colours for 0 points
+        const inLobby = appState.lastState && appState.lastState.phase === 'lobby';
+        if (p.rank <= 3 && !inLobby) tr.classList.add(`rank-${p.rank}`);
         if (appState.popNames && appState.popNames.has(p.name)) tr.classList.add('player-pop');
         const tdRank = document.createElement('td');
         tdRank.textContent = p.rank;
@@ -989,9 +993,51 @@
         tr.appendChild(tdRank);
         tr.appendChild(tdName);
         tr.appendChild(tdScore);
+        const tdKick = document.createElement('td');
+        tdKick.className = 'kick-col';
+        if (p.player_id) {  // host view only (host token proven)
+          const kb = document.createElement('button');
+          kb.type = 'button';
+          kb.className = 'kick-btn';
+          kb.textContent = i18n.t('host.kick');
+          kb.title = i18n.t('host.kick_title', p.name);
+          kb.setAttribute('aria-label', i18n.t('host.kick_title', p.name));
+          kb.addEventListener('click', () => kickPlayer(p));
+          tdKick.appendChild(kb);
+        }
+        tr.appendChild(tdKick);
         body.appendChild(tr);
       });
       appState.popNames = null; // pop-in is one-shot
+    }
+
+    // Music panel stays folded unless the teacher opened it last time
+    (function rememberMusicPanel() {
+      const panel = document.getElementById('musicPanel');
+      try { if (localStorage.getItem('classrally_music_panel') === '1') panel.open = true; } catch (_) {}
+      panel.addEventListener('toggle', () => {
+        try { localStorage.setItem('classrally_music_panel', panel.open ? '1' : '0'); } catch (_) {}
+      });
+    })();
+
+    async function kickPlayer(p) {
+      if (!confirm(i18n.t('host.kick_confirm', p.name))) return;
+      try {
+        await hostApi('/api/host/kick', 'POST', { player_id: p.player_id });
+        await refresh();
+      } catch (e) { alert(e.message); }
+    }
+
+    // Buttons that make sense in the current phase; the rest are disabled so
+    // a stray click cannot skip a question or restart a running game.
+    function updateControlButtons(state) {
+      const ph = state.phase;
+      const hasQuestions = Number(state.total_questions || 0) > 0;
+      document.getElementById('btnStart').disabled = !hasQuestions;
+      document.getElementById('btnReveal').disabled = ph !== 'question';
+      document.getElementById('btnNext').disabled = !(ph === 'question' || ph === 'reveal');
+      const anyScore = (state.players || []).some(p => Number(p.score || 0) > 0);
+      document.getElementById('btnReset').disabled = ph === 'lobby' && !anyScore;
     }
 
     function renderVoteStatus(state) {
@@ -1552,6 +1598,13 @@
       document.getElementById('leaderboardHidden').classList.toggle('hide', boardShown);
       document.getElementById('scoreBody').closest('table').classList.toggle('hide', !boardShown);
       renderScores(boardShown ? (state.players || []) : []);
+      updateControlButtons(state);
+      const boardTitle = document.getElementById('leaderboardTitle');
+      const boardKey = state.phase === 'lobby' ? 'host.kpi_players' : 'host.leaderboard';
+      if (boardTitle.getAttribute('data-i18n') !== boardKey) {
+        boardTitle.setAttribute('data-i18n', boardKey);
+        boardTitle.textContent = i18n.t(boardKey);
+      }
       renderTeamScores(state);
       const canAnalyse = state.phase === 'finished' && (state.question_summary || []).length > 0;
       document.getElementById('btnAnalysis').classList.toggle('hide', !canAnalyse);
@@ -1811,10 +1864,17 @@
       if (e.key === 'Escape') closeAnalysis();
     });
 
-    document.getElementById('btnStart').addEventListener('click', () => hostAction('start'));
+    document.getElementById('btnStart').addEventListener('click', () => {
+      const ph = appState.lastState && appState.lastState.phase;
+      if ((ph === 'question' || ph === 'reveal') && !confirm(i18n.t('host.start_confirm'))) return;
+      hostAction('start');
+    });
     document.getElementById('btnReveal').addEventListener('click', () => hostAction('reveal'));
     document.getElementById('btnNext').addEventListener('click', () => hostAction('next'));
-    document.getElementById('btnReset').addEventListener('click', () => hostAction('reset'));
+    document.getElementById('btnReset').addEventListener('click', () => {
+      if (!confirm(i18n.t('host.reset_confirm'))) return;
+      hostAction('reset');
+    });
 
     document.getElementById('btnMusicStart').addEventListener('click', () => {
       appState.userStopped = false;

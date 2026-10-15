@@ -1300,3 +1300,580 @@ tbody tr.rank-3 {
     display: none;
   }
 }
+
+/* ── Player page (/play) — phone-first game screen ───────────────────
+   The whole game runs on the student's own phone or PC; the projector is
+   optional. Tokens below drive light and dark mode for this page only. */
+.player-page {
+  --pp-bg: #eef2f7;
+  --pp-card: #ffffff;
+  --pp-ink: #0f172a;
+  --pp-muted: #475569;
+  --pp-line: #e2e8f0;
+  --pp-line-strong: #cbd5e1;
+  --pp-soft: #f1f5f9;
+  --pp-sel-soft: #dbeafe;
+  --pp-ok-soft: #dcfce7;
+  --pp-ok-ink: #14532d;
+  --pp-bad-soft: #fee2e2;
+  --pp-bad-ink: #7f1d1d;
+  --pp-note-soft: #e0f2fe;
+  --pp-note-ink: #0c4a6e;
+  background: var(--pp-bg);
+  color: var(--pp-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:has(body.player-page) {
+    background: #0b1220;
+    color-scheme: dark;
+  }
+  .player-page {
+    --pp-bg: #0b1220;
+    --pp-card: #111a2e;
+    --pp-ink: #e5e7eb;
+    --pp-muted: #a8b3c7;
+    --pp-line: #24314a;
+    --pp-line-strong: #34445f;
+    --pp-soft: #18233a;
+    --pp-sel-soft: #1e3a6e;
+    --pp-ok-soft: #0f3a24;
+    --pp-ok-ink: #bbf7d0;
+    --pp-bad-soft: #451a1d;
+    --pp-bad-ink: #fecaca;
+    --pp-note-soft: #0c2f4a;
+    --pp-note-ink: #bae6fd;
+  }
+  .player-page .card {
+    background: var(--pp-card);
+    border-color: var(--pp-line);
+    color: var(--pp-ink);
+  }
+  .player-page h1,
+  .player-page h2,
+  .player-page .question,
+  .player-page .kpi .value {
+    color: var(--pp-ink);
+  }
+  .player-page .muted,
+  .player-page .help,
+  .player-page .hero-subtitle {
+    color: var(--pp-muted);
+  }
+  .player-page .input {
+    background: var(--pp-soft);
+    color: var(--pp-ink);
+    border-color: var(--pp-line-strong);
+  }
+  .player-page .hero-kicker {
+    background: var(--pp-soft);
+    color: var(--pp-note-ink);
+  }
+  .player-page .hero-card::before,
+  .player-page .hero-card::after {
+    opacity: 0.25;
+  }
+  .player-page .avatar-btn {
+    background: var(--pp-soft);
+  }
+  .player-page .avatar-btn.selected {
+    background: var(--pp-sel-soft);
+  }
+  .player-page a {
+    color: #93c5fd;
+  }
+  .player-page .status-pill.lobby {
+    background: var(--pp-soft);
+    color: var(--pp-ink);
+  }
+  .player-page .sp-explanation,
+  .player-page .sp-summary-row {
+    background: var(--pp-soft);
+    color: var(--pp-ink);
+  }
+}
+
+.player-page .app {
+  max-width: 860px;
+  /* room for the language switcher above the card and for the floating
+     bug-report button below the last answer */
+  padding: 48px clamp(10px, 3vw, 24px) 96px;
+}
+
+/* the language switcher scrolls away with the page instead of covering the header */
+.player-page .i18n-switcher {
+  position: absolute;
+  background: var(--pp-card);
+  border-color: var(--pp-line);
+}
+
+.player-page .i18n-switcher button {
+  color: var(--pp-muted);
+  min-height: 32px;
+}
+
+.player-page .i18n-switcher button:hover {
+  background: var(--pp-soft);
+  color: var(--pp-ink);
+}
+
+.player-page .i18n-switcher button.active {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.player-page .card {
+  backdrop-filter: none;
+  border-radius: 16px;
+  padding: clamp(14px, 3vw, 28px);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.player-page :focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* --- join screen: PIN and nickname first, marketing last --- */
+.player-page .hero-card-play .hero-badges,
+.player-page .hero-card-play .hero-art-wrap {
+  display: none;
+}
+
+.player-page .hero-card-play .hero-shell {
+  grid-template-columns: 1fr;
+}
+
+.player-page .hero-card-play .hero-copy {
+  max-width: none;
+}
+
+.player-page .hero-card-play {
+  max-width: 560px;
+  margin: 0 auto 18px;
+}
+
+.player-page .hero-title {
+  font-size: clamp(2rem, 7vw, 2.8rem);
+  line-height: 1.1;
+  margin: 12px 0 6px;
+}
+
+.player-page .hero-subtitle {
+  margin-bottom: 14px;
+}
+
+.player-page #joinBtn {
+  width: 100%;
+  min-height: 54px;
+  font-size: 1.2rem;
+}
+
+.player-page #qrJoin img {
+  width: min(60vw, 240px) !important;
+}
+
+/* --- game header --- */
+.player-page .play-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.player-page .play-name {
+  margin: 0;
+  font-size: clamp(1.2rem, 4.5vw, 1.6rem);
+  line-height: 1.25;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.player-page .play-head-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* .status-pill.question used to inherit the huge .question heading style */
+.player-page .status-pill,
+.player-page .status-pill.question {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  font-weight: 900;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+/* --- status strip: score, question no., answered, timer --- */
+.player-page .play-status {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 10px calc(-1 * clamp(14px, 3vw, 28px)) 0;
+  padding: 8px clamp(14px, 3vw, 28px) 10px;
+  background: var(--pp-card);
+  border-bottom: 1px solid var(--pp-line);
+}
+
+.player-page .play-kpi {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.player-page .play-kpi .item {
+  background: var(--pp-soft);
+  border: 1px solid var(--pp-line);
+  border-radius: 10px;
+  padding: 6px 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.player-page .play-kpi .label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: none;
+  color: var(--pp-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-page .play-kpi .value {
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.player-page .play-kpi .item.timer {
+  background: var(--pp-note-soft);
+  border-color: transparent;
+}
+
+.player-page .play-kpi .item.timer .value {
+  color: var(--pp-note-ink);
+}
+
+.player-page .play-kpi .item.timer.warning {
+  background: #be123c;
+}
+
+.player-page .play-kpi .item.timer.warning .label,
+.player-page .play-kpi .item.timer.warning .value {
+  color: #fff;
+}
+
+/* phones: player count is in "answered x/y" */
+@media (max-width: 520px) {
+  .player-page .play-kpi .kpi-players {
+    display: none;
+  }
+}
+
+/* --- question + notes --- */
+.player-page .play-question {
+  font-size: clamp(1.3rem, 5vw, 2rem);
+  line-height: 1.3;
+  font-weight: 800;
+  margin: 14px 0 12px;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.player-page .play-note {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  color: var(--pp-muted);
+}
+
+.player-page .play-note:empty {
+  display: none;
+}
+
+/* "answered — wait for the others": a clear state, not a grey footnote */
+.player-page .play-note.answered-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--pp-note-soft);
+  color: var(--pp-note-ink);
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.player-page .play-note.answered-note::before {
+  content: "\2713";
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0369a1;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+/* explanation after the reveal */
+.player-page .play-note.reveal-note {
+  padding: 12px 14px;
+  border-left: 4px solid #2563eb;
+  border-radius: 0 10px 10px 0;
+  background: var(--pp-soft);
+  color: var(--pp-ink);
+  line-height: 1.5;
+}
+
+.player-page .play-final-hint {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  color: var(--pp-muted);
+}
+
+.player-page .play-waiting {
+  font-size: 1.15rem;
+  text-align: center;
+  margin-top: 16px;
+}
+
+.player-page #mainMessage .waiting-pulse {
+  display: block;
+  font-size: clamp(1.1rem, 4.2vw, 1.4rem);
+  font-weight: 700;
+  color: var(--pp-muted);
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.player-page .slide-body {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin-top: 4px;
+  padding: 14px 16px;
+  background: var(--pp-note-soft);
+  color: var(--pp-ink);
+  border-radius: 12px;
+  border-left: 4px solid #0284c7;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.player-page .oe-sent {
+  font-size: 1.15rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.player-page .get-ready-overlay {
+  border-radius: 12px;
+}
+
+.player-page .double-chip {
+  margin-top: 12px;
+}
+
+@media (max-width: 400px) {
+  .player-page .play-kpi .value {
+    font-size: 1.1rem;
+  }
+}
+
+/* lobby and final screen: no running clock to show */
+body.player-page[data-phase="lobby"] .countdown-bar,
+body.player-page[data-phase="finished"] .countdown-bar,
+body.player-page[data-phase="finished"] .play-kpi .item.timer {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  /* "Ahoj," costs a whole header line on small phones */
+  .player-page .play-name [data-i18n="play.greeting"] {
+    display: none;
+  }
+  .player-page .play-kpi .item {
+    padding: 5px 6px;
+  }
+}
+
+/* ── Host page (/host) — teacher's control screen ───────────────────── */
+.host-page .host-hero {
+  gap: 10px 14px;
+}
+
+.host-page .host-hero h1 {
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  line-height: 1.05;
+}
+
+.host-page .host-intro > p:first-of-type {
+  font-size: 1.1rem;
+}
+
+.host-page .pin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 18px;
+  margin: 6px 0 10px;
+}
+
+.host-page .pin-row.hide {
+  display: none;
+}
+
+.host-page .pin-line {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.host-page .room-pin {
+  font-size: 1.8rem;
+  letter-spacing: 4px;
+}
+
+.host-page .class-switch {
+  max-width: 420px;
+}
+
+.host-page .class-switch .btn {
+  font-size: 0.95rem;
+  padding: 8px 14px;
+}
+
+.host-page .class-switch-help {
+  margin: 6px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #dbeafe;
+}
+
+.host-page .host-action-row .btn:disabled {
+  opacity: 0.38;
+  box-shadow: none;
+}
+
+.host-page details.music-controls {
+  padding: 10px 16px;
+}
+
+.host-page details.music-controls > summary {
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.host-page details.music-controls[open] > summary {
+  margin-bottom: 10px;
+}
+
+.host-page .kpi .value {
+  font-size: clamp(1.3rem, 2.2vw, 2.1rem);
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.host-page .kpi .item {
+  min-width: 0;
+}
+
+.host-page th.kick-col,
+.host-page td.kick-col {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.host-page .kick-btn {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.host-page .kick-btn:hover {
+  background: #be123c;
+  border-color: #be123c;
+  color: #fff;
+}
+
+.host-page .kick-btn:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .host-page .kpi {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .host-page .kpi .label {
+    font-size: 0.75rem;
+  }
+  .host-page .question {
+    font-size: 1.5rem;
+    text-wrap: pretty;
+  }
+  .host-page .big-answer {
+    font-size: 1.4rem;
+    overflow-wrap: anywhere;
+  }
+  .host-page .host-action-row .btn {
+    flex: 1 1 auto;
+  }
+  .host-page .kick-btn {
+    min-height: 44px;
+  }
+}
+
+.player-page #joinErr:not(:empty) {
+  color: var(--pp-bad-ink) !important;
+  background: var(--pp-bad-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+/* laptops and short projector resolutions: keep the game area closer to the top */
+@media (max-height: 900px) and (min-width: 761px) {
+  .host-page #qrImg {
+    max-width: 220px !important;
+  }
+  .host-page .host-qr-panel {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  /* teacher on a phone: controls first, the QR code (for the projector) last,
+     and room above the card for the language switcher */
+  .host-page .app {
+    padding-top: 52px;
+  }
+  .host-page .host-intro { order: 0; }
+  .host-page .host-action-row { order: 1; }
+  .host-page .music-controls { order: 2; }
+  .host-page .host-qr-panel { order: 3; }
+  .host-page #qrImg {
+    max-width: 200px !important;
+  }
+}

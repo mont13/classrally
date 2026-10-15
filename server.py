@@ -3035,6 +3035,31 @@ QUIZ = DEFAULT_ROOM.quiz
 EXAM = DEFAULT_ROOM.exam
 
 
+class _KickedPlayers:
+    """Player ids the teacher removed with "Vyhodit", so their device can say
+    so (code player_kicked) instead of silently dropping back to the join
+    screen. Not a ban: the student may join again under a new player id.
+    Bounded and in memory only (a restart forgets it, like the players)."""
+
+    def __init__(self, limit: int = 2000) -> None:
+        self._ids: dict[str, float] = {}
+        self._limit = limit
+        self._lock = threading.Lock()
+
+    def add(self, player_id: str) -> None:
+        with self._lock:
+            self._ids[player_id] = time.time()
+            while len(self._ids) > self._limit:
+                self._ids.pop(next(iter(self._ids)))
+
+    def __contains__(self, player_id: object) -> bool:
+        with self._lock:
+            return player_id in self._ids
+
+
+KICKED_PLAYERS = _KickedPlayers()
+
+
 def get_app_mode(room: Room | None = None) -> str:
     return (room or DEFAULT_ROOM).mode
 
@@ -3948,6 +3973,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             q = parse_qs(parsed.query)
             player_id = q.get("player_id", [None])[0]
+            if player_id and player_id in KICKED_PLAYERS:
+                # removed by the teacher: the device tells the student and offers to join again
+                self._json_response({"error": "Removed by the teacher", "code": "player_kicked"}, status=404)
+                return
             # Host view is privileged: it exposes player_id of every player,
             # the correct answer already during the question phase and bot
             # scores. Grant it only with a valid host token; otherwise degrade
@@ -4537,6 +4566,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 player_id = str(data.get("player_id", ""))
                 result = room.quiz.kick_player(player_id)
+                KICKED_PLAYERS.add(player_id)
                 if ROOMS.by_player(player_id) is room:
                     ROOMS.unbind_player(player_id)
                 self._json_response(result)
