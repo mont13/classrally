@@ -16,7 +16,7 @@
     #pinRow.hide { display: none; }
     #pinInput { font-size: 1.6rem; letter-spacing: 6px; text-align: center; font-weight: 800; }
     .countdown-bar { width: 100%; height: 8px; background: var(--pp-soft); border-radius: 99px; overflow: hidden; margin: 8px 0 0; }
-    .countdown-fill { height: 100%; border-radius: 99px; transition: width 1s linear;
+    .countdown-fill { height: 100%; border-radius: 99px; will-change: width;
       background: linear-gradient(90deg, #14b8a6, #2563eb); }
     .countdown-fill.warning { background: linear-gradient(90deg, #f59e0b, #e11d48); }
     /* ---- Answer cards (choice / poll): one column on phones, two on wider screens ---- */
@@ -879,12 +879,38 @@
     async function submitChoice(playerId, choice) {
       sfxPlay('pop');
       const secret = localStorage.getItem(SECRET_KEY) || '';
-      await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice });
+      try {
+        await api('/api/submit', 'POST', { player_id: playerId, player_secret: secret, choice });
+      } catch (e) {
+        optionsKey = '';  // the next state rebuilds the answer area (re-enables the buttons)
+        throw e;
+      }
       await refresh();
     }
 
+    // The answer area is rebuilt only when something it shows has changed.
+    // Every WS push (another player answered) and every 1 s poll repeats the
+    // same question; rebuilding on each of them wiped a half-typed open answer
+    // and stole the focus from the text field (Buggy #94).
+    let optionsKey = '';
+    // Text typed into an open answer / word cloud, kept per question so that
+    // even a necessary rebuild never loses it.
+    let typedDraft = { index: -1, value: '', focused: false, start: null, end: null };
+
     function renderOptions(state, playerId) {
       const box = document.getElementById('options');
+      const key = JSON.stringify([state.phase, state.current_index, state.my_choice === undefined ? null : state.my_choice,
+        state.question || null, (window.i18n && i18n.getLang) ? i18n.getLang() : '']);
+      if (key === optionsKey) return;
+      optionsKey = key;
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains('oe-input') && box.contains(active)) {
+        typedDraft.focused = true;
+        typedDraft.start = active.selectionStart;
+        typedDraft.end = active.selectionEnd;
+      } else {
+        typedDraft.focused = false;
+      }
       box.innerHTML = '';
       if (!state.question) return;
 
@@ -1111,6 +1137,24 @@
       }
     }
 
+    // Restores the typed text (and the caret) after a rebuild and keeps it in sync.
+    function keepDraft(input, state) {
+      if (typedDraft.index !== state.current_index) {
+        typedDraft = { index: state.current_index, value: '', focused: false, start: null, end: null };
+      }
+      input.value = typedDraft.value;
+      input.addEventListener('input', () => { typedDraft.value = input.value; });
+      if (typedDraft.focused) {
+        requestAnimationFrame(() => {
+          if (!input.isConnected || input.disabled) return;
+          try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+          if (typedDraft.start !== null) {
+            try { input.setSelectionRange(typedDraft.start, typedDraft.end); } catch (_) {}
+          }
+        });
+      }
+    }
+
     function renderOpenEndedOptions(box, state, playerId) {
       const myChoice = state.my_choice;
       const isReveal = state.phase === 'reveal' || state.phase === 'finished';
@@ -1134,6 +1178,7 @@
       input.autocomplete = 'off';
       input.maxLength = state.question.max_length || 200;
       box.appendChild(input);
+      keepDraft(input, state);
 
       const confirmBtn = document.createElement('button');
       confirmBtn.className = 'btn good oe-submit';
@@ -1236,7 +1281,10 @@
       input.type = 'text';
       input.placeholder = i18n.t('play.wordcloud_placeholder');
       input.maxLength = 100;
+      input.autocomplete = 'off';
+      input.setAttribute('aria-label', i18n.t('play.wordcloud_placeholder'));
       box.appendChild(input);
+      keepDraft(input, state);
       const confirmBtn = document.createElement('button');
       confirmBtn.className = 'btn good oe-submit';
       confirmBtn.textContent = i18n.t('play.wordcloud_submit');
@@ -1303,22 +1351,80 @@
       container.appendChild(podiumDiv);
     }
 
+    // --- Countdown: one smooth clock between server states (Buggy #93) ---
+    // WS pushes arrive only when something happens (an answer, a phase change),
+    // so redrawing the bar per state made it stand still and then jump. The
+    // phase end is anchored to the server clock once per state and a
+    // requestAnimationFrame loop draws the remaining time in between.
+    // Reduced motion: the bar steps once per second instead of gliding.
+    let cd = { phase: '', endMs: 0, total: 0, prefix: null, lastSec: null, raf: 0, stepTimer: 0 };
+
+    function questionTimeSec(state) {
+      return Number(state.question_time_sec) || Number(state.question_duration_sec) || 0;
+    }
+
     function updateCountdown(state) {
-      const fill = document.getElementById('countdownFill');
-      if (state.phase === 'question' && state.question_duration_sec > 0) {
-        const pct = Math.max(0, (state.phase_time_left || 0) / state.question_duration_sec * 100);
-        fill.style.width = pct + '%';
-        fill.classList.toggle('warning', pct < 30);
-        document.getElementById('timerItem').classList.toggle('warning', pct < 30);
-      } else if (state.phase === 'reveal' && state.reveal_duration_sec > 0) {
-        const pct = Math.max(0, (state.phase_time_left || 0) / state.reveal_duration_sec * 100);
-        fill.style.width = pct + '%';
-        fill.classList.remove('warning');
+      const now = Date.now();
+      let start = 0, total = 0;
+      if (state.phase === 'question') { start = Number(state.question_started_at); total = questionTimeSec(state); }
+      else if (state.phase === 'reveal') { start = Number(state.reveal_started_at); total = Number(state.reveal_duration_sec) || 0; }
+      const serverNow = Number(state.server_time);
+      if (start > 0 && total > 0 && serverNow > 0) {
+        const leftSec = Math.max(0, start + total - serverNow);
+        const endMs = now + leftSec * 1000;
+        // keep the running anchor unless the server says it is off by more than ~0.4 s
+        if (cd.phase !== state.phase || cd.total !== total || Math.abs(cd.endMs - endMs) > 400) cd.endMs = endMs;
+        cd.total = total;
       } else {
+        cd.endMs = 0;
+        cd.total = 0;
+      }
+      cd.phase = state.phase;
+      cd.lastSec = null;
+      drawCountdown();
+      if (cd.total > 0) startCountdownLoop();
+    }
+
+    function drawCountdown() {
+      const fill = document.getElementById('countdownFill');
+      const timerItem = document.getElementById('timerItem');
+      const active = cd.total > 0 && cd.endMs > 0;
+      if (!active) {
         fill.style.width = '100%';
         fill.classList.remove('warning');
+        timerItem.classList.remove('warning');
+        document.getElementById('timer').textContent = '-';
+        return false;
       }
-      if (state.phase !== 'question') document.getElementById('timerItem').classList.remove('warning');
+      const left = Math.max(0, (cd.endMs - Date.now()) / 1000);
+      const shown = REDUCED_MOTION ? Math.ceil(left) : left;
+      const pct = Math.min(100, Math.max(0, shown / cd.total * 100));
+      fill.style.width = pct.toFixed(2) + '%';
+      const warn = cd.phase === 'question' && pct < 30;
+      fill.classList.toggle('warning', warn);
+      timerItem.classList.toggle('warning', warn);
+      const sec = Math.ceil(left);
+      if (sec !== cd.lastSec) {
+        cd.lastSec = sec;
+        document.getElementById('timer').textContent = formatSecondsLeft(sec);
+        if (cd.prefix !== null) document.getElementById('explanation').textContent = cd.prefix + formatSecondsLeft(sec) + '.';
+      }
+      return left > 0;
+    }
+
+    function startCountdownLoop() {
+      if (REDUCED_MOTION) {
+        if (!cd.stepTimer) cd.stepTimer = setInterval(() => {
+          if (!drawCountdown()) { clearInterval(cd.stepTimer); cd.stepTimer = 0; }
+        }, 250);
+        return;
+      }
+      if (cd.raf) return;
+      const frame = () => {
+        cd.raf = 0;
+        if (drawCountdown()) cd.raf = requestAnimationFrame(frame);
+      };
+      cd.raf = requestAnimationFrame(frame);
     }
 
     function updateStreakBadge(me) {
@@ -1478,13 +1584,11 @@
       document.getElementById('answered').textContent = `${state.answer_count ?? 0}/${state.total_players ?? 0}`;
       document.getElementById('players').textContent = `${state.total_players ?? 0}`;
       document.getElementById('qNo').textContent = state.current_index >= 0 ? `${state.current_index + 1}/${state.total_questions}` : '-';
-      document.getElementById('timer').textContent = formatSecondsLeft(state.phase_time_left);
 
       const pill = document.getElementById('phasePill');
       pill.textContent = phaseLabel(state.phase);
       pill.className = `status-pill ${state.phase}`;
 
-      updateCountdown(state);
       updateStreakBadge(me);
       updateTeamUI(me);
 
@@ -1500,6 +1604,7 @@
       lastScore = me.score || 0;
 
       const qImg = document.getElementById('questionImage');
+      let hintPrefix = null;  // "time left" hint the countdown keeps ticking
 
       const answeredNow = state.phase === 'question' && state.my_choice !== undefined;
       const curType = state.question ? (state.question.type || 'choice') : '';
@@ -1559,16 +1664,19 @@
           } else if (qType === 'wordcloud') {
             exp.textContent = state.my_choice === undefined ? i18n.t('play.wordcloud_write_hint') : i18n.t('play.answer_sent');
           } else if (state.my_choice === undefined) {
-            if (qType === 'openended') exp.textContent = i18n.t('play.time_left_hint_open') + timeLeft + '.';
-            else if (qType === 'multiselect') exp.textContent = i18n.t('play.time_left_hint_multi') + timeLeft + '.';
-            else if (qType === 'ordering') exp.textContent = i18n.t('play.time_left_hint_order') + timeLeft + '.';
-            else exp.textContent = i18n.t('play.time_left_hint_choice') + timeLeft + '.';
+            if (qType === 'openended') hintPrefix = i18n.t('play.time_left_hint_open');
+            else if (qType === 'multiselect') hintPrefix = i18n.t('play.time_left_hint_multi');
+            else if (qType === 'ordering') hintPrefix = i18n.t('play.time_left_hint_order');
+            else hintPrefix = i18n.t('play.time_left_hint_choice');
+            exp.textContent = hintPrefix + timeLeft + '.';
           } else {
             exp.textContent = i18n.t('play.answer_sent');
           }
         }
       }
 
+      cd.prefix = hintPrefix;
+      updateCountdown(state);
       renderOptions(state, playerId);
       ensureGetReady(state);
       renderRankCard(state);

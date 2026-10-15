@@ -1113,6 +1113,13 @@ class TestHTTPIntegration(unittest.TestCase):
         self.assertEqual(result["get_ready_sec"], 3)
         self.assertFalse(result["final_double"])
 
+    def test_admin_timing_adaptive_time(self):
+        result = self._post("/api/admin/timing", {"adaptive_time": False})
+        self.assertFalse(result["adaptive_time"])
+        self.assertFalse(self._get("/api/state")["adaptive_time"])
+        result = self._post("/api/admin/timing", {"adaptive_time": True})
+        self.assertTrue(result["adaptive_time"])
+
     def test_admin_timing_old_payload_compat(self):
         """Old payloads without the new keys still work and leave them untouched."""
         before = self._get("/api/state")
@@ -5467,6 +5474,82 @@ class TestBugReportBridge(unittest.TestCase):
         for name in ("play", "host", "admin", "exam", "profile", "account", "landing"):
             html = (server.STATIC_DIR / f"{name}.html").read_text(encoding="utf-8")
             self.assertIn('<script src="/static/buggy-host.js" defer></script>', html, name)
+
+
+class TestReadingTime(unittest.TestCase):
+    """Longer questions get reading time on top of the teacher's setting (#91, #95)."""
+
+    SHORT = {"id": "s", "prompt": "Q?", "options": ["A", "B", "C", "D"], "correct_index": 0}
+    LONG = {"id": "l", "prompt": "P" * 150, "options": ["o" * 25] * 4, "correct_index": 0}  # 250 chars
+
+    def test_short_question_has_no_bonus(self):
+        self.assertEqual(server.reading_bonus_sec(self.SHORT), 0)
+        self.assertEqual(server.reading_bonus_sec({"prompt": "x" * server.READING_BASE_CHARS}), 0)
+        self.assertEqual(server.reading_bonus_sec(None), 0)
+
+    def test_bonus_grows_with_text_and_is_capped(self):
+        # 250 chars: (250 - 80) / 15 = 11.3 -> 12 s
+        self.assertEqual(server.reading_bonus_sec(self.LONG), 12)
+        self.assertEqual(server.reading_bonus_sec({"prompt": "x" * (server.READING_BASE_CHARS + 1)}), 1)
+        self.assertEqual(server.reading_bonus_sec({"prompt": "x" * 5000}), server.READING_BONUS_MAX_SEC)
+        self.assertEqual(server.reading_bonus_sec({"type": "ordering", "prompt": "x" * 80, "items": ["y" * 30]}), 2)
+
+    def test_state_reports_setting_and_time_as_played(self):
+        qs = server.QuizState([self.LONG, self.SHORT])
+        qs.set_timing(question_sec=30)
+        qs.register_player("Alice")
+        qs.host_action("start")
+        st = qs.public_state()
+        self.assertEqual(st["question_duration_sec"], 30)  # the teacher's setting stays as set
+        self.assertEqual(st["reading_bonus_sec"], 12)
+        self.assertEqual(st["question_time_sec"], 42)
+        self.assertTrue(st["adaptive_time"])
+        self.assertGreater(st["phase_time_left"], 30)
+
+    def test_question_ends_after_extended_time(self):
+        qs = server.QuizState([self.LONG, self.SHORT])
+        qs.set_timing(question_sec=30)
+        qs.register_player("Alice")
+        qs.host_action("start")
+        started = qs.question_started_at
+        with mock.patch("time.time", return_value=started + 35):
+            self.assertEqual(qs.public_state()["phase"], "question")  # base 30 s already over
+        with mock.patch("time.time", return_value=started + 42.5):
+            st = qs.public_state()
+        self.assertEqual(st["phase"], "reveal")
+        self.assertAlmostEqual(qs.reveal_started_at, started + 42)
+
+    def test_switched_off_keeps_exact_time(self):
+        qs = server.QuizState([self.LONG])
+        qs.set_timing(question_sec=30, adaptive_time=False)
+        qs.register_player("Alice")
+        qs.host_action("start")
+        st = qs.public_state()
+        self.assertEqual(st["reading_bonus_sec"], 0)
+        self.assertEqual(st["question_time_sec"], 30)
+        self.assertFalse(st["adaptive_time"])
+
+
+class TestPlayAnswerAreaStatic(unittest.TestCase):
+    """/play keeps a half-typed answer across state updates (#94) and runs a smooth countdown (#93)."""
+
+    def setUp(self):
+        self.html = (server.STATIC_DIR / "play.html").read_text(encoding="utf-8")
+
+    def test_answer_area_rebuilds_only_on_change(self):
+        self.assertIn("if (key === optionsKey) return;", self.html)
+        self.assertEqual(self.html.count("keepDraft(input, state);"), 2)  # open answer + word cloud
+
+    def test_countdown_is_drawn_per_frame(self):
+        self.assertIn("requestAnimationFrame(frame)", self.html)
+        self.assertIn("question_time_sec", self.html)
+        self.assertNotIn("transition: width 1s linear", self.html)
+
+    def test_admin_shows_reading_time_option(self):
+        admin = (server.STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        self.assertIn('id="timingAdaptive"', admin)
+        self.assertIn("adaptive_time:", admin)
+        self.assertIn("gameSetWarnings(editorQuestions)", admin)
 
 
 if __name__ == "__main__":

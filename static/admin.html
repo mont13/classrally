@@ -590,6 +590,10 @@
               <input id="timingGetReady" type="number" min="0" max="10" />
             </div>
           </div>
+          <div class="rule-option">
+            <label><input type="checkbox" id="timingAdaptive" /><span data-i18n="admin.adaptive_time_label">Prodloužit čas podle délky otázky</span></label>
+            <p class="muted" data-i18n="admin.adaptive_time_hint">Delší otázka dostane navíc čas na přečtení: +1 s za každých 15 znaků otázky a odpovědí nad 80, nejvýš +30 s. Krátké otázky mají přesně nastavený čas.</p>
+          </div>
           <div style="display:flex;align-items:center;gap:12px;margin:12px 0;">
             <label style="font-weight:700;">
               <input type="checkbox" id="timingFinalDouble" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" />
@@ -1289,6 +1293,25 @@
       } catch (e) { alert(e.message); }
     });
 
+    // Advice for live-game sets (only a warning, saving goes on): typing an open
+    // answer against the clock is hard on a phone, and ordering more than four
+    // items with the arrows is slow on a small screen. Open questions still fit
+    // a written test (exam) or a slower game, so nothing is blocked.
+    const GAME_ORDERING_MAX_ITEMS = 4;
+    function gameSetWarnings(questions) {
+      const list = Array.isArray(questions) ? questions : [];
+      const open = list.filter(q => q && q.type === 'openended').length;
+      const longOrder = list.filter(q => q && q.type === 'ordering' &&
+        Array.isArray(q.items) && q.items.length > GAME_ORDERING_MAX_ITEMS).length;
+      const lines = [];
+      if (open) lines.push(tr('admin.bank_warn_openended',
+        'Otevřené otázky: {0}. Psát odpověď na čas je na mobilu těžké, pro hru zvažte otázku s výběrem (písemce nevadí).', open));
+      if (longOrder) lines.push(tr('admin.bank_warn_ordering',
+        'Řazení s více než 4 položkami: {0}. Na mobilu se řadí pomalu, pro hru stačí nejvýš 4 položky.', longOrder));
+      if (!lines.length) return '';
+      return '\n\n' + tr('admin.bank_warn_title', 'Upozornění pro hru:') + '\n- ' + lines.join('\n- ');
+    }
+
     document.getElementById('btnSaveBank').addEventListener('click', async () => {
       if (!editorFilename) { alert(i18n.t('admin.load_bank_first')); return; }
       collectEditorData();
@@ -1297,9 +1320,9 @@
         // a shared bank is saved as the teacher's own copy ("moje/...")
         if (saved.filename && saved.filename !== editorFilename) {
           editorFilename = saved.filename;
-          alert(i18n.t('admin.bank_saved_as_copy', saved.filename));
+          alert(i18n.t('admin.bank_saved_as_copy', saved.filename) + gameSetWarnings(editorQuestions));
         } else {
-          alert(i18n.t('admin.saved'));
+          alert(i18n.t('admin.saved') + gameSetWarnings(editorQuestions));
         }
         await loadBanks();
         document.getElementById('editorBank').value = editorFilename;
@@ -1405,7 +1428,7 @@
           }
           const saved = await api('/api/admin/bank/save', 'POST', { filename: finalFilename, questions });
           storedName = saved.filename || finalFilename;
-          alert(i18n.t('admin.imported_questions', questions.length, storedName));
+          alert(i18n.t('admin.imported_questions', questions.length, storedName) + gameSetWarnings(questions));
         } else {
           // CSV import — POST raw CSV to dedicated endpoint
           const result = await api('/api/admin/bank/import/csv', 'POST', {
@@ -2025,6 +2048,7 @@
         document.getElementById('timingReveal').value = state.reveal_duration_sec || 5;
         document.getElementById('timingGetReady').value = state.get_ready_sec ?? 3;
         document.getElementById('timingFinalDouble').checked = !!state.final_double;
+        document.getElementById('timingAdaptive').checked = state.adaptive_time !== false;
         document.getElementById('timingSpeedBonus').checked = state.speed_bonus !== false;
         document.getElementById('timingShowLeaderboard').checked = state.show_leaderboard !== false;
       } catch {}
@@ -2229,6 +2253,7 @@
           reveal_duration_sec: parseInt(document.getElementById('timingReveal').value),
           get_ready_sec: parseInt(document.getElementById('timingGetReady').value),
           final_double: document.getElementById('timingFinalDouble').checked,
+          adaptive_time: document.getElementById('timingAdaptive').checked,
           speed_bonus: document.getElementById('timingSpeedBonus').checked,
           show_leaderboard: document.getElementById('timingShowLeaderboard').checked,
         });

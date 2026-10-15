@@ -56,6 +56,31 @@ APP_VERSION = "3.0"  # /api/health and the Server header
 QUESTION_DURATION_SEC = 20
 REVEAL_DURATION_SEC = 5
 GET_READY_SEC = 3  # "Get ready" countdown before answers show (0 = off)
+# Reading time: a long question (prompt + answers) gets extra seconds on top of
+# the teacher's time per question, so slower readers are not out of time before
+# they have read it. +1 s per READING_CHARS_PER_SEC characters above
+# READING_BASE_CHARS, at most READING_BONUS_MAX_SEC. On by default, the teacher
+# can switch it off in the settings.
+READING_BASE_CHARS = 80
+READING_CHARS_PER_SEC = 15
+READING_BONUS_MAX_SEC = 30
+
+
+def reading_bonus_sec(question: dict | None) -> int:
+    """Extra seconds a question gets for reading its text (0 for short ones)."""
+    if not isinstance(question, dict):
+        return 0
+    parts = [question.get("prompt", ""), question.get("body", "")]
+    for key in ("options", "items"):
+        values = question.get(key)
+        if isinstance(values, list):
+            parts.extend(values)
+    chars = sum(len(str(p).strip()) for p in parts if p)
+    extra = chars - READING_BASE_CHARS
+    if extra <= 0:
+        return 0
+    return min(READING_BONUS_MAX_SEC, math.ceil(extra / READING_CHARS_PER_SEC))
+
 # Atypical high port (avoids clashes on shared machines); override via QUIZ_PORT.
 DEFAULT_PORT = int(os.environ.get("QUIZ_PORT", "48217"))
 
@@ -1161,12 +1186,25 @@ class QuizState:
         # no speed pressure for slower students)
         self.speed_bonus: bool = True
         self.show_leaderboard: bool = True
+        # Longer questions get reading time on top of question_duration_sec
+        self.adaptive_time: bool = True
         # One entry per evaluated question: what the class answered (formative
         # analysis after the game, saved with the game history)
         self.question_log: list[dict[str, Any]] = []
         # Ordering questions are shown shuffled (the bank lists the items in the
         # right order): question index -> display position -> original item index
         self._item_orders: dict[int, list[int]] = {}
+
+    def _reading_bonus_locked(self, index: int | None = None) -> int:
+        """Reading time added to the current (or given) question; 0 when off."""
+        index = self.current_index if index is None else index
+        if not self.adaptive_time or not 0 <= index < len(self.questions):
+            return 0
+        return reading_bonus_sec(self.questions[index])
+
+    def _question_time_locked(self, index: int | None = None) -> int:
+        """Time per question as played: the teacher's setting plus reading time."""
+        return self.question_duration_sec + self._reading_bonus_locked(index)
 
     def _item_order_locked(self, index: int) -> list[int] | None:
         """Display order of an ordering question, never the right order itself."""
@@ -1214,8 +1252,11 @@ class QuizState:
 
     def set_timing(self, question_sec: int | None = None, reveal_sec: int | None = None,
                    get_ready_sec: int | None = None, final_double: bool | None = None,
-                   speed_bonus: bool | None = None, show_leaderboard: bool | None = None) -> None:
+                   speed_bonus: bool | None = None, show_leaderboard: bool | None = None,
+                   adaptive_time: bool | None = None) -> None:
         with self._lock:
+            if adaptive_time is not None:
+                self.adaptive_time = bool(adaptive_time)
             if speed_bonus is not None:
                 self.speed_bonus = bool(speed_bonus)
             if show_leaderboard is not None:
@@ -1709,13 +1750,14 @@ class QuizState:
                     and len(self.players) > 0
                     and len(self.answers) >= len(self.players)
                 )
-                if everyone_answered or elapsed >= self.question_duration_sec:
+                question_time = self._question_time_locked()
+                if everyone_answered or elapsed >= question_time:
                     self._apply_scoring()
                     self.phase = "reveal"
                     if everyone_answered:
                         self.reveal_started_at = now
                     else:
-                        self.reveal_started_at = self.question_started_at + self.question_duration_sec
+                        self.reveal_started_at = self.question_started_at + question_time
                     continue
             if self.phase == "reveal" and self.reveal_started_at > 0:
                 elapsed = now - self.reveal_started_at
@@ -1756,7 +1798,7 @@ class QuizState:
 
     def _phase_time_left_locked(self, now: float) -> int | None:
         if self.phase == "question" and self.question_started_at > 0:
-            left = self.question_duration_sec - (now - self.question_started_at)
+            left = self._question_time_locked() - (now - self.question_started_at)
             return max(0, int(math.ceil(left)))
         if self.phase == "reveal" and self.reveal_started_at > 0:
             left = self.reveal_duration_sec - (now - self.reveal_started_at)
@@ -1972,7 +2014,10 @@ class QuizState:
                 "server_time": now,
                 "question_started_at": self.question_started_at,
                 "reveal_started_at": self.reveal_started_at,
-                "question_duration_sec": self.question_duration_sec,
+                "question_duration_sec": self.question_duration_sec,  # the teacher's setting
+                "adaptive_time": self.adaptive_time,
+                "reading_bonus_sec": self._reading_bonus_locked(),
+                "question_time_sec": self._question_time_locked(),  # this question as played
                 "reveal_duration_sec": self.reveal_duration_sec,
                 "get_ready_sec": self.get_ready_sec,
                 "final_double": self.final_double,
@@ -4759,6 +4804,7 @@ class Handler(BaseHTTPRequestHandler):
                 f_double = data.get("final_double")
                 speed = data.get("speed_bonus")
                 board = data.get("show_leaderboard")
+                adaptive = data.get("adaptive_time")
                 quiz = self._admin_room().quiz
                 quiz.set_timing(
                     question_sec=int(q_sec) if q_sec is not None else None,
@@ -4767,6 +4813,7 @@ class Handler(BaseHTTPRequestHandler):
                     final_double=bool(f_double) if f_double is not None else None,
                     speed_bonus=bool(speed) if speed is not None else None,
                     show_leaderboard=bool(board) if board is not None else None,
+                    adaptive_time=bool(adaptive) if adaptive is not None else None,
                 )
                 self._json_response({
                     "ok": True,
@@ -4776,6 +4823,7 @@ class Handler(BaseHTTPRequestHandler):
                     "final_double": quiz.final_double,
                     "speed_bonus": quiz.speed_bonus,
                     "show_leaderboard": quiz.show_leaderboard,
+                    "adaptive_time": quiz.adaptive_time,
                 })
                 return
 
