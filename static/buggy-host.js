@@ -157,6 +157,9 @@
     if (!config || !config.enabled || !config.script) return;
     try { await loadScript(config.script); } catch (error) { return; }
     if (!window.InvoAIMBuggy || typeof window.InvoAIMBuggy.mountBuggyWidget !== 'function') return;
+    const hide = document.createElement('style');
+    hide.textContent = 'body[data-phase="question"]:not([data-answered]) #classrally-buggy-root{display:none!important}';
+    document.head.appendChild(hide);
     const target = document.createElement('div');
     target.id = 'classrally-buggy-root';
     // Own stacking context above every page layer (language flags, overlays).

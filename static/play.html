@@ -1384,6 +1384,10 @@
 
     function render(state, playerId) {
       const me = state.me || {};
+      // For the bug-report button (buggy-host.js): hidden while a question waits
+      // for this player's answer, so a tap near the edge never misses an answer.
+      document.body.dataset.phase = state.phase || '';
+      document.body.toggleAttribute('data-answered', state.my_choice !== undefined);
 
       // Edge detection first: WS pushes and 1s polling repeat the same state,
       // so one-shot effects key off real phase/question transitions only.
