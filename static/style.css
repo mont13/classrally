@@ -1791,9 +1791,39 @@ body.player-page[data-phase="finished"] .play-kpi .item.timer {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* late joiners use the link and the PIN; the QR code comes back with the lobby */
+/* the join link, the PIN and the QR button share one line */
+.host-page.in-game .host-intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 28px;
+}
+
+.host-page.in-game .host-intro > p {
+  margin: 0;
+}
+
+/* the phase is in the "Phase" tile: no title row above the question */
+.host-page.in-game .question-card-head {
+  display: none !important;
+}
+
+/* late joiners use the link and the PIN, or the QR code from the button next
+   to the link (full screen); the QR panel comes back with the lobby */
 .host-page.in-game .host-qr-panel {
   display: none;
+}
+
+.host-page .qr-in-game {
+  display: none;
+  margin-left: 8px;
+  padding: 4px 12px;
+  font-size: 0.95rem;
+  vertical-align: middle;
+}
+
+.host-page.in-game .qr-in-game {
+  display: inline-flex;
 }
 
 .host-page details.music-controls {

@@ -73,6 +73,8 @@
     .result-banner.correct-banner::before { content: "\2713"; background: #16a34a; }
     .result-banner.wrong-banner { background: var(--pp-bad-soft); color: var(--pp-bad-ink); border: 2px solid #dc2626; }
     .result-banner.wrong-banner::before { content: "\2717"; background: #dc2626; }
+    .result-banner.late-banner { background: var(--pp-note-soft); color: var(--pp-note-ink); border: 2px solid #38bdf8; }
+    .result-banner.late-banner::before { content: "i"; background: #0284c7; }
     @media (min-width: 700px) { .result-banner { font-size: 1.35rem; } }
     .waiting-pulse { animation: pulse 2s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
@@ -745,7 +747,7 @@
     function renderRankCard(state) {
       const card = document.getElementById('rankCard');
       const me = state.me || {};
-      const show = (state.phase === 'reveal' || state.phase === 'finished') && me.rank;
+      const show = (state.phase === 'reveal' || state.phase === 'finished') && me.rank && !me.joined_after_game;
       if (!show) { card.classList.add('hide'); return; }
       card.classList.remove('hide');
       card.innerHTML = '';
@@ -789,11 +791,24 @@
       }
       const me = state.me;
       const awards = state.awards || [];
-      const sig = [i18n.getLang(), me.rank, (me.awards || []).join(','), awards.length].join('|');
+      const sig = [i18n.getLang(), me.rank, (me.awards || []).join(','), awards.length, !!me.joined_after_game].join('|');
       if (sig === finishSig && !card.classList.contains('hide')) return;
       finishSig = sig;
       card.classList.remove('hide');
       card.innerHTML = '';
+
+      // joined after the game was over: no congratulations, the next round is theirs
+      if (me.joined_after_game) {
+        const wait = document.createElement('div');
+        wait.className = 'finish-medal';
+        wait.textContent = '\u23F3';
+        card.appendChild(wait);
+        const note = document.createElement('div');
+        note.className = 'finish-title';
+        note.textContent = i18n.t('play.finish_joined_after');
+        card.appendChild(note);
+        return;
+      }
 
       const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
       const medal = document.createElement('div');
@@ -1540,6 +1555,14 @@
         }
       } else if (qType === 'slide') {
         banner.classList.add('hide');
+      }
+
+      // Joined while the answers were already up: not "time's up", just the right answer
+      if (state.me && state.me.joined_late && myChoice === undefined && !banner.classList.contains('hide')) {
+        banner.className = 'result-banner late-banner';
+        banner.textContent = banner.textContent
+          .replace(i18n.t('play.timeout_prefix'), i18n.t('play.joined_late_prefix'))
+          .replace(i18n.t('play.timeout_plain'), i18n.t('play.joined_late_plain'));
       }
 
       // Fun message picked once per reveal (edge-detected in prepareStateEffects)

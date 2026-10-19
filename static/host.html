@@ -187,7 +187,8 @@
         <div class="btn-row" style="margin-bottom:10px;">
           <a href="/admin" class="btn secondary" style="text-decoration:none;font-size:0.95rem;padding:8px 14px;" data-i18n="host.admin_portal">Učitelský portál</a>
         </div>
-        <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url" data-i18n="host.loading">Načítám...</span></p>
+        <p><strong>Připojení žáků:</strong> <span id="joinUrl" class="join-url" data-i18n="host.loading">Načítám...</span>
+          <button type="button" class="btn ghost qr-in-game" id="btnQrInGame" data-i18n="host.show_qr">📱 QR kód</button></p>
         <div id="pinRow" class="pin-row hide">
           <p class="pin-line"><strong data-i18n="host.pin_label">PIN hry:</strong> <span id="roomPin" class="join-url room-pin"></span></p>
           <div class="class-switch">
@@ -245,7 +246,7 @@
 
     <section class="grid">
       <div class="card col-7 question-card-rel" id="questionCard">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="question-card-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <h2 style="margin:0;" data-i18n="host.current_question">Aktuální otázka</h2>
           <span id="phasePill" class="status-pill lobby">lobby</span>
         </div>
@@ -2227,17 +2228,23 @@
     })();
 
     // QR click to enlarge overlay
-    document.getElementById('qrImg').addEventListener('click', function() {
+    // QR code over the whole screen: from the QR in the lobby, and during the
+    // game (when the header has no QR) from the button next to the join link,
+    // so a late student can still join with the camera.
+    function showQrOverlay() {
       const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+      overlay.id = 'qrOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:4500;display:flex;align-items:center;justify-content:center;cursor:pointer;';
       const bigImg = document.createElement('img');
-      bigImg.src = this.src;
+      bigImg.src = document.getElementById('qrImg').src;
       bigImg.alt = i18n.t('host.qr_code');
       bigImg.style.cssText = 'max-width:80vmin;max-height:80vmin;background:#fff;padding:16px;border-radius:12px;';
       overlay.appendChild(bigImg);
       overlay.addEventListener('click', () => overlay.remove());
       document.body.appendChild(overlay);
-    });
+    }
+    document.getElementById('qrImg').addEventListener('click', showQrOverlay);
+    document.getElementById('btnQrInGame').addEventListener('click', showQrOverlay);
 
     initMp3Players();
     loadTrackCatalog().then(() => {

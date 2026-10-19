@@ -5849,6 +5849,37 @@ class TestGameFlow(unittest.TestCase):
         self.assertEqual(late.missed_streak, 0)  # joined with the answers already up: not a miss
         self.assertEqual([e for e in qs.events if e["e"] == "join"][-1]["during"], "question")
 
+    def test_joining_a_running_game(self):
+        qs = self._game(n=2)
+        early = qs.register_player("Early")
+        qs.host_action("start")
+        t0 = qs.question_started_at
+
+        def at(sec):
+            return mock.patch("time.time", return_value=t0 + sec)
+
+        with at(2):
+            late = qs.register_player("Late")  # the answers are already up
+            self.assertTrue(qs.public_state(late["player_id"])["me"]["joined_late"])
+            self.assertNotIn("joined_late", qs.public_state(early["player_id"])["me"])
+            qs.submit_answer(late["player_id"], late["player_secret"], 0)  # may still answer
+        with at(3):
+            qs.host_action("reveal")
+            self.assertTrue(qs.public_state(late["player_id"])["me"]["joined_late"])
+        with at(4):
+            qs.host_action("next")  # the next question is theirs like everybody's
+            self.assertNotIn("joined_late", qs.public_state(late["player_id"])["me"])
+        with at(5):
+            qs.host_action("reveal")
+        with at(6):
+            qs.host_action("next")  # the game is over
+        with at(7):
+            after = qs.register_player("After")
+            self.assertTrue(qs.public_state(after["player_id"])["me"]["joined_after_game"])
+            self.assertNotIn("joined_after_game", qs.public_state(late["player_id"])["me"])
+            qs.host_action("reset")  # "Play again": the latecomer plays the next round
+            self.assertNotIn("joined_after_game", qs.public_state(after["player_id"])["me"])
+
     def test_disconnected_device_is_not_waited_for(self):
         qs = self._game()
         qs.room_key = "flow-test-room"  # presence known: nobody has a WebSocket in this room
@@ -5989,11 +6020,14 @@ class TestGameFlow(unittest.TestCase):
         self.assertNotIn("playStinger({", host)                 # no random stinger at the result
         self.assertIn("handleAllAnswered(state)", host)
         self.assertIn("state.question.top_answers", host)       # open answers on the projector
+        self.assertIn("'btnQrInGame').addEventListener('click', showQrOverlay)", host)  # QR during the game
         play = (server.STATIC_DIR / "play.html").read_text(encoding="utf-8")
         self.assertIn("device_id: deviceId()", play)
         self.assertIn("if (joining) return;", play)              # a double tap joins once
         self.assertIn("e.code === 'name_taken'", play)
         self.assertIn("state.answers_open_at", play)             # the countdown starts with the answers
+        self.assertIn("state.me.joined_late && myChoice === undefined", play)  # no "time's up" for a latecomer
+        self.assertIn("if (me.joined_after_game) {", play)
 
     def test_open_question_shows_the_class_answers_on_the_projector(self):
         q = {"id": "o", "type": "openended", "prompt": "Port SSH?", "accepted_answers": ["22"]}

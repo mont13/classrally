@@ -1318,6 +1318,7 @@ class QuizState:
         self.end_reason = ""
         self.events: list[dict[str, Any]] = []
         self.game_started_at = 0.0
+        self.game_finished_at = 0.0  # a player who joins later waits for the next round
 
     def _reading_bonus_locked(self, index: int | None = None) -> int:
         """Reading time added to the current (or given) question; 0 when off."""
@@ -1473,6 +1474,7 @@ class QuizState:
         self.end_reason = ""
         self.events = []
         self.game_started_at = 0.0
+        self.game_finished_at = 0.0
 
     @staticmethod
     def _reset_player_stats(player: Player) -> None:
@@ -2090,6 +2092,7 @@ class QuizState:
         if self.current_index + 1 >= len(self.questions):
             self.phase = "finished"
             self.reveal_started_at = 0.0
+            self.game_finished_at = now
             self._awards_cache = self._compute_awards_locked()
             reactions = [s for p in self.players.values() for s in p.reaction_times]
             avg = reaction_stats(reactions)["avg_sec"]
@@ -2458,6 +2461,12 @@ class QuizState:
                 if self.phase == "reveal" and player_id in self.answers:
                     me_data["sec"] = round(max(0.0, self.answers[player_id]["time"]
                                                - self._answers_open_at_locked()), 1)
+                # joined while the answers were already up (no "time's up" for this one)
+                # or after the game ended (plays in the next round)
+                if self.phase in ("question", "reveal") and 0 < self._answers_open_at_locked() < p.joined_at:
+                    me_data["joined_late"] = True
+                if self.phase == "finished" and 0 < self.game_finished_at < p.joined_at:
+                    me_data["joined_after_game"] = True
                 if self.phase == "finished":
                     me_data["awards"] = [
                         a["key"] for a in (self._awards_cache or []) if a["player_id"] == player_id
