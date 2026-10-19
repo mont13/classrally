@@ -131,6 +131,20 @@
       font-size: 1.15rem; padding: 12px 22px; border-radius: 999px; pointer-events: none;
       box-shadow: 0 8px 30px rgba(2, 132, 199, 0.45); animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
     .host-toast.hide { display: none; }
+    .answered-banner { background: linear-gradient(100deg, #15803d, #22c55e); color: #fff; font-weight: 900;
+      font-size: 1.35rem; text-align: center; letter-spacing: 0.03em; padding: 10px 14px; border-radius: 12px;
+      margin: 10px 0 4px; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);
+      animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .answered-banner.hide { display: none; }
+    .flow-notice { background: #fffbeb; border: 2px solid #fcd34d; border-radius: 12px; padding: 8px 12px;
+      margin: 0 0 10px; color: #78350f; }
+    .flow-notice.hide { display: none; }
+    .flow-notice-title { margin: 0 0 6px; font-weight: 800; }
+    .flow-notice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }
+    .flow-notice-row span { flex: 1 1 auto; font-weight: 700; }
+    .flow-notice-row .btn { padding: 4px 10px; font-size: 0.9rem; }
+    tr.player-idle td { opacity: 0.6; }
+    .player-flag { cursor: help; }
     @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -16px) scale(0.8); }
       to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
     .podium-avatar { font-size: clamp(2.2rem, 5vw, 3.6rem); display: block; margin-bottom: 4px; }
@@ -246,6 +260,7 @@
 
         <p id="voteStatus" class="vote-status" data-i18n="host.waiting_for_start">Čekám na start kvízu.</p>
         <div id="doubleBanner" class="double-banner hide">⚡ <span data-i18n="host.double_banner">OTÁZKA ZA DVOJNÁSOBEK</span> ⚡</div>
+        <div id="allAnsweredBanner" class="answered-banner hide" role="status">✓ <span data-i18n="host.all_answered_banner">Všichni odpověděli!</span></div>
         <div id="questionBox" class="question" data-i18n="host.waiting_for_start">Čekám na start kvízu.</div>
         <img id="questionImage" class="hide" style="max-width:60%;max-height:300px;display:block;margin:12px auto;border-radius:12px;" />
         <div id="answerBig" class="big-answer hide"></div>
@@ -261,6 +276,7 @@
           <div class="team-section-title" style="margin-top:10px;" data-i18n="host.individual_leaderboard">Individualni zebricek</div>
         </div>
         <h2 id="leaderboardTitle" data-i18n="host.leaderboard">Žebříček</h2>
+        <div id="flowNotice" class="flow-notice hide" aria-live="polite"></div>
         <p id="leaderboardHidden" class="muted hide" data-i18n="host.leaderboard_hidden">Žebříček je skrytý: na konci se ukážou jen stupně vítězů.</p>
         <table>
           <thead><tr><th>#</th><th data-i18n="host.th_name">Jméno</th><th data-i18n="host.th_score">Body</th><th class="kick-col"></th></tr></thead>
@@ -351,17 +367,24 @@
       allAnsweredCueForIndex: -1,
       musicOn: false,
       userStopped: false,
-      usingMp3: false,
       trackCatalogLoaded: false,
       trackCatalog: { loops: [], stingers: [], all: [] },
-      tensionAudio: null,
-      stingerAudio: null,
-      activeLoopTrack: null,
-      activeStingerTrack: null,
+      tensionAudio: null,       // the game's track
+      finalAudio: null,         // the final-seconds track (heartbeat)
+      stingerAudio: null,       // the "Sound effect" button
       musicGen: 0,       // generation counter — prevents stale async callbacks
+      musicTrack: null,         // the game's track ...
+      musicPos: 0,              // ... and where it stopped (continued at the next question)
+      playingTrack: null,       // what tensionAudio holds (the game's track or the intro)
+      finalTrack: null,
+      finalActive: false,       // the final-seconds track plays (instead of the clock ticks)
+      musicTimers: [],          // scheduled fades of the current question
+      musicScheduledEnd: 0,     // question_ends_at the timers were planned for
+      allAnsweredMusicFor: -1,  // question index whose music faded on "everyone answered"
+      keepTrackForNextGame: false,  // the teacher picked a track before the game started
+      clockOffset: 0,           // local ms minus server ms (see noteServerTime)
       // ── game-show layer state ──
       usingSynth: false,        // built-in synth music is the active source
-      lastMp3StingerAt: 0,      // when an MP3 stinger actually started (SFX dedupe)
       lastTickSec: -1,          // last second we ticked at (question end countdown)
       doubleSfxForIndex: -1,    // double() cue played for this question index
       suspense: false,          // reveal result temporarily hidden (drumroll window)
@@ -431,16 +454,9 @@
       return items[idx];
     }
 
-    function nextTrack(items, previousTrack) {
-      if (!Array.isArray(items) || items.length === 0) return null;
-      if (!previousTrack || !previousTrack.url || items.length === 1) {
-        return randomItem(items);
-      }
-      const filtered = items.filter((t) => t && t.url && t.url !== previousTrack.url);
-      if (filtered.length === 0) {
-        return randomItem(items);
-      }
-      return randomItem(filtered);
+    function clamp01(v) {
+      v = Number(v);
+      return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
     }
 
     function setMusicState(text, warn=false) {
@@ -489,7 +505,7 @@
         if (!appState.effectAudio) appState.effectAudio = new Audio();
         const el = appState.effectAudio;
         el.src = randomItem(urls);
-        el.volume = Math.max(0.15, Math.min(1, (document.getElementById('musicVol').value || 40) / 100 + 0.3));
+        el.volume = Math.max(0.15, Math.min(1, sliderVolume() + 0.3));
         el.currentTime = 0;
         el.play().catch(() => { try { SFX[sfxName](); } catch (_) {} });
         return;
@@ -497,263 +513,344 @@
       try { SFX[sfxName](); } catch (_) {}
     }
 
-    function getLoopTracks() {
-      return appState.trackCatalog.loops;
+    // ═══ Music on the projector ═══
+    // One track for the whole game, continued where it stopped. With the
+    // automatic music on it fades in when the answers show up and fades out so
+    // that it is silent exactly when the question ends — scheduled from the
+    // server clock, never a hard cut in the middle of a phrase. When everyone
+    // answered it fades out during the short "everyone answered" beat. For the
+    // last seconds a final-seconds track (heartbeat) takes over if there is
+    // one. Tracks play equally loud (gain from levels.json on the server).
+    // Nothing starts by itself unless the teacher switched the automatic music on.
+    const MUSIC = {
+      fadeInMs: 1200,
+      fadeOutMs: 800,
+      answeredFadeMs: 1100,   // inside the 1.5 s "everyone answered" beat
+      finalSec: 6,            // the final-seconds track takes over this long before the end ...
+      finalMinAnswerSec: 14,  // ... of questions with at least this much time to answer
+      crossfadeMs: 900,
+    };
+    const FINAL_TRACK_RE = /heartbeat|last[-_ ]?second/i;
+    const INTRO_TRACK_RE = /(^|[-_ ])(start|intro|lobby)([-_ .]|$)/i;
+    const LAST_TRACK_KEY = 'classrally_last_track';
+
+    // Background tracks for the questions: not the final-seconds or intro ones
+    function questionLoops() {
+      const loops = appState.trackCatalog.loops || [];
+      const plain = loops.filter((t) => !FINAL_TRACK_RE.test(t.name || '') && !INTRO_TRACK_RE.test(t.name || ''));
+      return plain.length ? plain : loops;
+    }
+
+    function finalTracks() {
+      return (appState.trackCatalog.loops || []).filter((t) => FINAL_TRACK_RE.test(t.name || ''));
+    }
+
+    function introTracks() {
+      return (appState.trackCatalog.loops || []).filter((t) => INTRO_TRACK_RE.test(t.name || ''));
     }
 
     function getStingerTracks() {
       return appState.trackCatalog.stingers;
     }
 
+    function sliderVolume() {
+      return clamp01(Number(document.getElementById('musicVol').value || 40) / 100);
+    }
+
+    function trackVolume(track) {
+      return clamp01(sliderVolume() * 0.78 * (Number(track && track.gain) || 1));
+    }
+
+    // Volume ramp on an <audio> element, timed by the wall clock: a throttled
+    // timer only makes the steps coarser, never the fade longer.
+    function fadeAudio(el, to, ms, done) {
+      if (!el) return;
+      if (el._fade) { clearTimeout(el._fade); el._fade = null; }
+      const from = el.volume;
+      const start = performance.now();
+      const step = () => {
+        const k = ms > 0 ? Math.min(1, (performance.now() - start) / ms) : 1;
+        try { el.volume = clamp01(from + (to - from) * k); } catch (_) {}
+        if (k < 1) { el._fade = setTimeout(step, 30); return; }
+        el._fade = null;
+        if (done) done();
+      };
+      step();
+    }
+
     function initMp3Players() {
-      if (appState.tensionAudio && appState.stingerAudio) return;
-
-      const tension = new Audio();
-      tension.loop = true;
-      tension.preload = 'auto';
-
-      const stinger = new Audio();
-      stinger.preload = 'auto';
-
-      // Error handlers only log — never permanently disable the music system.
-      // Transient failures (network blip, aborted load during track switch)
-      // must not kill music for the rest of the session.
-      tension.addEventListener('error', () => {
-        console.warn('[music] tension audio error, src:', tension.src || '(empty)');
-      });
-      stinger.addEventListener('error', () => {
-        console.warn('[music] stinger audio error, src:', stinger.src || '(empty)');
-      });
-
-      appState.tensionAudio = tension;
-      appState.stingerAudio = stinger;
+      if (appState.tensionAudio) return;
+      const make = (loop) => {
+        const el = new Audio();
+        el.loop = loop;
+        el.preload = 'auto';
+        // Errors only log: a network blip must not switch the music off for good
+        el.addEventListener('error', () => console.warn('[music] audio error, src:', el.src || '(empty)'));
+        return el;
+      };
+      appState.tensionAudio = make(true);   // the game's track
+      appState.finalAudio = make(true);     // the final seconds (heartbeat)
+      appState.stingerAudio = make(false);  // the "Sound effect" button
       setMusicVolume();
     }
 
+    // Slider moved: playing music follows at once (a running fade keeps its own target)
     function setMusicVolume() {
-      const raw = Number(document.getElementById('musicVol').value || 40);
-      const vol = Math.max(0, Math.min(1, raw / 100));
-
-      if (appState.tensionAudio) {
-        appState.tensionAudio.volume = Math.max(0, Math.min(1, vol * 0.78));
+      const a = appState;
+      if (a.tensionAudio && !a.tensionAudio.paused && !a.tensionAudio._fade && a.playingTrack) {
+        a.tensionAudio.volume = trackVolume(a.playingTrack);
       }
-      if (appState.stingerAudio) {
-        appState.stingerAudio.volume = vol;
+      if (a.finalAudio && !a.finalAudio.paused && !a.finalAudio._fade && a.finalTrack) {
+        a.finalAudio.volume = trackVolume(a.finalTrack);
       }
-      // Built-in synth music follows the same slider (classrally_music_vol)
+      if (a.stingerAudio) a.stingerAudio.volume = sliderVolume();
       if (window.SFX) {
-        try { SFX.music.setVolume(vol); } catch (_) {}
+        try { SFX.music.setVolume(sliderVolume()); } catch (_) {}
       }
     }
 
-    // ── Audio stop helpers ──────────────────────────────────────────
-    // Rule: only ONE audio source may play at any time (loop XOR stinger).
-
-    function stopAllAudio() {
-      appState.musicGen++;
-      if (appState.tensionAudio) {
-        try { appState.tensionAudio.pause(); appState.tensionAudio.currentTime = 0; } catch (_) {}
-      }
-      if (appState.stingerAudio) {
-        try { appState.stingerAudio.pause(); appState.stingerAudio.currentTime = 0; } catch (_) {}
-      }
-      if (window.SFX) {
-        try { SFX.music.stop(); } catch (_) {}
-      }
-      appState.usingSynth = false;
-      appState.usingMp3 = false;
-      appState.activeLoopTrack = null;
+    // Built-in synth music: chosen in the panel, or when there is no MP3 music at all
+    function useSynth() {
+      const synthAvailable = !!(window.SFX && SFX.supported);
+      return synthAvailable && (document.getElementById('musicSynth').checked || questionLoops().length === 0);
     }
 
-    function stopLoop() {
-      console.log('[music] stopLoop called');
-      stopAllAudio();
-      appState.musicOn = false;
-      setMusicState(i18n.t('host.music_off'));
-      setTrackInfo('-');
+    // The game's track: random, not the one the previous game (or the current one) had
+    function pickGameTrack(another) {
+      const pool = questionLoops();
+      if (!pool.length) return null;
+      let last = '';
+      try { last = localStorage.getItem(LAST_TRACK_KEY) || ''; } catch (_) {}
+      const avoid = another && appState.musicTrack ? appState.musicTrack.url : last;
+      const options = pool.filter((t) => t.url !== avoid);
+      const picked = randomItem(options.length ? options : pool);
+      appState.musicTrack = picked;
+      appState.musicPos = 0;
+      try { localStorage.setItem(LAST_TRACK_KEY, picked.url); } catch (_) {}
+      return picked;
+    }
+
+    function musicPlaying() {
+      const a = appState;
+      return !!((a.tensionAudio && !a.tensionAudio.paused) || (a.finalAudio && !a.finalAudio.paused)
+        || (a.usingSynth && window.SFX && SFX.music.playing));
+    }
+
+    // Fade the music in now: the game's track (continued), or another one (the intro in the lobby)
+    async function musicIn(fadeMs, track) {
+      const a = appState;
+      const gen = ++a.musicGen;
+      await loadTrackCatalog();
+      if (gen !== a.musicGen) return;  // something newer happened meanwhile
+      initMp3Players();
+      if (useSynth()) {
+        try {
+          setMusicVolume();
+          SFX.music.setIntensity(0);
+          SFX.music.start(fadeMs / 1000);  // no-op until unlock(); gameShowFx retries
+        } catch (_) {}
+        a.usingSynth = true;
+        a.musicOn = true;
+        setTrackInfo(tr('host.track_synth', 'Vestavěný syntezátor'));
+        setMusicState(SFX.enabled ? tr('host.music_synth', 'Hudba: vestavěná (syntezátor).')
+          : tr('host.synth_needs_sfx', 'Vestavěná hudba hraje jen se zapnutými zvukovými efekty.'), !SFX.enabled);
+        return;
+      }
+      a.usingSynth = false;
+      const wanted = track || a.musicTrack || pickGameTrack(false);
+      if (!wanted || !wanted.url) {
+        setMusicState(i18n.t('host.mp3_not_found'), true);
+        return;
+      }
+      const el = a.tensionAudio;
+      if (el._fade) { clearTimeout(el._fade); el._fade = null; }  // a fade-out must not pause it now
+      if (a.playingTrack !== wanted) {
+        if (a.playingTrack && a.playingTrack === a.musicTrack && !el.paused) a.musicPos = el.currentTime;
+        el.src = wanted.url;
+        a.playingTrack = wanted;
+        try { el.currentTime = wanted === a.musicTrack ? (a.musicPos || 0) : 0; } catch (_) {}
+        el.volume = 0;
+      } else if (el.paused) {
+        el.volume = 0;
+      }
+      a.musicOn = true;
+      setTrackInfo(wanted.name || wanted.url);
+      setMusicState(i18n.t('host.music_mp3_loop'));
+      try {
+        await el.play();
+      } catch (err) {
+        if (gen !== a.musicGen) return;
+        console.warn('[music] play() failed:', err);
+        a.musicOn = false;
+        setMusicState(i18n.t('host.mp3_loop_fail'), true);
+        return;
+      }
+      if (gen !== a.musicGen) return;
+      fadeAudio(el, trackVolume(wanted), fadeMs);
+    }
+
+    // Fade all music out; the game's track remembers where it stopped
+    function musicOut(fadeMs, opts={}) {
+      const a = appState;
+      a.musicGen++;
+      a.musicOn = false;
+      a.finalActive = false;
+      if (a.usingSynth && window.SFX) {
+        try { SFX.music.stop(fadeMs / 1000); } catch (_) {}
+      }
+      [a.tensionAudio, a.finalAudio].forEach((el) => {
+        if (!el || el.paused) return;
+        fadeAudio(el, 0, fadeMs, () => {
+          if (el === a.tensionAudio && a.playingTrack && a.playingTrack === a.musicTrack) a.musicPos = el.currentTime;
+          el.pause();
+          if (el === a.finalAudio) { try { el.currentTime = 0; } catch (_) {} }
+        });
+      });
+      if (!opts.quiet) setMusicState(i18n.t('host.music_off'));
+    }
+
+    // The last seconds: the final-seconds track (heartbeat) takes over from the game's track
+    function finalTakeover() {
+      const a = appState;
+      if (!a.musicOn || a.usingSynth) return;
+      const pool = finalTracks();
+      if (!pool.length) return;
+      const track = pool.includes(a.finalTrack) ? a.finalTrack : randomItem(pool);
+      a.finalTrack = track;
+      const fin = a.finalAudio;
+      if (fin._url !== track.url) { fin.src = track.url; fin._url = track.url; }
+      try { fin.currentTime = 0; } catch (_) {}
+      fin.volume = 0;
+      const gen = a.musicGen;
+      fin.play().then(() => {
+        if (gen !== a.musicGen) { fin.pause(); return; }
+        a.finalActive = true;  // replaces the clock ticks
+        fadeAudio(fin, trackVolume(track), MUSIC.crossfadeMs);
+        const loop = a.tensionAudio;
+        if (!loop.paused) {
+          fadeAudio(loop, 0, MUSIC.crossfadeMs, () => {
+            if (a.playingTrack === a.musicTrack) a.musicPos = loop.currentTime;
+            loop.pause();
+          });
+        }
+      }).catch(() => {});
+    }
+
+    function clearMusicTimers() {
+      (appState.musicTimers || []).forEach(clearTimeout);
+      appState.musicTimers = [];
+    }
+
+    function musicAt(localMs, fn) {
+      appState.musicTimers.push(setTimeout(fn, Math.max(0, localMs - Date.now())));
+    }
+
+    // Automatic music for one question: in when the answers show up, the
+    // final-seconds track for the last seconds, silent exactly at the end.
+    function scheduleQuestionMusic(state) {
+      clearMusicTimers();
+      const open = serverToLocalMs(state.answers_open_at);
+      const end = serverToLocalMs(state.question_ends_at);
+      appState.musicScheduledEnd = state.question_ends_at || 0;
+      if (!open || !end) return;
+      const now = Date.now();
+      if (end - now < MUSIC.fadeOutMs + 300) return;  // nearly over: stay quiet
+      if (open > now + 50) musicAt(open, () => musicIn(MUSIC.fadeInMs));
+      else musicIn(Math.min(MUSIC.fadeInMs, 600));
+      if (finalTracks().length && (end - open) / 1000 >= MUSIC.finalMinAnswerSec) {
+        musicAt(end - MUSIC.finalSec * 1000, finalTakeover);
+      }
+      musicAt(end - MUSIC.fadeOutMs, () => musicOut(MUSIC.fadeOutMs, { quiet: true }));
+    }
+
+    // Phase-driven music (only with "automatic music" on and not switched off by the teacher)
+    function musicAutomation(state, prevPhase, questionChanged) {
+      const a = appState;
+      if (!document.getElementById('musicAuto').checked || a.userStopped) return;
+      const phase = state.phase;
+      if (phase === 'question') {
+        if (questionChanged || prevPhase !== 'question') {
+          a.allAnsweredMusicFor = -1;
+          // a new game gets a new track, unless the teacher just picked one
+          if (state.current_index === 0 && prevPhase !== 'reveal') {
+            if (!a.keepTrackForNextGame || !a.musicTrack) pickGameTrack(false);
+            a.keepTrackForNextGame = false;
+          }
+          if (musicPlaying()) musicOut(500, { quiet: true });  // e.g. the intro in the lobby
+          scheduleQuestionMusic(state);
+          return;
+        }
+        if (state.all_answered) {
+          if (a.allAnsweredMusicFor !== state.current_index) {
+            a.allAnsweredMusicFor = state.current_index;
+            clearMusicTimers();
+            const left = serverToLocalMs(state.question_ends_at) - Date.now();
+            musicOut(Math.max(250, Math.min(MUSIC.answeredFadeMs, left)), { quiet: true });
+          }
+          return;
+        }
+        // the end moved (the teacher changed the timing): plan the rest again
+        if (Math.abs((state.question_ends_at || 0) - (a.musicScheduledEnd || 0)) > 0.3) {
+          if (musicPlaying()) musicOut(300, { quiet: true });
+          scheduleQuestionMusic(state);
+        }
+        return;
+      }
+      if (phase === prevPhase) return;
+      clearMusicTimers();
+      if (musicPlaying()) musicOut(phase === 'reveal' ? 350 : 700, { quiet: true });
+    }
+
+    // "Sound effect" button: a short effect over the music, which steps back for it
+    function duckMusic(on) {
+      const a = appState;
+      [[a.tensionAudio, a.playingTrack], [a.finalAudio, a.finalTrack]].forEach(([el, track]) => {
+        if (el && !el.paused && track) fadeAudio(el, trackVolume(track) * (on ? 0.35 : 1), on ? 200 : 500);
+      });
+    }
+
+    async function playStinger() {
+      await loadTrackCatalog();
+      initMp3Players();
+      const picked = randomItem(getStingerTracks());
+      if (!picked || !picked.url) {
+        if (window.SFX) { try { SFX.gong(); } catch (_) {} }
+        return;
+      }
+      const el = appState.stingerAudio;
+      el.src = picked.url;
+      el.volume = sliderVolume();
+      try { el.currentTime = 0; } catch (_) {}
+      duckMusic(true);
+      el.onended = () => duckMusic(false);
+      el.play().then(() => {
+        setTrackInfo(`${i18n.t('host.stinger_label')}: ${picked.name || picked.url}`);
+      }).catch(() => {
+        duckMusic(false);
+        if (window.SFX) { try { SFX.gong(); } catch (_) {} }
+      });
     }
 
     function stopMusic() {
-      console.log('[music] stopMusic (full stop), userStopped=true');
-      stopLoop();
+      clearMusicTimers();
+      musicOut(500);
       appState.userStopped = true;
       try { localStorage.setItem('quiz_music_muted', '1'); } catch (_) {}
     }
 
-    async function startMusic(forceNewTrack=false) {
-      if (appState.musicOn && !forceNewTrack) return;
-      console.log('[music] startMusic called, forceNewTrack:', forceNewTrack, 'musicOn:', appState.musicOn, 'userStopped:', appState.userStopped);
-
-      // Remember current track before stopping (for forceNewTrack to avoid repeat)
-      const previousTrack = appState.activeLoopTrack;
-
-      // Stop ALL audio (loop + stinger) — only one source may play at a time
-      stopAllAudio();
-      appState.musicOn = false;
-
-      const gen = appState.musicGen;  // capture generation before any await
-
-      await loadTrackCatalog();
-
-      // If another startMusic was called while we awaited, bail out
-      if (gen !== appState.musicGen) {
-        console.log('[music] startMusic: stale generation, bailing');
-        return;
-      }
-
-      // Built-in synth music: explicit choice, or automatic fallback when the
-      // MP3 loop catalog is empty. Plays only through this opt-in path.
-      const synthAvailable = !!(window.SFX && SFX.supported);
-      const wantSynth = document.getElementById('musicSynth').checked;
-      if (synthAvailable && (wantSynth || appState.trackCatalog.loops.length === 0)) {
-        startSynthMusic();
-        return;
-      }
-
-      if (appState.trackCatalog.loops.length > 0) {
-        initMp3Players();
-        const picked = forceNewTrack
-          ? nextTrack(getLoopTracks(), previousTrack)
-          : (previousTrack || randomItem(getLoopTracks()));
-
-        if (picked && picked.url && appState.tensionAudio) {
-          appState.activeLoopTrack = picked;
-          appState.tensionAudio.src = picked.url;
-          setTrackInfo(`Loop: ${picked.name || picked.url}`);
-          setMusicVolume();
-
-          const playPromise = appState.tensionAudio.play();
-          if (playPromise) {
-            playPromise.then(() => {
-              // Ignore if a newer startMusic has superseded us
-              if (gen !== appState.musicGen) return;
-              appState.usingMp3 = true;
-              appState.musicOn = true;
-              console.log('[music] MP3 loop started:', picked.name);
-              setMusicState(i18n.t('host.music_mp3_loop'));
-            }).catch((err) => {
-              if (gen !== appState.musicGen) return; // stale, ignore
-              console.warn('[music] loop play() failed:', err);
-              appState.musicOn = false;
-              setMusicState(i18n.t('host.mp3_loop_fail'));
-            });
-            // Set musicOn optimistically for MP3 to prevent double-calls
-            appState.musicOn = true;
-            setMusicState(i18n.t('host.music_mp3_loop'));
-            return;
-          }
-        }
-      }
-
-      // No MP3 tracks available (and synth unsupported)
-      setMusicState(i18n.t('host.mp3_not_found'), true);
-      console.log('[music] startMusic: no MP3 tracks available');
+    // ── Server clock → this computer's clock ──
+    // The smallest offset seen in the last minute has the least network delay in it.
+    const clockSamples = [];
+    function noteServerTime(serverSec) {
+      if (!serverSec) return;
+      const now = Date.now();
+      clockSamples.push({ at: now, off: now - serverSec * 1000 });
+      while (clockSamples.length > 1 && now - clockSamples[0].at > 60000) clockSamples.shift();
+      appState.clockOffset = Math.min(...clockSamples.map((s) => s.off));
     }
 
-    // Start the built-in WebAudio quiz loop (SFX.music). Called only from
-    // startMusic() — i.e. strictly via the existing opt-in music paths.
-    function startSynthMusic() {
-      if (!window.SFX || !SFX.supported) return;
-      try {
-        setMusicVolume();            // push slider value to SFX.music
-        SFX.music.setIntensity(0);
-        SFX.music.start();           // no-op until unlock(); render() retries
-      } catch (_) {}
-      appState.usingSynth = true;
-      appState.usingMp3 = false;
-      appState.musicOn = true;
-      setTrackInfo(tr('host.track_synth', 'Vestavěný syntezátor'));
-      if (!SFX.enabled) {
-        setMusicState(tr('host.synth_needs_sfx', 'Vestavěná hudba hraje jen se zapnutými zvukovými efekty.'), true);
-      } else {
-        setMusicState(tr('host.music_synth', 'Hudba: vestavěná (syntezátor).'));
-      }
-      console.log('[music] built-in synth music started');
-    }
-
-    // opts.prefer: RegExp — prefer MP3 stingers whose name matches (e.g. /end|gong/i)
-    // opts.sfxFallback: name of an SFX effect ('gong', …) played when no MP3
-    // stinger is available/playable — one path decides, no double sounds.
-    async function playStinger(opts={}) {
-      const label = opts.label || 'Stinger';
-      const volumeScale = Number.isFinite(opts.volumeScale) ? opts.volumeScale : 1;
-
-      // Stop ALL audio (loop + previous stinger) — only one source at a time
-      stopAllAudio();
-      appState.musicOn = false;
-      const gen = appState.musicGen;
-      initMp3Players();
-      await loadTrackCatalog();
-
-      // If another audio function ran during await, bail out
-      if (gen !== appState.musicGen) return false;
-
-      let pool = getStingerTracks();
-      if (opts.prefer instanceof RegExp) {
-        const preferred = pool.filter((t) => t && t.name && opts.prefer.test(t.name));
-        if (preferred.length > 0) pool = preferred;
-      }
-      const picked = randomItem(pool);
-      if (appState.stingerAudio && picked && picked.url) {
-        try {
-          appState.activeStingerTrack = picked;
-          appState.stingerAudio.src = picked.url;
-          setMusicVolume();
-          const baseVol = appState.stingerAudio.volume;
-          appState.stingerAudio.volume = Math.max(0.05, Math.min(1, baseVol * volumeScale));
-          appState.stingerAudio.currentTime = 0;
-          await appState.stingerAudio.play();
-          appState.lastMp3StingerAt = Date.now();
-          setTrackInfo(`${label}: ${picked.name || picked.url}`);
-          setMusicState(`${label}: MP3.`);
-          setTimeout(() => setMusicVolume(), 150);
-          return true;
-        } catch (err) {
-          console.warn('[music] stinger play() failed:', err);
-        }
-      }
-      // MP3 has priority; SFX is the fallback (silent no-op until unlocked)
-      if (opts.sfxFallback && window.SFX && typeof SFX[opts.sfxFallback] === 'function') {
-        try { SFX[opts.sfxFallback](); } catch (_) {}
-      }
-      return false;
-    }
-
-    function maybeAllAnsweredCue(state) {
-      if (state.phase !== 'question') return;
-      if (!state.question) return;
-      const total = Number(state.total_players || 0);
-      const answered = Number(state.answer_count || 0);
-      if (total <= 0) return;
-      if (answered < total) return;
-      if (appState.allAnsweredCueForIndex === state.current_index) return;
-
-      // Mark so we don't repeat, but don't play a stinger —
-      // it would kill the loop music (only one audio source at a time).
-      appState.allAnsweredCueForIndex = state.current_index;
-      console.log('[music] All answered cue — skipping stinger (loop playing)');
-    }
-
-    function phaseMusicAutomation(phase) {
-      if (phase === appState.lastPhase) return;
-      const auto = document.getElementById('musicAuto').checked;
-      console.log('[music] phase changed:', appState.lastPhase, '->', phase, 'auto:', auto, 'userStopped:', appState.userStopped);
-      appState.lastPhase = phase;
-
-      // Only the auto-music feature drives playback here, and only if the host
-      // has NOT explicitly turned music off. We deliberately do NOT reset
-      // userStopped on phase change — an explicit "Hudba OFF" must stay off
-      // until the host turns it back on.
-      if (!auto || appState.userStopped) return;
-
-      if (phase === 'question') {
-        startMusic(true);
-      } else if (phase === 'reveal') {
-        stopLoop();
-        playStinger({ label: i18n.t('host.phase_reveal'), volumeScale: 1.0, prefer: /end|gong|reveal/i, sfxFallback: 'gong' });
-      } else if (phase === 'finished' || phase === 'lobby') {
-        stopLoop();
-      }
+    function serverToLocalMs(serverSec) {
+      return serverSec ? serverSec * 1000 + (appState.clockOffset || 0) : 0;
     }
 
     // Room PIN from /api/host/token (multi-room servers only); refreshes the join link.
@@ -908,16 +1005,28 @@
       // --- openended ---
       if (qType === 'openended') {
         if ((state.phase === 'reveal' && !appState.suspense) || state.phase === 'finished') {
-          const answers = state.open_answers || [];
+          // what the class wrote, grouped, no names: [text, count, graded right]
+          const answers = state.question.top_answers || [];
           if (answers.length > 0) {
-            const ul = document.createElement('ul');
-            ul.style.cssText = 'list-style:disc;padding-left:20px;';
-            answers.forEach(a => {
-              const li = document.createElement('li');
-              li.textContent = a;
-              ul.appendChild(li);
+            const max = Math.max(1, ...answers.map(a => a[1]));
+            answers.forEach(([text, count, right]) => {
+              const wrap = document.createElement('div');
+              wrap.className = 'option-btn' + (right ? ' correct' : '');
+              const textDiv = document.createElement('div');
+              textDiv.textContent = text + (right ? ' ✓' : '');
+              wrap.appendChild(textDiv);
+              const helpDiv = document.createElement('div');
+              helpDiv.className = 'help';
+              helpDiv.textContent = i18n.t('host.votes_label', count);
+              wrap.appendChild(helpDiv);
+              const barDiv = document.createElement('div');
+              barDiv.className = 'vote-bar';
+              const barSpan = document.createElement('span');
+              setBarWidth(barSpan, Math.round(count / max * 100));
+              barDiv.appendChild(barSpan);
+              wrap.appendChild(barDiv);
+              box.appendChild(wrap);
             });
-            box.appendChild(ul);
           } else {
             const p = document.createElement('p');
             p.className = 'muted';
@@ -976,23 +1085,34 @@
       const body = document.getElementById('scoreBody');
       body.innerHTML = '';
       players.forEach(p => {
-        const tr = document.createElement('tr');
+        const row = document.createElement('tr');
         // lobby: a plain list of who joined, no podium colours for 0 points
         const inLobby = appState.lastState && appState.lastState.phase === 'lobby';
-        if (p.rank <= 3 && !inLobby) tr.classList.add(`rank-${p.rank}`);
-        if (appState.popNames && appState.popNames.has(p.name)) tr.classList.add('player-pop');
+        if (p.rank <= 3 && !inLobby) row.classList.add(`rank-${p.rank}`);
+        if (appState.popNames && appState.popNames.has(p.name)) row.classList.add('player-pop');
         const tdRank = document.createElement('td');
         tdRank.textContent = p.rank;
         const tdName = document.createElement('td');
         const avatarEmoji = getAvatarEmoji(p.avatar_id);
         tdName.textContent = (avatarEmoji ? avatarEmoji + ' ' : '') + p.name;
+        // host view: not reacting (not waited for) / device gone
+        if (p.player_id && (p.inactive || p.online === false)) {
+          const mark = document.createElement('span');
+          mark.className = 'player-flag';
+          mark.textContent = p.inactive ? ' 💤' : ' 📵';
+          mark.title = p.inactive
+            ? tr('host.inactive_player', '{0} ({1}× bez odpovědi)', p.name, p.missed)
+            : tr('host.offline_player', '{0}: zařízení není připojené', p.name);
+          tdName.appendChild(mark);
+          row.classList.add('player-idle');
+        }
         const tdScore = document.createElement('td');
         const strong = document.createElement('strong');
         strong.textContent = p.score;
         tdScore.appendChild(strong);
-        tr.appendChild(tdRank);
-        tr.appendChild(tdName);
-        tr.appendChild(tdScore);
+        row.appendChild(tdRank);
+        row.appendChild(tdName);
+        row.appendChild(tdScore);
         const tdKick = document.createElement('td');
         tdKick.className = 'kick-col';
         if (p.player_id) {  // host view only (host token proven)
@@ -1005,8 +1125,8 @@
           kb.addEventListener('click', () => kickPlayer(p));
           tdKick.appendChild(kb);
         }
-        tr.appendChild(tdKick);
-        body.appendChild(tr);
+        row.appendChild(tdKick);
+        body.appendChild(row);
       });
       appState.popNames = null; // pop-in is one-shot
     }
@@ -1040,13 +1160,23 @@
       document.getElementById('btnReset').disabled = ph === 'lobby' && !anyScore;
     }
 
-    function renderVoteStatus(state) {
+    function secondsText(sec) {
+      return String(Math.round(sec * 10) / 10).replace('.', i18n.getLang() === 'en' ? '.' : ',');
+    }
+
+    // leftSec: seconds left from the local clock (hostClockTick)
+    function renderVoteStatus(state, leftSec) {
       const el = document.getElementById('voteStatus');
+      const left = formatSecondsLeft(leftSec);
       if (state.phase !== 'question') {
         if (state.phase === 'lobby') {
           el.textContent = i18n.t('host.waiting_for_start');
         } else if (state.phase === 'reveal') {
-          el.textContent = i18n.t('host.reveal_next', formatSecondsLeft(state.phase_time_left));
+          el.textContent = i18n.t('host.reveal_next', left);
+          const qs = state.question_stats;
+          if (qs && qs.avg_sec !== null && qs.avg_sec !== undefined) {
+            el.textContent += ' • ' + tr('host.avg_reaction', 'průměrná reakce {0} s', secondsText(qs.avg_sec));
+          }
         } else {
           el.textContent = i18n.t('host.question_closed');
         }
@@ -1055,19 +1185,98 @@
       }
       const total = Number(state.total_players || 0);
       const answered = Number(state.answer_count || 0);
-      const left = formatSecondsLeft(state.phase_time_left);
       if (total === 0) {
         el.textContent = i18n.t('host.waiting_players', left);
         el.className = 'vote-status';
         return;
       }
       el.textContent = i18n.t('host.countdown_voted', left, answered, total);
-      if (answered >= total) {
+      if (state.all_answered) {
         el.textContent += ' • ' + i18n.t('host.all_submitted');
         el.className = 'vote-status done';
-      } else {
-        el.className = 'vote-status';
+        return;
       }
+      el.className = 'vote-status';
+      // players the game no longer waits for (not reacting, device gone, joined late)
+      const notWaited = total - Number(state.waited_count ?? total);
+      if (notWaited > 0) el.textContent += ' • ' + tr('host.not_waited', 'nečeká se na {0}', notWaited);
+    }
+
+    // ── Local clock: countdown, last-seconds ticks, timer pulse and synth
+    // intensity between state updates (with WebSocket the projector gets a
+    // state only when something changes, not every second) ──
+    function hostClockTick() {
+      const st = appState.lastState;
+      if (!st) return;
+      const now = Date.now();
+      let end = 0;
+      if (st.phase === 'question') end = serverToLocalMs(st.question_ends_at);
+      else if (st.phase === 'reveal') end = serverToLocalMs(st.reveal_ends_at);
+      let left = end ? Math.max(0, Math.ceil((end - now) / 1000)) : NaN;
+      // during get-ready the full time to answer is shown (it starts when the answers show up)
+      if (st.phase === 'question' && Number(st.question_time_sec) > 0) left = Math.min(left, Number(st.question_time_sec));
+      document.getElementById('kTimer').textContent = formatSecondsLeft(left);
+      renderVoteStatus(st, left);
+      const open = serverToLocalMs(st.answers_open_at);
+      const urgent = st.phase === 'question' && !st.all_answered && Number.isFinite(left)
+        && left <= 5 && left >= 1 && now >= open;
+      document.getElementById('kTimerItem').classList.toggle('timer-pulse', urgent);
+      if (urgent && left !== appState.lastTickSec) {
+        appState.lastTickSec = left;
+        // the final-seconds track carries the tension itself: no ticks over it
+        if (window.SFX && !appState.finalActive) SFX.tick(left <= 2);
+      }
+      if (appState.usingSynth && window.SFX && SFX.music.playing && st.phase === 'question' && end > open) {
+        SFX.music.setIntensity(Math.min(1, Math.max(0, (now - open) / (end - open))));
+      }
+    }
+    setInterval(hostClockTick, 200);
+
+    // Players who stopped reacting: the game no longer waits for them, the
+    // teacher decides whether to remove them or wait for them again.
+    function renderFlowNotice(state) {
+      const box = document.getElementById('flowNotice');
+      const idle = (state.players || []).filter((p) => p.player_id && p.inactive);
+      const known = appState.inactiveNames || new Set();
+      idle.filter((p) => !known.has(p.name)).forEach((p) => {
+        showToast(tr('host.inactive_toast', '💤 {0} nereaguje – hra na něj už nečeká', p.name));
+      });
+      appState.inactiveNames = new Set(idle.map((p) => p.name));
+      box.innerHTML = '';
+      box.classList.toggle('hide', idle.length === 0);
+      if (!idle.length) return;
+      const title = document.createElement('p');
+      title.className = 'flow-notice-title';
+      title.textContent = tr('host.inactive_title', '💤 Nereagují – hra na ně nečeká:');
+      box.appendChild(title);
+      idle.forEach((p) => {
+        const row = document.createElement('div');
+        row.className = 'flow-notice-row';
+        const name = document.createElement('span');
+        name.textContent = tr('host.inactive_player', '{0} ({1}× bez odpovědi)', p.name, p.missed);
+        row.appendChild(name);
+        const wait = document.createElement('button');
+        wait.type = 'button';
+        wait.className = 'btn ghost';
+        wait.textContent = tr('host.keep_waiting', 'Čekat na něj');
+        wait.addEventListener('click', () => keepWaiting(p));
+        row.appendChild(wait);
+        const kick = document.createElement('button');
+        kick.type = 'button';
+        kick.className = 'kick-btn';
+        kick.textContent = i18n.t('host.kick');
+        kick.title = i18n.t('host.kick_title', p.name);
+        kick.addEventListener('click', () => kickPlayer(p));
+        row.appendChild(kick);
+        box.appendChild(row);
+      });
+    }
+
+    async function keepWaiting(p) {
+      try {
+        await hostApi('/api/host/keep-waiting', 'POST', { player_id: p.player_id });
+        await refresh();
+      } catch (e) { alert(e.message); }
     }
 
     const TEAM_COLORS_HOST = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#ea580c'];
@@ -1222,11 +1431,9 @@
     function setupGetReady(state) {
       hideGetReady();
       const grs = Number(state.get_ready_sec) || 0;
-      const started = Number(state.question_started_at) || 0;
-      const serverNow = Number(state.server_time) || 0;
-      if (grs <= 0 || !started || !serverNow) return;
-      // Get-ready window = first get_ready_sec seconds of the question phase
-      const leftMs = (grs - (serverNow - started)) * 1000;
+      if (grs <= 0 || !state.answers_open_at) return;
+      // Get-ready window: until the answers show up (server clock → local clock)
+      const leftMs = serverToLocalMs(state.answers_open_at) - Date.now();
       if (leftMs <= 150) return;
       const numEl = document.getElementById('getReadyNum');
       const gr = appState.getReady;
@@ -1255,14 +1462,14 @@
     }
 
     // ── Reveal: gong → 700 ms drumroll suspense → animated result ──
+    // Always the same order, so it never sounds random: the music is already
+    // faded out → "time's up" (not after "everyone answered", which had its own
+    // cue) → drumroll → the result with one "correct" sound.
     function handleRevealEdge(state) {
       hideGetReady();
       const q = state.question;
       const qType = q ? (q.type || 'choice') : '';
-      // Time's-up gong. With music automation active the reveal sound already
-      // went through playStinger (MP3 priority, SFX.gong fallback) — one path.
-      const autoActive = document.getElementById('musicAuto').checked && !appState.userStopped;
-      if (qType && qType !== 'slide' && !autoActive) {
+      if (qType && qType !== 'slide' && state.end_reason !== 'all_answered') {
         playEffect('end', 'gong');
       }
       const suspenseTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended', 'poll'];
@@ -1281,11 +1488,17 @@
         appState.animateBars = false;
         appState.revealAnimHold = Date.now() + 1000; // let the bar transition finish
         const correctTypes = ['choice', 'truefalse', 'multiselect', 'ordering', 'openended'];
-        const mp3Recent = appState.lastMp3StingerAt && (Date.now() - appState.lastMp3StingerAt < 2500);
-        if (!mp3Recent && correctTypes.includes(qType)) {
-          playEffect('correct', 'correct');
-        }
+        if (correctTypes.includes(qType)) playEffect('correct', 'correct');
       });
+    }
+
+    // "Everyone answered": a banner and one soft cue while the music fades out
+    function handleAllAnswered(state) {
+      const on = state.phase === 'question' && !!state.all_answered;
+      document.getElementById('allAnsweredBanner').classList.toggle('hide', !on);
+      if (!on || appState.allAnsweredCueForIndex === state.current_index) return;
+      appState.allAnsweredCueForIndex = state.current_index;
+      playEffect('lock', 'pop');
     }
 
     // ── Lobby hype: join pop-ins + player-count milestones ──
@@ -1497,11 +1710,9 @@
 
         // Projector ergonomics (1280×800): when the game starts, bring the
         // question section into view once; going back to lobby, scroll to top.
-        if (phase === 'question' && prevPhase === 'lobby') {
-          const card = document.getElementById('questionCard');
-          if (card && card.scrollIntoView) {
-            try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-          }
+        if (phase === 'question' && (prevPhase === 'lobby' || prevPhase === 'finished')) {
+          // after render(): only then is the question on the page and the page tall enough to scroll
+          appState.scrollToQuestion = true;
         } else if (phase === 'lobby' && prevPhase !== 'lobby') {
           try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
         }
@@ -1511,24 +1722,9 @@
           (phase === 'question' || phase === 'reveal'));
         document.getElementById('doubleBanner').classList.toggle('hide', !showDbl);
 
-        // Last-5-seconds ticking + timer pulse + synth music intensity
-        const timerItem = document.getElementById('kTimerItem');
-        if (phase === 'question' && state.question) {
-          const tl = Number(state.phase_time_left);
-          const dur = Number(state.question_time_sec) || Number(state.question_duration_sec) || 0;
-          if (appState.usingSynth && window.SFX && SFX.music.playing &&
-              Number.isFinite(tl) && dur > 0) {
-            SFX.music.setIntensity(Math.min(1, Math.max(0, 1 - tl / dur)));
-          }
-          const urgent = Number.isFinite(tl) && tl <= 5 && tl >= 1;
-          if (urgent && tl !== appState.lastTickSec) {
-            appState.lastTickSec = tl;
-            if (window.SFX) SFX.tick(tl <= 2);
-          }
-          if (timerItem) timerItem.classList.toggle('timer-pulse', urgent);
-        } else if (timerItem) {
-          timerItem.classList.remove('timer-pulse');
-        }
+        // "Everyone answered" beat before the result
+        handleAllAnswered(state);
+        // (the countdown, the last-seconds ticks and the timer pulse run on the local clock: hostClockTick)
 
         // Reveal edge: gong + drumroll suspense + animated result
         if (phase === 'reveal' && prevPhase === 'question') handleRevealEdge(state);
@@ -1548,31 +1744,20 @@
     }
 
     function render(state) {
+      noteServerTime(state.server_time);
+      // compact header while a question or its result is on the screen (style.css)
+      document.body.classList.toggle('in-game', state.phase === 'question' || state.phase === 'reveal');
       appState.lastState = state;
-      const prevPhase = appState.lastPhase;   // phase seen on the previous poll
+      const prevPhase = appState.lastPhase;   // phase seen on the previous update
       const questionChanged = state.current_index !== appState.lastQuestionIndex;
       if (state.current_index !== appState.lastQuestionIndex) {
         appState.lastQuestionIndex = state.current_index;
         appState.allAnsweredCueForIndex = -1;
       }
+      if (questionChanged || state.phase !== prevPhase) appState.finalActive = false;
 
-      const phaseChanged = state.phase !== appState.lastPhase;
-      phaseMusicAutomation(state.phase);
-      // Force a new track when question index changes, but only if the phase
-      // did NOT just change — phaseMusicAutomation already called startMusic()
-      // in that case and calling startMusic(true) would race against the first
-      // play() promise, causing its .catch() to markMp3Unavailable permanently.
-      if (
-        questionChanged &&
-        !phaseChanged &&
-        state.phase === 'question' &&
-        state.current_index >= 0 &&
-        !appState.userStopped &&
-        (document.getElementById('musicAuto').checked || appState.musicOn)
-      ) {
-        startMusic(true);
-      }
-      maybeAllAnsweredCue(state);
+      musicAutomation(state, prevPhase, questionChanged);
+      appState.lastPhase = state.phase;
 
       // Game-show FX layer — must run before the DOM below is (re)rendered
       gameShowFx(state, prevPhase, questionChanged);
@@ -1583,9 +1768,8 @@
       document.getElementById('kPlayers').textContent = state.total_players ?? 0;
       document.getElementById('kAnswered').textContent = `${state.answer_count ?? 0}`;
       document.getElementById('kQuestion').textContent = state.current_index >= 0 ? `${state.current_index + 1}/${state.total_questions}` : '-';
-      document.getElementById('kTimer').textContent = formatSecondsLeft(state.phase_time_left);
-
-      renderVoteStatus(state);
+      hostClockTick();  // countdown and vote status from the server clock
+      renderFlowNotice(state);
 
       // Skip re-rendering the question area briefly after the reveal flourish
       // so the animated bar growth is not wiped by the next poll re-render.
@@ -1619,6 +1803,15 @@
         hideTeamPodium();
       }
       teamPodiumState.lastFinished = isFinished;
+
+      if (appState.scrollToQuestion) {
+        appState.scrollToQuestion = false;
+        const card = document.getElementById('questionCard');
+        // as little as needed: the controls above stay in view when the question fits
+        requestAnimationFrame(() => {
+          try { card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+        });
+      }
     }
 
     // Question prompt, image, big answer and options. Extracted from render()
@@ -1653,9 +1846,8 @@
             ansBig.classList.add('hide');
             exp.textContent = '';
           } else if (qType === 'openended') {
-            ansBig.textContent = state.question.correct_answer
-              ? i18n.t('host.correct_answer', state.question.correct_answer)
-              : '';
+            const accepted = state.question.accepted_answers || [];
+            ansBig.textContent = accepted.length ? i18n.t('host.correct_answer', accepted.join(' / ')) : '';
             ansBig.classList.remove('hide');
             exp.textContent = state.question.explanation || '';
           } else if (qType === 'ordering') {
@@ -1701,11 +1893,71 @@
       } catch (e) {
         if ((e.status === 400 || e.status === 403) && reacquireHostToken && Date.now() - lastReacquire > 30000) {
           lastReacquire = Date.now();
-          reacquireHostToken();  // new room, PIN and QR code
+          await reacquireHostToken();  // new room, PIN and QR code
+          reconnectHostWs();
           return;
         }
         console.error(e);
       }
+    }
+
+    // ── State feed: WebSocket (the projector changes at the same moment as the
+    // phones), polling as the fallback. A browser cannot send headers on a
+    // WebSocket, so the host token goes as the second offered subprotocol —
+    // never in the URL (access logs). With the WebSocket open a slow poll
+    // stays as a safety net. ──
+    const POLL_MS = 1000;
+    const SAFETY_POLL_MS = 5000;
+    let hostWs = null;
+    let hostWsRetries = 0;
+    let pollTimer = null;
+    let pollEvery = 0;
+
+    function setPolling(ms) {
+      if (pollEvery === ms && pollTimer) return;
+      if (pollTimer) clearInterval(pollTimer);
+      pollEvery = ms;
+      pollTimer = setInterval(refresh, ms);
+    }
+
+    function connectHostWs() {
+      if (hostWs || !hostToken || !/^[A-Za-z0-9._~-]+$/.test(hostToken) || !('WebSocket' in window)) return;
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${proto}//${location.host}/api/ws?host=1`, ['classrally.host', hostToken]);
+        hostWs = ws;
+        ws.onmessage = (ev) => {
+          try { render(JSON.parse(ev.data)); } catch (err) { console.warn('[ws] bad state', err); }
+        };
+        ws.onopen = () => { hostWsRetries = 0; setPolling(SAFETY_POLL_MS); };
+        ws.onclose = () => {
+          if (hostWs === ws) hostWs = null;
+          setPolling(POLL_MS);
+          if (hostWsRetries < 8) {
+            hostWsRetries++;
+            setTimeout(connectHostWs, Math.min(30000, 1500 * hostWsRetries));
+          }
+        };
+        ws.onerror = () => { try { ws.close(); } catch (_) {} };
+      } catch (_) {
+        hostWs = null;
+        setPolling(POLL_MS);
+      }
+    }
+
+    function reconnectHostWs() {
+      const ws = hostWs;
+      hostWs = null;
+      hostWsRetries = 0;
+      if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+      setPolling(POLL_MS);  // until the new connection is open
+      connectHostWs();
+    }
+
+    function startStateFeed() {
+      refresh();
+      setPolling(POLL_MS);
+      connectHostWs();
     }
 
     async function hostApi(path, method='GET', body=null) {
@@ -1721,7 +1973,10 @@
       try {
         await hostApi('/api/host/action', 'POST', { action });
         if (action === 'reset') {
-          stopMusic();
+          // music out, but the automatic music stays on for the next game (with a new track)
+          clearMusicTimers();
+          musicOut(500, { quiet: true });
+          appState.keepTrackForNextGame = false;
           appState.lastPhase = 'lobby';
           appState.lastQuestionIndex = -1;
           appState.allAnsweredCueForIndex = -1;
@@ -1876,17 +2131,40 @@
       hostAction('reset');
     });
 
-    document.getElementById('btnMusicStart').addEventListener('click', () => {
+    document.getElementById('btnMusicStart').addEventListener('click', async () => {
       appState.userStopped = false;
       try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
-      startMusic();
+      await loadTrackCatalog();
+      const st = appState.lastState;
+      if (document.getElementById('musicAuto').checked && st && st.phase === 'question' && !st.all_answered) {
+        scheduleQuestionMusic(st);  // in now (or when the answers show up), out at the end
+        return;
+      }
+      // the lobby gets the intro track if there is one; otherwise the game's track
+      musicIn(800, st && st.phase === 'lobby' ? randomItem(introTracks()) || undefined : undefined);
     });
     document.getElementById('btnMusicStop').addEventListener('click', () => stopMusic());
-    document.getElementById('btnStinger').addEventListener('click', () => playStinger({ label: i18n.t('host.stinger_label'), volumeScale: 1.0, sfxFallback: 'gong' }));
-    document.getElementById('btnRandomLoop').addEventListener('click', () => {
+    document.getElementById('btnStinger').addEventListener('click', () => playStinger());
+    // Another track for this game: plays at once when music is on (or the
+    // answers are up), otherwise it waits for the next question.
+    document.getElementById('btnRandomLoop').addEventListener('click', async () => {
       appState.userStopped = false;
       try { localStorage.removeItem('quiz_music_muted'); } catch (_) {}
-      startMusic(true);
+      await loadTrackCatalog();
+      initMp3Players();
+      const playing = musicPlaying();
+      const picked = pickGameTrack(true);
+      if (!picked) { setMusicState(i18n.t('host.mp3_not_found'), true); return; }
+      const st = appState.lastState;
+      appState.keepTrackForNextGame = !st || st.phase === 'lobby' || st.phase === 'finished';
+      setTrackInfo(picked.name || picked.url);
+      const auto = document.getElementById('musicAuto').checked;
+      const answering = st && st.phase === 'question' && !st.all_answered
+        && serverToLocalMs(st.answers_open_at) <= Date.now();
+      if (!playing && auto && !answering) return;  // the next question starts with it
+      const el = appState.tensionAudio;
+      if (el && !el.paused) fadeAudio(el, 0, 300, () => musicIn(800));
+      else musicIn(800);
     });
     document.getElementById('musicVol').addEventListener('input', () => {
       setMusicVolume();
@@ -1917,7 +2195,10 @@
       synthCb.addEventListener('change', () => {
         localStorage.setItem('classrally_music_synth', synthCb.checked ? '1' : '0');
         // Switch the source only when music is already opted-in and playing
-        if (appState.musicOn && !appState.userStopped) startMusic(true);
+        if (appState.musicOn && !appState.userStopped) {
+          musicOut(300, { quiet: true });
+          setTimeout(() => musicIn(800), 320);
+        }
       });
 
       const unlockOnGesture = () => { if (window.SFX) { try { SFX.unlock(); } catch (_) {} } };
@@ -1960,9 +2241,9 @@
 
     initMp3Players();
     loadTrackCatalog().then(() => {
-      const loops = getLoopTracks().length;
+      const loops = appState.trackCatalog.loops.length;
       const stingers = getStingerTracks().length;
-          setTrackInfo(i18n.t('host.tracks_available', loops, stingers));
+      setTrackInfo(i18n.t('host.tracks_available', loops, stingers));
     });
 
     api('/api/network')
@@ -2071,8 +2352,7 @@
       await ensureHostToken();
       reacquireHostToken = ensureHostToken;
 
-      refresh();
-      setInterval(refresh, 1000);
+      startStateFeed();
     });
   </script>
   <script src="/static/buggy-host.js" defer></script>

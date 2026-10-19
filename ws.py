@@ -39,15 +39,21 @@ def ws_accept_key(client_key: str) -> str:
     return base64.b64encode(sha1).decode("ascii")
 
 
-def ws_handshake_response(client_key: str) -> bytes:
-    """Build the HTTP 101 Switching Protocols response."""
+def ws_handshake_response(client_key: str, protocol: str | None = None) -> bytes:
+    """Build the HTTP 101 Switching Protocols response.
+
+    protocol: the subprotocol chosen from the client's Sec-WebSocket-Protocol
+    list. A browser that offered subprotocols drops the connection unless the
+    server names one of them.
+    """
     accept = ws_accept_key(client_key)
     response = (
         "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
         f"Sec-WebSocket-Accept: {accept}\r\n"
-        "\r\n"
+        + (f"Sec-WebSocket-Protocol: {protocol}\r\n" if protocol else "")
+        + "\r\n"
     )
     return response.encode("ascii")
 
@@ -300,6 +306,12 @@ class WSConnectionManager:
     def connection_count(self) -> int:
         with self._lock:
             return len(self._connections)
+
+    def player_ids(self, room: str | None) -> set[str]:
+        """Players of a room with an open connection (presence for the game flow)."""
+        with self._lock:
+            return {c.player_id for c in self._connections.values()
+                    if c.alive and c.player_id and c.room == room}
 
     def read_loop(self, conn: WSConnection) -> None:
         """Read loop for a single WebSocket connection. Runs in its own thread."""

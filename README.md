@@ -178,10 +178,22 @@ je urceny k promitnuti a spolecne reflexi chyb.
 4. **Reset hry** — vrati do cekani, smaze body vsech hracu
 
 ### Casovani
-- Kazda otazka bezi **20 sekund** (konfigurovatelne 5–120s)
-- Pred otazkou bezi odpocet "Priprav se" (0-10 s, vychozi 3)
-- Pokud odpovi vsichni driv, vyhodnoceni probehne okamzite
-- Po vyhodnoceni system automaticky prejde na dalsi otazku
+- Na odpoved je **20 sekund** (konfigurovatelne 5–120 s); delsi otazka dostane navic cas na cteni
+- Pred otazkou bezi odpocet "Priprav se" (0-10 s, vychozi 3) — **pricita se**, 20 s je 20 s s odpovedmi na obrazovce
+- Kdyz odpovi vsichni, na koho hra ceka, prijde po kratke pauze 1,5 s ("Vsichni odpovedeli", hudba dozni) vysledek
+- Vysledek bezi 5 s (konfigurovatelne), dlouhe vysvetleni prida az 8 s na cteni; pak dalsi otazka
+
+### Kdo se pocita (nikdo neceka na nereagujiciho)
+- **Jedno zarizeni = jeden hrac**: opakovane pripojeni ze stejneho prohlizece (dvojite tuknuti, zpet na
+  prihlaseni, druha zalozka) pokracuje jako tentyz hrac, pripadne s novou prezdivkou. Prezdivku, kterou
+  uz ve hre ma nekdo jiny, server odmitne.
+- Hrac, ktery **3 otazky po sobe** neodpovi, prestane hru brzdit: na nej se uz neceka a ucitel vidi
+  nabidku "Cekat na nej" / "Vyhodit". Jedna odpoved ho vrati do hry. Prerusene nebo pozde zobrazene
+  otazky (ucitel ukazal vysledek driv, preskocil) se nepocitaji.
+- Neceka se ani na zarizeni, ktere je odpojene (bez spojeni 15 s), ani na hrace, ktery prisel az
+  behem otazky.
+- Historie hry uklada **prubeh**: jak skoncila kazda otazka, prumernou reakci tridy a kazdeho hrace,
+  kdo prestal reagovat, pripojeni a odpojeni. Rozbor je v portalu u hry ("Prubeh hry").
 
 ### Bodovani
 - Spravna odpoved: **600 bodu** + bonus za rychlost (az +400)
@@ -202,12 +214,17 @@ Na host obrazovce i hracske obrazovce se automaticky zobrazi QR kod s URL pro pr
 
 Vychozi chovani: **vestaveny syntetizator (WebAudio)** — zadne soubory nejsou potreba. Zvukove efekty (spravna/spatna odpoved, tikot odpoctu, drumroll, fanfara) funguji hned po prvnim kliknuti na host obrazovce.
 
-Hudba na pozadi je stale **opt-in** — nikdy nezacne hrat sama. Zapina se tlacitkem **Hudba ON**, pripadne auto rezim pak ridi hudbu podle faze kvizu (otazka → napeti, vyhodnoceni → efekt, konec → fanfara).
+Hudba na pozadi je stale **opt-in** — nikdy nezacne hrat sama. Zapina se tlacitkem **Hudba ON**, pripadne auto rezim pak ridi hudbu podle faze kvizu:
+- jedna skladba na celou hru, na dalsi otazce pokracuje, kde prestala;
+- zesili se, kdyz se ukazou odpovedi, a dozni tak, aby byla ticho presne na konci otazky (nikdy useknuti uprostred);
+- skladba s "heartbeat"/"last-second" v nazvu prevezme poslednich 6 s delsich otazek;
+- vysledek ma vzdy stejne poradi: konec casu (gong) → drumroll → spravna odpoved.
+Hlasitost skladeb se srovna podle `static/audio/levels.json`, ktery vytvori `python3 measure_audio_levels.py` (potrebuje ffmpeg).
 
 ### Vlastni soubory (maji prednost)
 Nahrajte MP3/OGG/WAV do `static/audio/` — server je automaticky nacte a pouzije misto syntezatoru:
 - Soubory s `stinger`, `reveal`, `hit`, `win`, `ding`, `correct`, `lock`, `end` v nazvu → kratke efekty
-- Ostatni → hudba na pozadi (nahodny vyber)
+- Ostatni → hudba na pozadi (nahodny vyber; `heartbeat`/`last-second` = posledni sekundy, `start`/`intro`/`lobby` = cekarna)
 
 ### Stazeni legalni hudby
 Skript `./download_free_quiz_music.sh` stahne legalni hudbu a zvukove efekty (Kevin MacLeod, CC-BY — nutna atribuce; Kenney, CC0) do `static/audio/` vcetne souboru `ATTRIBUTION.md`.

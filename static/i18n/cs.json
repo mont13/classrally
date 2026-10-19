@@ -93,6 +93,7 @@
     "rank_place": "{0}. místo",
     "rank_leader": "Jsi v čele! 👑",
     "rank_behind": "Ztrácíš {0} b na {1} 🎯",
+    "rank_tied": "Stejně bodů jako {0}",
     "streak_popup": "🔥 Série {0}! (+{1} % bodů)",
     "streak_lost": "Série v tahu 💔",
     "finish_congrats": "Gratulace!",
@@ -111,7 +112,12 @@
     "pin_required": "Zadej PIN hry.",
     "pin_guesses": "Příliš mnoho pokusů o PIN. Zkus to za pár minut.",
     "finish_points": "Tvoje body: {0}",
-    "kicked_notice": "Učitel tě odebral ze hry. Pokud máš hrát dál, připoj se znovu (třeba s jinou přezdívkou)."
+    "kicked_notice": "Učitel tě odebral ze hry. Pokud máš hrát dál, připoj se znovu (třeba s jinou přezdívkou).",
+    "name_taken": "Tuhle přezdívku už ve hře někdo má. Zvol jinou.",
+    "inactive_note": "💤 Hra na tebe teď nečeká – odpověz a jsi zpátky.",
+    "all_answered": "Všichni odpověděli – výsledek za chvilku!",
+    "reaction_vs_class": "⏱ Tvoje reakce {0} s · třída průměrně {1} s",
+    "reaction_mine": "⏱ Tvoje reakce {0} s"
   },
 
   "fun": {
@@ -240,7 +246,15 @@
     "kick": "Vyhodit",
     "kick_title": "Odebrat hráče „{0}“ ze hry",
     "kick_confirm": "Vyhodit hráče „{0}“ ze hry?\n\nJeho body se smažou a na mobilu uvidí, že ho učitel odebral. Může se znovu připojit stejným PINem – pokud nemá, změň PIN tlačítkem „Nová třída“.",
-    "music_panel": "Hudba a zvukové efekty"
+    "music_panel": "Hudba a zvukové efekty",
+    "all_answered_banner": "Všichni odpověděli!",
+    "avg_reaction": "průměrná reakce {0} s",
+    "not_waited": "nečeká se na {0}",
+    "inactive_toast": "💤 {0} nereaguje – hra na něj už nečeká",
+    "inactive_title": "💤 Nereagují – hra na ně nečeká:",
+    "inactive_player": "{0} ({1}× bez odpovědi)",
+    "keep_waiting": "Čekat na něj",
+    "offline_player": "{0}: zařízení není připojené"
   },
 
   "exam": {
@@ -653,7 +667,29 @@
     "close": "Zavřít",
     "exam_items_overlay": "Rozbor otázek písemky",
     "exam_items_hint": "Rozbor se otevře přes celou obrazovku, bez jmen a známek, takže ho můžete promítnout třídě.",
-    "activate_running_confirm": "Právě běží hra. Aktivací jiné sady se rozehraná hra ukončí a vrátí do čekárny (hráči zůstanou připojení, body z tohoto kola se ztratí). Pokračovat?"
+    "activate_running_confirm": "Právě běží hra. Aktivací jiné sady se rozehraná hra ukončí a vrátí do čekárny (hráči zůstanou připojení, body z tohoto kola se ztratí). Pokračovat?",
+    "th_avg_reaction": "Ø reakce",
+    "th_ended": "Konec otázky",
+    "th_missed": "Bez odpovědi",
+    "ended_all_answered": "všichni odpověděli",
+    "ended_timeout": "vypršel čas",
+    "ended_host": "ukázal učitel",
+    "ended_skipped": "přeskočeno",
+    "flow_title": "Průběh hry",
+    "flow_reaction": "Průměrná reakce {0} (medián {1}, nejrychlejší {2}).",
+    "flow_early": "Dřív skončilo, protože všichni odpověděli: {0} z {1} otázek.",
+    "flow_inactive_players": "Přestali reagovat: {0}.",
+    "flow_join": "{0} se připojil(a) během hry",
+    "flow_rejoin": "{0} se připojil(a) znovu ze stejného zařízení",
+    "flow_renamed": "{0} se přejmenoval(a) na {1}",
+    "flow_name_taken": "Přezdívka {0} už byla obsazená – odmítnuto",
+    "flow_inactive": "{0} nereaguje ({1}× bez odpovědi) – hra na něj přestala čekat",
+    "flow_active_again": "{0} zase odpovídá",
+    "flow_keep_waiting": "Učitel: čekat na {0}",
+    "flow_kick": "Učitel vyhodil {0}",
+    "flow_offline": "{0}: zařízení se odpojilo",
+    "flow_online": "{0}: zařízení je zpět",
+    "flow_before_start": "před startem"
   },
 
   "profile": {

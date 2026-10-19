@@ -92,6 +92,7 @@
     "rank_place": "{0}. Platz",
     "rank_leader": "Du bist in Führung! 👑",
     "rank_behind": "{0} Pkt. hinter {1} 🎯",
+    "rank_tied": "Gleich viele Punkte wie {0}",
     "streak_popup": "🔥 Serie {0}! (+{1} % Punkte)",
     "streak_lost": "Serie futsch 💔",
     "finish_congrats": "Glückwunsch!",
@@ -110,7 +111,12 @@
     "pin_required": "Gib die Spiel-PIN ein.",
     "pin_guesses": "Zu viele PIN-Versuche. Versuche es in ein paar Minuten erneut.",
     "finish_points": "Deine Punkte: {0}",
-    "kicked_notice": "Die Lehrkraft hat dich aus dem Spiel entfernt. Wenn du weiterspielen sollst, tritt erneut bei (z. B. mit einem anderen Spitznamen)."
+    "kicked_notice": "Die Lehrkraft hat dich aus dem Spiel entfernt. Wenn du weiterspielen sollst, tritt erneut bei (z. B. mit einem anderen Spitznamen).",
+    "name_taken": "Diesen Spitznamen hat schon jemand im Spiel. Wähle einen anderen.",
+    "inactive_note": "💤 Das Spiel wartet gerade nicht auf dich – antworte, dann bist du wieder dabei.",
+    "all_answered": "Alle haben geantwortet – gleich kommt das Ergebnis!",
+    "reaction_vs_class": "⏱ Deine Reaktion {0} s · Klasse im Schnitt {1} s",
+    "reaction_mine": "⏱ Deine Reaktion {0} s"
   },
   "fun": {
     "correct": {
@@ -237,7 +243,15 @@
     "kick": "Entfernen",
     "kick_title": "Spieler „{0}“ aus dem Spiel entfernen",
     "kick_confirm": "Spieler „{0}“ aus dem Spiel entfernen?\n\nSeine Punkte werden gelöscht und sein Gerät zeigt, dass die Lehrkraft ihn entfernt hat. Er kann mit derselben PIN wieder beitreten – um das zu verhindern, ändere die PIN mit „Neue Klasse“.",
-    "music_panel": "Musik und Soundeffekte"
+    "music_panel": "Musik und Soundeffekte",
+    "all_answered_banner": "Alle haben geantwortet!",
+    "avg_reaction": "durchschnittliche Reaktion {0} s",
+    "not_waited": "auf {0} wird nicht gewartet",
+    "inactive_toast": "💤 {0} reagiert nicht – das Spiel wartet nicht mehr",
+    "inactive_title": "💤 Reagieren nicht – das Spiel wartet nicht auf sie:",
+    "inactive_player": "{0} ({1}× keine Antwort)",
+    "keep_waiting": "Wieder warten",
+    "offline_player": "{0}: Gerät nicht verbunden"
   },
   "exam": {
     "page_title": "ClassRally - Klassenarbeit",
@@ -611,7 +625,29 @@
     "exam_items_overlay": "Fragenanalyse des Tests",
     "exam_items_hint": "Die Analyse öffnet sich im Vollbild, ohne Namen und Noten, sodass Sie sie der Klasse zeigen können.",
     "exact_match_label": "Exakte Übereinstimmung (keine Tippfehlertoleranz, z. B. bei Befehlen und Portnummern)",
-    "activate_running_confirm": "Ein Spiel läuft gerade. Ein anderer Fragensatz beendet es und kehrt in die Lobby zurück (Spieler bleiben verbunden, die Punkte dieser Runde gehen verloren). Fortfahren?"
+    "activate_running_confirm": "Ein Spiel läuft gerade. Ein anderer Fragensatz beendet es und kehrt in die Lobby zurück (Spieler bleiben verbunden, die Punkte dieser Runde gehen verloren). Fortfahren?",
+    "th_avg_reaction": "Ø Reaktion",
+    "th_ended": "Frage endete",
+    "th_missed": "Ohne Antwort",
+    "ended_all_answered": "alle haben geantwortet",
+    "ended_timeout": "Zeit abgelaufen",
+    "ended_host": "von der Lehrkraft gezeigt",
+    "ended_skipped": "übersprungen",
+    "flow_title": "Spielverlauf",
+    "flow_reaction": "Durchschnittliche Reaktion {0} (Median {1}, schnellste {2}).",
+    "flow_early": "Früher beendet, weil alle geantwortet haben: {0} von {1} Fragen.",
+    "flow_inactive_players": "Haben aufgehört zu reagieren: {0}.",
+    "flow_join": "{0} ist während des Spiels beigetreten",
+    "flow_rejoin": "{0} ist vom selben Gerät erneut beigetreten",
+    "flow_renamed": "{0} hat sich in {1} umbenannt",
+    "flow_name_taken": "Spitzname {0} war schon vergeben – abgelehnt",
+    "flow_inactive": "{0} reagiert nicht ({1}× keine Antwort) – das Spiel wartet nicht mehr",
+    "flow_active_again": "{0} antwortet wieder",
+    "flow_keep_waiting": "Lehrkraft: auf {0} warten",
+    "flow_kick": "Die Lehrkraft hat {0} entfernt",
+    "flow_offline": "{0}: Gerät getrennt",
+    "flow_online": "{0}: Gerät ist wieder da",
+    "flow_before_start": "vor dem Start"
   },
   "profile": {
     "page_title": "ClassRally – Mein Profil",

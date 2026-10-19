@@ -92,6 +92,7 @@
     "rank_place": "Rank #{0}",
     "rank_leader": "You're in the lead! 👑",
     "rank_behind": "{0} pts behind {1} 🎯",
+    "rank_tied": "Same points as {0}",
     "streak_popup": "🔥 Streak {0}! (+{1}% points)",
     "streak_lost": "Streak gone 💔",
     "finish_congrats": "Congratulations!",
@@ -110,7 +111,12 @@
     "pin_required": "Enter the game PIN.",
     "pin_guesses": "Too many PIN attempts. Try again in a few minutes.",
     "finish_points": "Your points: {0}",
-    "kicked_notice": "The teacher removed you from the game. If you should keep playing, join again (maybe with another nickname)."
+    "kicked_notice": "The teacher removed you from the game. If you should keep playing, join again (maybe with another nickname).",
+    "name_taken": "Someone in the game already has this nickname. Pick another one.",
+    "inactive_note": "💤 The game is not waiting for you now – answer and you are back.",
+    "all_answered": "Everyone has answered – the result is coming!",
+    "reaction_vs_class": "⏱ Your reaction {0} s · class average {1} s",
+    "reaction_mine": "⏱ Your reaction {0} s"
   },
   "fun": {
     "correct": {
@@ -237,7 +243,15 @@
     "kick": "Remove",
     "kick_title": "Remove player “{0}” from the game",
     "kick_confirm": "Remove player “{0}” from the game?\n\nTheir score is deleted and their device shows that the teacher removed them. They can join again with the same PIN – to prevent that, change the PIN with “New class”.",
-    "music_panel": "Music and sound effects"
+    "music_panel": "Music and sound effects",
+    "all_answered_banner": "Everyone has answered!",
+    "avg_reaction": "average reaction {0} s",
+    "not_waited": "not waiting for {0}",
+    "inactive_toast": "💤 {0} is not reacting – the game no longer waits",
+    "inactive_title": "💤 Not reacting – the game does not wait for them:",
+    "inactive_player": "{0} ({1}× no answer)",
+    "keep_waiting": "Wait for them",
+    "offline_player": "{0}: device not connected"
   },
   "exam": {
     "page_title": "ClassRally - Test",
@@ -611,7 +625,29 @@
     "exam_items_overlay": "Test question analysis",
     "exam_items_hint": "The analysis opens full screen, without names or grades, so you can project it to the class.",
     "exact_match_label": "Exact match (no typo tolerance, e.g. for commands and port numbers)",
-    "activate_running_confirm": "A game is running. Activating another set ends it and returns to the lobby (players stay connected, this round's points are lost). Continue?"
+    "activate_running_confirm": "A game is running. Activating another set ends it and returns to the lobby (players stay connected, this round's points are lost). Continue?",
+    "th_avg_reaction": "Avg. reaction",
+    "th_ended": "Question ended",
+    "th_missed": "No answer",
+    "ended_all_answered": "everyone answered",
+    "ended_timeout": "time ran out",
+    "ended_host": "shown by the teacher",
+    "ended_skipped": "skipped",
+    "flow_title": "How the game went",
+    "flow_reaction": "Average reaction {0} (median {1}, fastest {2}).",
+    "flow_early": "Ended early because everyone answered: {0} of {1} questions.",
+    "flow_inactive_players": "Stopped reacting: {0}.",
+    "flow_join": "{0} joined during the game",
+    "flow_rejoin": "{0} joined again from the same device",
+    "flow_renamed": "{0} renamed to {1}",
+    "flow_name_taken": "Nickname {0} was already taken – refused",
+    "flow_inactive": "{0} is not reacting ({1}× no answer) – the game stopped waiting",
+    "flow_active_again": "{0} is answering again",
+    "flow_keep_waiting": "Teacher: wait for {0}",
+    "flow_kick": "The teacher removed {0}",
+    "flow_offline": "{0}: device disconnected",
+    "flow_online": "{0}: device is back",
+    "flow_before_start": "before the start"
   },
   "profile": {
     "page_title": "ClassRally – My Profile",

@@ -64,6 +64,22 @@ GET_READY_SEC = 3  # "Get ready" countdown before answers show (0 = off)
 READING_BASE_CHARS = 80
 READING_CHARS_PER_SEC = 15
 READING_BONUS_MAX_SEC = 30
+# The same for the result: an explanation longer than EXPLANATION_BASE_CHARS
+# keeps the result on screen longer, at most EXPLANATION_BONUS_MAX_SEC.
+EXPLANATION_BASE_CHARS = 60
+EXPLANATION_BONUS_MAX_SEC = 8
+# Game flow. When everyone the game waits for has answered, the result comes
+# after a short beat ("everyone answered", the music fades out) instead of a
+# hard cut. A player who let INACTIVE_AFTER_MISSED questions in a row pass
+# without an answer is no longer waited for (the teacher is offered to remove
+# them); one answer makes them active again. A player with no open WebSocket
+# and no request for OFFLINE_AFTER_SEC is not waited for either.
+ALL_ANSWERED_GRACE_SEC = 1.5
+INACTIVE_AFTER_MISSED = 3
+OFFLINE_AFTER_SEC = 15
+GAME_EVENTS_MAX = 4000  # timeline of one game kept with its history record
+LOBBY_EVENT_KINDS = ("join", "rejoin", "name_taken", "kick")  # kept when the game starts
+GAME_LOG = os.environ.get("QUIZ_GAME_LOG", "1") != "0"  # one line per question in the server log
 
 
 def reading_bonus_sec(question: dict | None) -> int:
@@ -80,6 +96,44 @@ def reading_bonus_sec(question: dict | None) -> int:
     if extra <= 0:
         return 0
     return min(READING_BONUS_MAX_SEC, math.ceil(extra / READING_CHARS_PER_SEC))
+
+
+def explanation_bonus_sec(question: dict | None) -> int:
+    """Extra seconds on the result screen for reading the explanation (0 for short ones)."""
+    if not isinstance(question, dict) or question.get("type") in ("poll", "wordcloud", "slide"):
+        return 0
+    extra = len(str(question.get("explanation") or "").strip()) - EXPLANATION_BASE_CHARS
+    if extra <= 0:
+        return 0
+    return min(EXPLANATION_BONUS_MAX_SEC, math.ceil(extra / READING_CHARS_PER_SEC))
+
+
+def reaction_stats(seconds: list[float]) -> dict[str, float | None]:
+    """Average, median and fastest reaction in seconds (None without answers)."""
+    secs = sorted(float(s) for s in seconds if s is not None)
+    if not secs:
+        return {"avg_sec": None, "median_sec": None, "fastest_sec": None}
+    mid = len(secs) // 2
+    median = secs[mid] if len(secs) % 2 else (secs[mid - 1] + secs[mid]) / 2
+    return {"avg_sec": round(sum(secs) / len(secs), 1), "median_sec": round(median, 1),
+            "fastest_sec": round(secs[0], 1)}
+
+
+class GameError(ValueError):
+    """A refused game request with a machine code the pages translate (HTTP 400)."""
+
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+
+def _name_key(name: str) -> str:
+    """Nicknames that differ only in case or spacing are the same name."""
+    return " ".join(name.split()).casefold()
+
 
 # Atypical high port (avoids clashes on shared machines); override via QUIZ_PORT.
 DEFAULT_PORT = int(os.environ.get("QUIZ_PORT", "48217"))
@@ -614,24 +668,60 @@ def game_items(record: dict[str, Any]) -> list[dict[str, Any]]:
             "percent": round(correct / players * 100) if scored and players else None,
             "top_wrong": _top_wrong_answer(q) if scored else "",
             "avg_sec_correct": q.get("avg_sec_correct"),
+            "avg_sec": q.get("avg_sec"),  # reaction of the whole class (games before 3.1: missing)
+            "end_reason": q.get("end_reason", ""),
+            "duration_sec": q.get("duration_sec"),
         })
     return items
 
 
+def _csv_num(value: Any) -> Any:
+    return "" if value is None else float(value)
+
+
 def game_items_csv(record: dict[str, Any]) -> str:
     rows = [["Otazka", "Typ", "Zneni", "Hracu", "Odpovedelo", "Spravne", "Uspesnost %",
-             "Nejcastejsi chybna odpoved", "Prumerny cas spravnych (s)"]]
+             "Nejcastejsi chybna odpoved", "Prumerny cas spravnych (s)", "Prumerna reakce (s)",
+             "Otazka bezela (s)", "Konec otazky"]]
     for it in game_items(record):
         rows.append([it["number"], it["type"], it["prompt"], it["players"], it["answered"],
                      "" if it["correct"] is None else it["correct"],
                      "" if it["percent"] is None else it["percent"], it["top_wrong"],
-                     "" if it["avg_sec_correct"] is None else float(it["avg_sec_correct"])])
+                     _csv_num(it["avg_sec_correct"]), _csv_num(it["avg_sec"]),
+                     _csv_num(it["duration_sec"]), it["end_reason"]])
     return _csv_text(rows)
+
+
+# Timeline entries worth the teacher's attention in the analysis (the full
+# timeline with every answer stays in the saved record).
+FLOW_EVENT_KINDS = ("join", "rejoin", "name_taken", "inactive", "active_again", "keep_waiting",
+                    "kick", "offline", "online")
+
+
+def game_flow(record: dict[str, Any]) -> dict[str, Any]:
+    """How the game went: how questions ended, reaction, who stopped reacting, rejoins."""
+    questions = [q for q in record.get("questions") or [] if q.get("type") != "slide"]
+    ended: dict[str, int] = {}
+    for q in questions:
+        reason = q.get("end_reason") or "unknown"
+        ended[reason] = ended.get(reason, 0) + 1
+    events = record.get("events") or []
+    start = next((e["t"] for e in events if e.get("e") == "start"), None)
+    notable = [{**e, "t": round(e["t"] - start, 1) if start is not None else None}
+               for e in events if e.get("e") in FLOW_EVENT_KINDS and not (e.get("e") == "join" and "during" not in e)]
+    return {
+        "ended": ended,
+        "reaction": record.get("reaction") or reaction_stats([]),
+        "timing": record.get("timing") or {},
+        "inactive_players": sorted({e["player"] for e in events if e.get("e") == "inactive" and e.get("player")}),
+        "events": notable[:300],
+        "has_timeline": bool(events),
+    }
 
 
 def history_overview(record: dict[str, Any]) -> dict[str, Any]:
     """A game record for the history list: without per-question detail and internal ids."""
-    out = {k: v for k, v in record.items() if k != "questions"}
+    out = {k: v for k, v in record.items() if k not in ("questions", "events")}
     out["players"] = [{k: v for k, v in p.items() if k not in ("answers", "player_id")}
                       for p in record.get("players", [])]
     out["has_details"] = bool(record.get("questions"))
@@ -640,9 +730,10 @@ def history_overview(record: dict[str, Any]) -> dict[str, Any]:
 
 def history_detail(record: dict[str, Any]) -> dict[str, Any]:
     """A full game record for the teacher's analysis (no internal player ids)."""
-    out = dict(record)
+    out = {k: v for k, v in record.items() if k != "events"}
     out["players"] = [{k: v for k, v in p.items() if k != "player_id"} for p in record.get("players", [])]
     out["items"] = game_items(record)
+    out["flow"] = game_flow(record)
     return out
 
 
@@ -672,17 +763,31 @@ def save_game_history(quiz_state: QuizState, class_id: int | None = None) -> dic
     if log:
         for row in players:  # per question: None (no answer) or {ok, points, choice, sec}
             row["answers"] = [entry["results"].get(row["player_id"]) for entry in log]
+    for row in players:  # reaction and missed questions per player (game flow analysis)
+        player = quiz_state.players.get(row["player_id"])
+        if player is not None:
+            row["avg_sec"] = reaction_stats(player.reaction_times)["avg_sec"]
+            row["answered"] = len(player.reaction_times)
+            row["missed"] = player.missed_total
+            row["inactive"] = player.inactive
+    reactions = [s for p in quiz_state.players.values() for s in p.reaction_times]
     record = {
         "id": uuid.uuid4().hex[:12],
         "timestamp": datetime.now().isoformat(),
         "total_questions": len(quiz_state.questions),
         "question_duration_sec": quiz_state.question_duration_sec,
+        "timing": {"question_sec": quiz_state.question_duration_sec, "get_ready_sec": quiz_state.get_ready_sec,
+                   "reveal_sec": quiz_state.reveal_duration_sec, "adaptive_time": quiz_state.adaptive_time,
+                   "all_answered_grace_sec": ALL_ANSWERED_GRACE_SEC,
+                   "inactive_after_missed": INACTIVE_AFTER_MISSED},
+        "reaction": reaction_stats(reactions),
         "speed_bonus": quiz_state.speed_bonus,
         "players": players,
         "player_count": len(quiz_state.players),
         "bank_name": quiz_state._active_bank or "",
         "owner_id": quiz_state.owner_id,  # teacher whose room played it (None = default room)
         "questions": quiz_state._question_summary_locked(),
+        "events": list(quiz_state.events),  # timeline: phases, joins, answers, presence
     }
     # Save to JSON file (backward compat)
     filename = f"game_{record['id']}.json"
@@ -1153,6 +1258,18 @@ class Player:
     correct_count: int = 0                                # scored questions answered correctly
     correct_times: list = field(default_factory=list)     # effective elapsed sec of correct answers
     midgame_rank: int | None = None                       # rank recorded at mid-game reveal
+    # Presence and reaction (game flow)
+    device_id: str = ""                                   # the browser's own id: joining again = same player
+    joined_at: float = field(default_factory=time.time)
+    reaction_times: list = field(default_factory=list)    # sec from the answers showing up to the answer
+    missed_streak: int = 0                                # answerable questions in a row without an answer
+    missed_total: int = 0
+    online: bool = True                                   # presence as last seen by the timers
+
+    @property
+    def inactive(self) -> bool:
+        """Not reacting for a while: the game no longer waits for this player."""
+        return self.missed_streak >= INACTIVE_AFTER_MISSED
 
 
 class QuizState:
@@ -1194,6 +1311,13 @@ class QuizState:
         # Ordering questions are shown shuffled (the bank lists the items in the
         # right order): question index -> display position -> original item index
         self._item_orders: dict[int, list[int]] = {}
+        # Game flow: when everyone the question waits for had answered (0 = not
+        # yet), why the last question ended, and a timeline of the game for the
+        # teacher's analysis (saved with the history record).
+        self.all_answered_at = 0.0
+        self.end_reason = ""
+        self.events: list[dict[str, Any]] = []
+        self.game_started_at = 0.0
 
     def _reading_bonus_locked(self, index: int | None = None) -> int:
         """Reading time added to the current (or given) question; 0 when off."""
@@ -1203,8 +1327,109 @@ class QuizState:
         return reading_bonus_sec(self.questions[index])
 
     def _question_time_locked(self, index: int | None = None) -> int:
-        """Time per question as played: the teacher's setting plus reading time."""
+        """Time to answer as played: the teacher's setting plus reading time.
+
+        The get-ready countdown comes on top of it: 20 s per question are 20 s
+        with the answers on the screen."""
         return self.question_duration_sec + self._reading_bonus_locked(index)
+
+    def _answers_open_at_locked(self) -> float:
+        """When the answers show up (the get-ready countdown is over)."""
+        return self.question_started_at + self.get_ready_sec if self.question_started_at else 0.0
+
+    def _question_deadline_locked(self) -> float:
+        """When the current question times out."""
+        if not self.question_started_at:
+            return 0.0
+        return self._answers_open_at_locked() + self._question_time_locked()
+
+    def _question_ends_at_locked(self) -> float:
+        """When the current question ends: its deadline, or a moment after everyone answered."""
+        deadline = self._question_deadline_locked()
+        if self.all_answered_at:
+            return min(deadline, self.all_answered_at + ALL_ANSWERED_GRACE_SEC)
+        return deadline
+
+    def _reveal_time_locked(self, index: int | None = None) -> int:
+        """Result screen as played: the teacher's setting plus time to read the explanation."""
+        index = self.current_index if index is None else index
+        if not self.adaptive_time or not 0 <= index < len(self.questions):
+            return self.reveal_duration_sec
+        return self.reveal_duration_sec + explanation_bonus_sec(self.questions[index])
+
+    def _connected_locked(self) -> set[str] | None:
+        """Players with an open WebSocket in this game's room (None: not known here)."""
+        if self.room_key is None:
+            return None
+        try:
+            return WS_MANAGER.player_ids(self.room_key)
+        except Exception:  # noqa: BLE001 — presence is a hint, never an error
+            return None
+
+    def _is_online_locked(self, player: Player, pid: str, now: float, connected: set[str] | None) -> bool:
+        if connected is None or pid in connected:
+            return True
+        return now - player.last_seen < OFFLINE_AFTER_SEC
+
+    def _waited_for_locked(self, now: float) -> list[str]:
+        """Players the current question waits for before it ends early.
+
+        Not a player who joined after the answers showed up, one who stopped
+        reacting (INACTIVE_AFTER_MISSED questions in a row without an answer)
+        or one whose device is gone (no WebSocket, no request for a while).
+        """
+        open_at = self._answers_open_at_locked()
+        connected = self._connected_locked()
+        return [pid for pid, p in self.players.items()
+                if p.joined_at <= open_at and not p.inactive
+                and self._is_online_locked(p, pid, now, connected)]
+
+    def _check_all_answered_locked(self, now: float) -> None:
+        """Start the short "everyone answered" beat once nobody else is expected."""
+        if self.phase != "question" or self.all_answered_at or not self.answers or self.current_index < 0:
+            return
+        if self.questions[self.current_index].get("type", "choice") == "slide":
+            return
+        waited = self._waited_for_locked(now)
+        if all(pid in self.answers for pid in waited):
+            self.all_answered_at = now
+            self._event_locked("all_answered", now, q=self.current_index, answered=len(self.answers),
+                               waited=len(waited), players=len(self.players))
+
+    def _event_locked(self, kind: str, at: float | None = None, **data: Any) -> None:
+        """Add an entry to the game timeline (kept with the history record)."""
+        if len(self.events) < GAME_EVENTS_MAX:
+            self.events.append({"t": round(at if at is not None else time.time(), 2), "e": kind, **data})
+
+    def _update_presence_locked(self, now: float) -> None:
+        """Log when a player's device drops out of the game or comes back (during a game)."""
+        if self.phase not in ("question", "reveal"):
+            return
+        connected = self._connected_locked()
+        if connected is None:
+            return
+        for pid, p in self.players.items():
+            online = self._is_online_locked(p, pid, now, connected)
+            if online != p.online:
+                p.online = online
+                self._event_locked("online" if online else "offline", now, player=p.name)
+
+    def mark_seen(self, player_id: str | None) -> None:
+        """A request from the player's device: the player is still there."""
+        if not player_id:
+            return
+        with self._lock:
+            player = self.players.get(player_id)
+            if player:
+                player.last_seen = time.time()
+
+    def _log_line(self, text: str) -> None:
+        """One line for the server log (docker logs): counts only, never names.
+
+        Only for games of a room (the running server), not for bare game
+        objects in tests."""
+        if self.room_key is not None and GAME_LOG:
+            print(f"[game {self.room_key[:6]}] {text}", flush=True)
 
     def _item_order_locked(self, index: int) -> list[int] | None:
         """Display order of an ordering question, never the right order itself."""
@@ -1237,18 +1462,34 @@ class QuizState:
             self._awards_cache = None
             self.question_log = []
             self._item_orders = {}
+            self._reset_flow_locked()
             for player in self.players.values():
-                player.score = 0
-                player.streak = 0
-                player.max_streak = 0
-                player.bot_score = 0
-                player.answer_times = []
-                player.fast_answer_streak = 0
-                player.answered_count = 0
-                player.correct_count = 0
-                player.correct_times = []
-                player.midgame_rank = None
+                self._reset_player_stats(player)
                 player.team = None
+
+    def _reset_flow_locked(self) -> None:
+        """No question running: no "everyone answered" beat, a new timeline."""
+        self.all_answered_at = 0.0
+        self.end_reason = ""
+        self.events = []
+        self.game_started_at = 0.0
+
+    @staticmethod
+    def _reset_player_stats(player: Player) -> None:
+        """Points and per-game statistics back to zero (the player stays)."""
+        player.score = 0
+        player.streak = 0
+        player.max_streak = 0
+        player.bot_score = 0
+        player.answer_times = []
+        player.fast_answer_streak = 0
+        player.answered_count = 0
+        player.correct_count = 0
+        player.correct_times = []
+        player.midgame_rank = None
+        player.reaction_times = []
+        player.missed_streak = 0
+        player.missed_total = 0
 
     def set_timing(self, question_sec: int | None = None, reveal_sec: int | None = None,
                    get_ready_sec: int | None = None, final_double: bool | None = None,
@@ -1287,12 +1528,23 @@ class QuizState:
                 for player in self.players.values():
                     player.team = None
 
-    def register_player(self, name: str, user_id: int | None = None, avatar_id: Any = 0) -> dict[str, Any]:
+    def register_player(self, name: str, user_id: int | None = None, avatar_id: Any = 0,
+                        device_id: Any = None) -> dict[str, Any]:
+        """Add a player, or hand back the player this device (or account) already has.
+
+        Joining again from the same browser (a double tap on "Join", back to
+        the join screen, a second tab) or with the same logged-in account
+        returns the existing player — renamed when the nickname changed — so
+        no forgotten copy stays in the game for everyone to wait for. A
+        nickname somebody else in the game already uses is refused
+        (code name_taken).
+        """
         clean = " ".join(name.strip().split())[:24]
         if not clean:
             raise ValueError("Jmeno je povinne")
         if not _is_nickname_clean(clean):
             raise ValueError("Prezdivka obsahuje nevhodne slovo")
+        device = str(device_id) if isinstance(device_id, str) and DEVICE_ID_RE.match(device_id) else ""
         # Requested avatar (accept int or numeric string, range 1-20 like
         # /api/auth/update-avatar). Registration is a critical path, so any
         # invalid value silently falls back to 0 (= random, client picks).
@@ -1309,19 +1561,46 @@ class QuizState:
             if user_data and user_data.get("avatar_id"):
                 avatar_id = user_data["avatar_id"]
         with self._lock:
-            player_id = uuid.uuid4().hex[:10]
-            player_secret = uuid.uuid4().hex
-            assigned_team: str | None = None
-            if self.team_mode and self.team_names:
-                # Round-robin assignment for balance
-                player_count = len(self.players)
-                team_idx = player_count % len(self.team_names)
-                assigned_team = self.team_names[team_idx]
-            self.players[player_id] = Player(name=clean, secret=player_secret, user_id=user_id, avatar_id=avatar_id, team=assigned_team)
+            now = time.time()
+            same = next((pid for pid, p in self.players.items()
+                         if (device and p.device_id == device) or (user_id is not None and p.user_id == user_id)), None)
+            key = _name_key(clean)
+            if any(_name_key(p.name) == key for pid, p in self.players.items() if pid != same):
+                self._event_locked("name_taken", now, name=clean)
+                raise GameError("Tuto prezdivku uz ve hre nekdo ma", "name_taken")
+            if same is not None:
+                player = self.players[same]
+                renamed_from = player.name if player.name != clean else None
+                player.name = clean
+                if avatar_id:
+                    player.avatar_id = avatar_id
+                if device:
+                    player.device_id = device
+                player.last_seen = now
+                self._event_locked("rejoin", now, player=clean,
+                                   **({"renamed_from": renamed_from} if renamed_from else {}))
+                player_id, player_secret, assigned_team = same, player.secret, player.team
+                avatar_id = player.avatar_id
+            else:
+                player_id = uuid.uuid4().hex[:10]
+                player_secret = uuid.uuid4().hex
+                assigned_team = None
+                if self.team_mode and self.team_names:
+                    # Round-robin assignment for balance
+                    player_count = len(self.players)
+                    team_idx = player_count % len(self.team_names)
+                    assigned_team = self.team_names[team_idx]
+                self.players[player_id] = Player(name=clean, secret=player_secret, user_id=user_id,
+                                                 avatar_id=avatar_id, team=assigned_team, device_id=device,
+                                                 joined_at=now, last_seen=now)
+                self._event_locked("join", now, player=clean,
+                                   **({"during": self.phase} if self.phase in ("question", "reveal") else {}))
             self._mark_ws_state_locked()
         # Notify WS clients about new player
         self._notify()
         result: dict[str, Any] = {"player_id": player_id, "player_secret": player_secret, "name": clean, "avatar_id": avatar_id}
+        if same is not None:
+            result["rejoined"] = True
         if assigned_team is not None:
             result["team"] = assigned_team
         return result
@@ -1339,8 +1618,24 @@ class QuizState:
         with self._lock:
             if player_id not in self.players:
                 raise ValueError("Neznamy player_id")
-            del self.players[player_id]
+            player = self.players.pop(player_id)
             self.answers.pop(player_id, None)
+            self._event_locked("kick", player=player.name, missed=player.missed_streak)
+            # the rest of the class may be complete now
+            self._check_all_answered_locked(time.time())
+            self._mark_ws_state_locked()
+        self._notify()
+        return {"ok": True}
+
+    def keep_waiting(self, player_id: str) -> dict[str, Any]:
+        """The teacher wants the game to wait for a player marked as not reacting."""
+        with self._lock:
+            player = self.players.get(player_id)
+            if not player:
+                raise ValueError("Neznamy player_id")
+            if player.inactive:
+                self._event_locked("keep_waiting", player=player.name, missed=player.missed_streak)
+            player.missed_streak = 0
             self._mark_ws_state_locked()
         self._notify()
         return {"ok": True}
@@ -1360,6 +1655,7 @@ class QuizState:
             self._awards_cache = None
             self.question_log = []
             self._item_orders = {}
+            self._reset_flow_locked()
             self._mark_ws_state_locked()
         self._notify()
         return gone
@@ -1380,17 +1676,33 @@ class QuizState:
                 self._awards_cache = None
                 self.question_log = []
                 self._item_orders = {}
+                # the timeline keeps what happened in the lobby (joins, a second join
+                # from the same device, a refused nickname) and starts the game
+                lobby = [e for e in self.events if e["e"] in LOBBY_EVENT_KINDS][-200:]
+                self._reset_flow_locked()
+                self.events = lobby
+                self.game_started_at = now
+                connected = self._connected_locked()
+                for pid, player in self.players.items():
+                    player.missed_streak = 0  # a new game: everybody is waited for again
+                    player.online = self._is_online_locked(player, pid, now, connected)
+                self._event_locked("start", now, questions=len(self.questions),
+                                   players=[p.name for p in self.players.values()],
+                                   timing={"question_sec": self.question_duration_sec,
+                                           "get_ready_sec": self.get_ready_sec,
+                                           "reveal_sec": self.reveal_duration_sec,
+                                           "adaptive_time": self.adaptive_time})
+                self._event_locked("question", now, q=0)
+                self._log_line(f"start: {len(self.questions)} questions, {len(self.players)} players")
             elif action == "reveal":
                 if self.phase != "question":
                     raise ValueError("Reveal je mozne jen ve fazi question")
-                self._apply_scoring()
-                self.phase = "reveal"
-                self.reveal_started_at = now
+                self._end_question_locked(now, "host")
             elif action == "next":
                 if self.phase == "finished":
                     return {"ok": True}  # nothing left; advancing again would save the game twice
                 if self.phase == "question":
-                    self._apply_scoring()
+                    self._close_question_locked(now, "skipped")
                 self._advance_to_next_question_locked(now)
             elif action == "reset":
                 self.phase = "lobby"
@@ -1403,17 +1715,9 @@ class QuizState:
                 self._awards_cache = None
                 self.question_log = []
                 self._item_orders = {}
+                self._reset_flow_locked()
                 for player in self.players.values():
-                    player.score = 0
-                    player.streak = 0
-                    player.max_streak = 0
-                    player.bot_score = 0
-                    player.answer_times = []
-                    player.fast_answer_streak = 0
-                    player.answered_count = 0
-                    player.correct_count = 0
-                    player.correct_times = []
-                    player.midgame_rank = None
+                    self._reset_player_stats(player)
             elif action == "save_history":
                 if self.phase == "finished" or len(self.players) > 0:
                     record = save_game_history(self)
@@ -1491,6 +1795,14 @@ class QuizState:
                 "choice": choice,
                 "time": now,
             }
+            # Reaction: from the answers showing up (after get-ready) to this answer
+            reaction = max(0.0, now - self._answers_open_at_locked())
+            player.reaction_times.append(round(reaction, 2))
+            if player.inactive:
+                self._event_locked("active_again", now, player=player.name, missed=player.missed_streak)
+            player.missed_streak = 0
+            self._event_locked("answer", now, q=self.current_index, player=player.name, sec=round(reaction, 1))
+            self._check_all_answered_locked(now)
 
             # --- Anti-bot: timing heuristics ---
             player.answer_times.append(elapsed)
@@ -1507,6 +1819,56 @@ class QuizState:
         self._notify()
         return {"ok": True}
 
+    def _count_missed_locked(self) -> None:
+        """After a question: who let it pass without an answer (once per question)."""
+        open_at = self._answers_open_at_locked()
+        newly_inactive = 0
+        for pid, player in self.players.items():
+            if player.joined_at > open_at:
+                continue  # joined while the answers were already up: not their miss
+            if pid in self.answers:
+                player.missed_streak = 0
+                continue
+            player.missed_streak += 1
+            player.missed_total += 1
+            if player.missed_streak == INACTIVE_AFTER_MISSED:
+                newly_inactive += 1
+                self._event_locked("inactive", q=self.current_index, player=player.name,
+                                   missed=player.missed_streak)
+        if newly_inactive:
+            self._log_line(f"q{self.current_index + 1}: {newly_inactive} player(s) not reacting, no longer waited for")
+
+    def _close_question_locked(self, at: float, reason: str) -> None:
+        """The current question is over: score it, count misses, record it.
+
+        reason: timeout | all_answered | host (the teacher showed the result) |
+        skipped (the teacher went on to the next question)."""
+        self.end_reason = reason
+        waited = len(self._waited_for_locked(at))  # before the misses of this question count
+        self._apply_scoring()
+        entry = next((e for e in self.question_log if e["index"] == self.current_index), None)
+        if entry is not None:
+            entry["end_reason"] = reason
+            entry["waited"] = waited
+            entry["duration_sec"] = round(max(0.0, at - self._answers_open_at_locked()), 1)
+        else:
+            entry = {}
+        self._event_locked("end", at, q=self.current_index, reason=reason, answered=len(self.answers),
+                           waited=waited, players=len(self.players), sec=entry.get("duration_sec"))
+        avg = entry.get("avg_sec")
+        self._log_line(
+            f"q{self.current_index + 1}/{len(self.questions)} ended ({reason}): answered "
+            f"{len(self.answers)}/{len(self.players)}"
+            + (f", waited for {entry['waited']}" if entry.get("waited") is not None else "")
+            + (f", avg reaction {avg} s" if avg is not None else "")
+            + (f", after {entry['duration_sec']} s" if entry.get("duration_sec") is not None else ""))
+
+    def _end_question_locked(self, at: float, reason: str) -> None:
+        """Close the current question and show its result from `at` on."""
+        self._close_question_locked(at, reason)
+        self.phase = "reveal"
+        self.reveal_started_at = at
+
     def _apply_scoring(self) -> None:
         if self.scored_question_index == self.current_index:
             return
@@ -1515,6 +1877,10 @@ class QuizState:
 
         question = self.questions[self.current_index]
         q_type = question.get("type", "choice")
+        # A miss counts only when the question ran its course: not when the
+        # teacher showed the result early or skipped the question.
+        if q_type != "slide" and self.end_reason in ("timeout", "all_answered"):
+            self._count_missed_locked()
 
         # No scoring for engagement-only types
         if q_type in ("poll", "wordcloud", "slide"):
@@ -1633,6 +1999,8 @@ class QuizState:
             entry["explanation"] = str(question.get("explanation", ""))[:1000]
             times = [row["sec"] for row in results.values() if row["ok"]]
             entry["avg_sec_correct"] = round(sum(times) / len(times), 1) if times else None
+        # Reaction of the class: seconds from the answers showing up to the answer
+        entry.update(reaction_stats([row["sec"] for row in results.values()]))
         self.question_log = [e for e in self.question_log if e["index"] != self.current_index]
         self.question_log.append(entry)
 
@@ -1717,15 +2085,23 @@ class QuizState:
         return 0
 
     def _advance_to_next_question_locked(self, now: float) -> None:
+        self.all_answered_at = 0.0
+        self.end_reason = ""
         if self.current_index + 1 >= len(self.questions):
             self.phase = "finished"
             self.reveal_started_at = 0.0
             self._awards_cache = self._compute_awards_locked()
+            reactions = [s for p in self.players.values() for s in p.reaction_times]
+            avg = reaction_stats(reactions)["avg_sec"]
+            self._event_locked("finished", now, players=len(self.players), avg_sec=avg)
+            self._log_line(f"finished: {len(self.players)} players"
+                           + (f", avg reaction {avg} s" if avg is not None else ""))
             # Auto-save game results
             try:
                 save_game_history(self, class_id=self._class_id)
             except Exception:
                 pass  # best-effort
+            self.events = []  # saved with the game; the next lobby starts a new timeline
             return
         self.current_index += 1
         self.phase = "question"
@@ -1733,36 +2109,23 @@ class QuizState:
         self.reveal_started_at = 0.0
         self.answers = {}
         self.scored_question_index = None
+        self._event_locked("question", now, q=self.current_index)
 
     def _sync_timers_locked(self, now: float) -> None:
+        self._update_presence_locked(now)
         for _ in range(len(self.questions) + 2):
             if self.phase == "question" and self.question_started_at > 0:
-                elapsed = now - self.question_started_at
-                q_type = (
-                    self.questions[self.current_index].get("type", "choice")
-                    if self.current_index >= 0
-                    else "choice"
-                )
-                # Slides have no answers — disable early advance when all answered
-                is_slide = q_type == "slide"
-                everyone_answered = (
-                    not is_slide
-                    and len(self.players) > 0
-                    and len(self.answers) >= len(self.players)
-                )
-                question_time = self._question_time_locked()
-                if everyone_answered or elapsed >= question_time:
-                    self._apply_scoring()
-                    self.phase = "reveal"
-                    if everyone_answered:
-                        self.reveal_started_at = now
-                    else:
-                        self.reveal_started_at = self.question_started_at + question_time
+                # Slides have no answers: they always run their full time
+                self._check_all_answered_locked(now)
+                ends_at = self._question_ends_at_locked()
+                if now >= ends_at:
+                    everyone = bool(self.all_answered_at) and self.all_answered_at <= ends_at
+                    self._end_question_locked(ends_at, "all_answered" if everyone else "timeout")
                     continue
             if self.phase == "reveal" and self.reveal_started_at > 0:
-                elapsed = now - self.reveal_started_at
-                if elapsed >= self.reveal_duration_sec:
-                    self._advance_to_next_question_locked(self.reveal_started_at + self.reveal_duration_sec)
+                reveal_time = self._reveal_time_locked()
+                if now - self.reveal_started_at >= reveal_time:
+                    self._advance_to_next_question_locked(self.reveal_started_at + reveal_time)
                     continue
             break
 
@@ -1798,10 +2161,10 @@ class QuizState:
 
     def _phase_time_left_locked(self, now: float) -> int | None:
         if self.phase == "question" and self.question_started_at > 0:
-            left = self._question_time_locked() - (now - self.question_started_at)
+            left = self._question_ends_at_locked() - now
             return max(0, int(math.ceil(left)))
         if self.phase == "reveal" and self.reveal_started_at > 0:
-            left = self.reveal_duration_sec - (now - self.reveal_started_at)
+            left = self._reveal_time_locked() - (now - self.reveal_started_at)
             return max(0, int(math.ceil(left)))
         return None
 
@@ -1813,7 +2176,9 @@ class QuizState:
                 scores[player.team] += player.score
         return scores
 
-    def _ranked_players(self, host_view: bool = False) -> list[dict[str, Any]]:
+    def _ranked_players(self, host_view: bool = False, now: float | None = None) -> list[dict[str, Any]]:
+        connected = self._connected_locked() if host_view else None
+        now = time.time() if now is None else now
         ranking = sorted(
             (
                 {
@@ -1822,7 +2187,10 @@ class QuizState:
                     "score": player.score,
                     "streak": player.streak,
                     "avatar_id": player.avatar_id,
-                    **({"bot_score": player.bot_score, "is_suspected_bot": player.bot_score >= BOT_SCORE_THRESHOLD} if host_view else {}),
+                    **({"bot_score": player.bot_score, "is_suspected_bot": player.bot_score >= BOT_SCORE_THRESHOLD,
+                        # the teacher's view of who reacts: not waited for after INACTIVE_AFTER_MISSED misses
+                        "missed": player.missed_streak, "inactive": player.inactive,
+                        "online": self._is_online_locked(player, pid, now, connected)} if host_view else {}),
                     **(({"team": player.team} if player.team else {})),
                 }
                 for pid, player in self.players.items()
@@ -1997,7 +2365,9 @@ class QuizState:
         with self._lock:
             now = time.time()
             self._sync_timers_locked(now)
-            ranked = self._ranked_players(host_view=host_view)
+            ranked = self._ranked_players(host_view=host_view, now=now)
+            in_question = self.phase == "question" and self.question_started_at > 0
+            waited = self._waited_for_locked(now) if in_question else []
             suspected_bots = [
                 {"player_id": p["player_id"], "name": p["name"], "bot_score": p["bot_score"]}
                 for p in ranked
@@ -2017,9 +2387,20 @@ class QuizState:
                 "question_duration_sec": self.question_duration_sec,  # the teacher's setting
                 "adaptive_time": self.adaptive_time,
                 "reading_bonus_sec": self._reading_bonus_locked(),
-                "question_time_sec": self._question_time_locked(),  # this question as played
-                "reveal_duration_sec": self.reveal_duration_sec,
+                "question_time_sec": self._question_time_locked(),  # time to answer, as played
+                "reveal_duration_sec": self.reveal_duration_sec,     # the teacher's setting
+                "reveal_time_sec": self._reveal_time_locked(),       # this result screen as played
                 "get_ready_sec": self.get_ready_sec,
+                # Absolute server times (compare with server_time): answers show up,
+                # the question ends (moves closer once everyone answered), the result ends.
+                "answers_open_at": self._answers_open_at_locked() if in_question else 0.0,
+                "question_ends_at": self._question_ends_at_locked() if in_question else 0.0,
+                "reveal_ends_at": (self.reveal_started_at + self._reveal_time_locked()
+                                   if self.phase == "reveal" and self.reveal_started_at > 0 else 0.0),
+                "all_answered": bool(self.all_answered_at) and in_question,
+                "waited_count": len(waited),  # players the question waits for
+                "waiting_for": sum(1 for pid in waited if pid not in self.answers),
+                "end_reason": self.end_reason if self.phase == "reveal" else "",
                 "final_double": self.final_double,
                 "speed_bonus": self.speed_bonus,
                 "show_leaderboard": self.show_leaderboard,
@@ -2034,6 +2415,14 @@ class QuizState:
             }
             if self.team_mode and self.team_names:
                 response["team_scores"] = self._team_scores_locked()
+
+            if self.phase == "reveal":
+                # how fast the class reacted to this question (no names)
+                entry = next((e for e in self.question_log if e["index"] == self.current_index), None)
+                if entry is not None:
+                    response["question_stats"] = {
+                        k: entry.get(k) for k in ("answered", "players", "avg_sec", "median_sec", "fastest_sec",
+                                                  "duration_sec", "end_reason")}
 
             if self.phase == "finished":
                 if self._awards_cache is None:
@@ -2064,7 +2453,11 @@ class QuizState:
                     "avatar_id": p.avatar_id,
                     "rank": my_rank,
                     "behind": behind,
+                    "inactive": p.inactive,  # the game does not wait for me (one answer changes it)
                 }
+                if self.phase == "reveal" and player_id in self.answers:
+                    me_data["sec"] = round(max(0.0, self.answers[player_id]["time"]
+                                               - self._answers_open_at_locked()), 1)
                 if self.phase == "finished":
                     me_data["awards"] = [
                         a["key"] for a in (self._awards_cache or []) if a["player_id"] == player_id
@@ -2143,6 +2536,10 @@ class QuizState:
                         q_public["accepted_answers"] = q.get("accepted_answers", [])
                     if q_type not in ("poll", "wordcloud", "slide"):
                         q_public["explanation"] = q.get("explanation", "")
+                # Projector after an open question: what the class wrote, grouped, no names
+                if q_type == "openended" and host_view and self.phase in {"reveal", "finished"}:
+                    entry = next((e for e in self.question_log if e["index"] == self.current_index), None)
+                    q_public["top_answers"] = (entry or {}).get("top_answers", [])
 
                 response["question"] = q_public
 
@@ -2842,6 +3239,26 @@ AUDIO_CREDITS = {
 }
 
 
+# Loudness of the tracks (measure_audio_levels.py writes static/audio/levels.json):
+# the projector plays every track at about AUDIO_TARGET_LUFS, so the music does
+# not jump by 10 dB when another track takes over.
+AUDIO_LEVELS_FILE = "levels.json"
+AUDIO_TARGET_LUFS = -16.0
+
+
+def _audio_gains() -> dict[str, float]:
+    try:
+        data = json.loads((AUDIO_DIR / AUDIO_LEVELS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    gains: dict[str, float] = {}
+    for name, info in (data.items() if isinstance(data, dict) else []):
+        lufs = info.get("lufs") if isinstance(info, dict) else None
+        if isinstance(lufs, (int, float)) and not isinstance(lufs, bool) and -60 < lufs < 0:
+            gains[name] = round(min(2.0, max(0.25, 10 ** ((AUDIO_TARGET_LUFS - lufs) / 20))), 3)
+    return gains
+
+
 def _audio_role(name: str) -> str:
     tokens = [t for t in re.split(r"[\s_.\-]+", name.lower()) if t]
     if "loop" in tokens:
@@ -2862,6 +3279,7 @@ def list_audio_tracks() -> dict[str, Any]:
     if not AUDIO_DIR.exists():
         return {"all": [], "loops": [], "stingers": [], "effects": {}, "credits": []}
 
+    gains = _audio_gains()
     for file_path in sorted(AUDIO_DIR.iterdir()):
         if not file_path.is_file():
             continue
@@ -2871,6 +3289,7 @@ def list_audio_tracks() -> dict[str, Any]:
         track = {
             "name": file_path.name,
             "url": f"/static/audio/{file_path.name}",
+            "gain": gains.get(file_path.name, 1.0),  # playback volume factor for equal loudness
         }
         all_tracks.append(track)
 
@@ -3394,6 +3813,8 @@ def send_account_mail(kind: str, to: str, lang: str, **values: str) -> str:
 
 # WebSocket connection manager
 WS_MANAGER = WSConnectionManager()
+# Subprotocol the projector page offers, followed by its host token (see _handle_ws_upgrade)
+WS_HOST_PROTOCOL = "classrally.host"
 def _ws_state(player_id: str | None = None, host_view: bool = False, room: str | None = None) -> dict[str, Any]:
     target = ROOMS.by_key(room) if room else DEFAULT_ROOM
     if target is None:
@@ -3790,18 +4211,33 @@ class Handler(BaseHTTPRequestHandler):
         # host=1 over WebSocket is privileged too (broadcast_state sends the
         # host view to is_host connections). Require the host token from the
         # handshake headers (X-Host-Token / Authorization: Bearer); without it
-        # silently degrade to a public (non-host) connection. Shipped pages
-        # never open a host WebSocket (host.html polls /api/state), so this
-        # only affects non-browser clients, which can send headers.
-        host_room = self._host_room() if q.get("host", ["0"])[0] == "1" else None
+        # silently degrade to a public (non-host) connection. A browser cannot
+        # set headers on a WebSocket, so the projector page (host.html) offers
+        # the subprotocols "classrally.host, <token>" instead — a header, never
+        # the query string (it would end up in access logs). A wrong token
+        # there is refused, and the page keeps polling and logs in again.
+        offered = [p.strip() for p in self.headers.get("Sec-WebSocket-Protocol", "").split(",") if p.strip()]
+        protocol = None
+        host_room = None
+        if q.get("host", ["0"])[0] == "1":
+            host_room = self._host_room()
+            if offered and offered[0] == WS_HOST_PROTOCOL:
+                token_room = ROOMS.by_token(offered[1]) if len(offered) > 1 else None
+                if token_room is not None and self._owner_still_teacher(token_room):
+                    host_room, protocol = token_room, WS_HOST_PROTOCOL
+                elif host_room is None:
+                    self._json_response({"error": "Host token required"}, status=403)
+                    return
         room = host_room or self._viewer_room(player_id, q.get("pin", [None])[0])
         if room is None:
             self._json_response({"error": "PIN required", "code": "pin_required"}, status=400)
             return
         is_host = host_room is not None
+        if player_id:
+            room.quiz.mark_seen(player_id)
 
         # Send 101 response
-        response = ws_handshake_response(client_key)
+        response = ws_handshake_response(client_key, protocol)
         self.wfile.write(response)
         self.wfile.flush()
 
@@ -4036,6 +4472,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"error": "PIN required", "code": "pin_required"}, status=400)
                 return
+            room.quiz.mark_seen(player_id)  # the device polls: the player is still there
             self._json_response(room.quiz.public_state(player_id=player_id, host_view=host_room is not None))
             return
 
@@ -4556,7 +4993,8 @@ class Handler(BaseHTTPRequestHandler):
                     user_token = data.get("user_token") or self._get_user_token()
                     if user_token:
                         user_id = user_db.validate_session(user_token)
-                    result = room.quiz.register_player(name, user_id=user_id, avatar_id=data.get("avatar_id", 0))
+                    result = room.quiz.register_player(name, user_id=user_id, avatar_id=data.get("avatar_id", 0),
+                                                       device_id=data.get("device_id"))
                 ROOMS.bind_player(result["player_id"], room)
                 room.touch()
                 result["mode"] = room.mode
@@ -4615,6 +5053,14 @@ class Handler(BaseHTTPRequestHandler):
                 if ROOMS.by_player(player_id) is room:
                     ROOMS.unbind_player(player_id)
                 self._json_response(result)
+                return
+
+            if path == "/api/host/keep-waiting":
+                # the teacher wants the game to wait again for a player marked as not reacting
+                room = self._require_host_room()
+                if room is None:
+                    return
+                self._json_response(room.quiz.keep_waiting(str(data.get("player_id", ""))))
                 return
 
             if path == "/api/host/new-pin":
@@ -5522,7 +5968,10 @@ class Handler(BaseHTTPRequestHandler):
         except FileNotFoundError as exc:
             self._json_response({"error": str(exc)}, status=404)
         except ValueError as exc:
-            self._json_response({"error": str(exc)}, status=400)
+            body = {"error": str(exc)}
+            if getattr(exc, "code", None):
+                body["code"] = exc.code  # GameError: the page shows its own translated message
+            self._json_response(body, status=400)
         except Exception as exc:
             self._json_response({"error": f"Server error: {exc}"}, status=500)
 

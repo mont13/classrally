@@ -229,6 +229,7 @@
     @keyframes doublePop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     /* --- Fun line inside result banner --- */
     .fun-line { font-size: 1.05rem; font-weight: 800; margin-top: 6px; opacity: 0.95; }
+    .reaction-line { font-size: 0.92rem; font-weight: 700; margin-top: 4px; opacity: 0.85; }
     /* --- Sound / vibration mini toggles --- */
     .mini-toggles { display: inline-flex; gap: 6px; }
     .mini-toggle { border: 1px solid var(--pp-line-strong); background: var(--pp-card); border-radius: 99px;
@@ -761,6 +762,8 @@
       rival.className = 'rank-rival';
       if (me.rank === 1) {
         rival.textContent = tfb('play.rank_leader', 'Jsi v čele! \u{1F451}');
+      } else if (me.behind && me.behind.gap === 0) {
+        rival.textContent = tfb('play.rank_tied', 'Stejně bodů jako {0}', me.behind.name);
       } else if (me.behind) {
         rival.textContent = tfb('play.rank_behind', 'Ztrácíš {0} b na {1} \u{1F3AF}', me.behind.gap, me.behind.name);
       }
@@ -1365,12 +1368,21 @@
 
     function updateCountdown(state) {
       const now = Date.now();
-      let start = 0, total = 0;
-      if (state.phase === 'question') { start = Number(state.question_started_at); total = questionTimeSec(state); }
-      else if (state.phase === 'reveal') { start = Number(state.reveal_started_at); total = Number(state.reveal_duration_sec) || 0; }
+      // The bar runs over the time to answer (after the get-ready countdown)
+      // and jumps to the short beat when everyone answered; then the result.
+      let start = 0, total = 0, end = 0;
+      if (state.phase === 'question') {
+        start = Number(state.answers_open_at) || Number(state.question_started_at);
+        total = questionTimeSec(state);
+        end = Number(state.question_ends_at) || start + total;
+      } else if (state.phase === 'reveal') {
+        start = Number(state.reveal_started_at);
+        total = Number(state.reveal_time_sec) || Number(state.reveal_duration_sec) || 0;
+        end = Number(state.reveal_ends_at) || start + total;
+      }
       const serverNow = Number(state.server_time);
       if (start > 0 && total > 0 && serverNow > 0) {
-        const leftSec = Math.max(0, start + total - serverNow);
+        const leftSec = Math.max(0, end - serverNow);
         const endMs = now + leftSec * 1000;
         // keep the running anchor unless the server says it is off by more than ~0.4 s
         if (cd.phase !== state.phase || cd.total !== total || Math.abs(cd.endMs - endMs) > 400) cd.endMs = endMs;
@@ -1396,7 +1408,8 @@
         document.getElementById('timer').textContent = '-';
         return false;
       }
-      const left = Math.max(0, (cd.endMs - Date.now()) / 1000);
+      // during get-ready the full time to answer is shown (it starts when the answers show up)
+      const left = Math.min(cd.total, Math.max(0, (cd.endMs - Date.now()) / 1000));
       const shown = REDUCED_MOTION ? Math.ceil(left) : left;
       const pct = Math.min(100, Math.max(0, shown / cd.total * 100));
       fill.style.width = pct.toFixed(2) + '%';
@@ -1536,6 +1549,19 @@
         funLine.textContent = currentFunMsg.text;
         banner.appendChild(funLine);
       }
+
+      // How fast I was, next to the class (no names)
+      const mySec = state.me && state.me.sec;
+      const avgSec = state.question_stats && state.question_stats.avg_sec;
+      if (state.phase === 'reveal' && typeof mySec === 'number' && !banner.classList.contains('hide')) {
+        const line = document.createElement('div');
+        line.className = 'reaction-line';
+        const fmt = (v) => String(v).replace('.', i18n.getLang() === 'en' ? '.' : ',');
+        line.textContent = typeof avgSec === 'number'
+          ? i18n.t('play.reaction_vs_class', fmt(mySec), fmt(avgSec))
+          : i18n.t('play.reaction_mine', fmt(mySec));
+        banner.appendChild(line);
+      }
     }
 
     function updateTeamUI(me) {
@@ -1668,9 +1694,11 @@
             else if (qType === 'multiselect') hintPrefix = i18n.t('play.time_left_hint_multi');
             else if (qType === 'ordering') hintPrefix = i18n.t('play.time_left_hint_order');
             else hintPrefix = i18n.t('play.time_left_hint_choice');
+            // the game stopped waiting for me after several questions without an answer
+            if (me.inactive) hintPrefix = i18n.t('play.inactive_note') + ' ' + hintPrefix;
             exp.textContent = hintPrefix + timeLeft + '.';
           } else {
-            exp.textContent = i18n.t('play.answer_sent');
+            exp.textContent = state.all_answered ? i18n.t('play.all_answered') : i18n.t('play.answer_sent');
           }
         }
       }
@@ -1741,7 +1769,40 @@
       }
     })();
 
+    // The browser's own id: joining again from it (a double tap, back to the
+    // join screen, a second tab) continues as the same player on the server
+    // instead of leaving a forgotten copy that the class would wait for.
+    const DEVICE_KEY = 'classrally_device_id';
+    function deviceId() {
+      try {
+        let id = localStorage.getItem(DEVICE_KEY);
+        if (!id || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) {
+          const bytes = new Uint8Array(16);
+          crypto.getRandomValues(bytes);
+          id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+          localStorage.setItem(DEVICE_KEY, id);
+        }
+        return id;
+      } catch (_) {
+        return '';
+      }
+    }
+
+    let joining = false;
     async function join() {
+      if (joining) return;  // a second tap while the first join is on its way
+      joining = true;
+      const joinBtn = document.getElementById('joinBtn');
+      joinBtn.disabled = true;
+      try {
+        await joinOnce();
+      } finally {
+        joining = false;
+        joinBtn.disabled = false;
+      }
+    }
+
+    async function joinOnce() {
       const name = document.getElementById('nameInput').value.trim();
       const err = document.getElementById('joinErr');
       err.removeAttribute('data-i18n');
@@ -1757,7 +1818,7 @@
           localStorage.setItem(PIN_KEY, typedPin);
           if (m.mode === 'exam') { location.replace('/exam' + pinQuery('?')); return; }
         }
-        const regBody = { name, user_token: userToken };
+        const regBody = { name, user_token: userToken, device_id: deviceId() };
         if (roomPin()) regBody.pin = roomPin();
         // Locally picked avatar for anonymous players. The server currently
         // ignores unknown fields, so this is forward-compatible and harmless.
@@ -1767,6 +1828,11 @@
           data = await api('/api/register', 'POST', regBody);
         } catch (e) {
           if (e.code === 'pin_guesses') { err.textContent = i18n.t('play.pin_guesses'); return; }
+          if (e.code === 'name_taken') {
+            err.textContent = i18n.t('play.name_taken');
+            document.getElementById('nameInput').focus();
+            return;
+          }
           if (e.code === 'pin_required' || e.code === 'pin_unknown') {
             localStorage.removeItem(PIN_KEY);
             document.getElementById('pinRow').classList.remove('hide');

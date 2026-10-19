@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 _TEST_DATA_ROOT = Path(tempfile.mkdtemp(prefix="classrally-tests-"))
 os.environ["QUIZ_DATA_DIR"] = str(_TEST_DATA_ROOT / "data")
 os.environ["MAIL_MODE"] = "off"  # tests that need mail use their own log-mode Mailer
+os.environ["QUIZ_GAME_LOG"] = "0"  # no game-flow lines in the test output (TestGameFlow checks them)
 for _k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM"):
     os.environ.pop(_k, None)
 
@@ -308,8 +309,8 @@ class TestQuizState(unittest.TestCase):
         qs.set_timing(question_sec=5, reveal_sec=2)
         qs.register_player("Alice")
         qs.host_action("start")
-        # Simulate time passage
-        qs.question_started_at = time.time() - 6
+        # Simulate time passage: 3 s get-ready + 5 s to answer are over
+        qs.question_started_at = time.time() - 9
         state = qs.public_state()
         self.assertEqual(state["phase"], "reveal")
 
@@ -371,8 +372,8 @@ class TestQuizState(unittest.TestCase):
             self.assertFalse(qs.tick_and_notify())
             self.assertEqual(notifications, [])
 
-            # Question times out -> tick must advance to reveal and notify
-            qs.question_started_at = time.time() - 6
+            # Question times out (3 s get-ready + 5 s) -> tick must advance to reveal and notify
+            qs.question_started_at = time.time() - 9
             self.assertTrue(qs.tick_and_notify())
             self.assertEqual(qs.phase, "reveal")
             self.assertEqual(notifications, [True])  # lock already released
@@ -852,6 +853,71 @@ class TestHTTPIntegration(unittest.TestCase):
         host_state = ws_initial_state(f"X-Host-Token: {server.HOST_TOKEN}\r\n")
         self.assertIn("player_id", host_state["players"][0])
         self.assertEqual(host_state["question"]["correct_index"], 1)
+
+    def test_host_websocket_with_subprotocol_token(self):
+        """The projector page cannot set headers on a WebSocket: it offers the
+        subprotocols "classrally.host, <token>" and gets the host view (#97)."""
+        import socket as socket_mod
+
+        from ws import OPCODE_TEXT, ws_decode_frame
+
+        self._post("/api/register", {"name": "WsProto"})
+        self._host_post("/api/host/action", {"action": "start"})
+
+        def handshake(protocols):
+            sock = socket_mod.create_connection(("127.0.0.1", self.port), timeout=5)
+            sock.sendall((
+                "GET /api/ws?host=1 HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.port}\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                f"Sec-WebSocket-Protocol: {protocols}\r\n\r\n").encode("ascii"))
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+            return sock, buf
+
+        sock, buf = handshake(f"classrally.host, {server.HOST_TOKEN}")
+        try:
+            head, frames = buf.split(b"\r\n\r\n", 1)
+            self.assertIn(b"101", head.split(b"\r\n", 1)[0])
+            self.assertIn(b"Sec-WebSocket-Protocol: classrally.host\r\n", head + b"\r\n")
+            self.assertNotIn(server.HOST_TOKEN.encode(), head)  # the token is never echoed back
+            state = None
+            for _ in range(50):
+                result = ws_decode_frame(bytes(frames))
+                if result is not None:
+                    opcode, payload, consumed = result
+                    frames = frames[consumed:]
+                    if opcode == OPCODE_TEXT:
+                        state = json.loads(payload.decode("utf-8"))
+                        break
+                    continue
+                frames += sock.recv(4096)
+            self.assertIsNotNone(state)
+            self.assertIn("player_id", state["players"][0])
+            self.assertEqual(state["question"]["correct_index"], 1)
+        finally:
+            sock.close()
+
+        sock, buf = handshake("classrally.host, " + "0" * 32)  # wrong token: refused, not a public view
+        sock.close()
+        self.assertIn(b"403", buf.split(b"\r\n", 1)[0])
+
+    def test_register_same_device_and_taken_name_over_http(self):
+        device = "d" * 32
+        first = self._post("/api/register", {"name": "HttpJan", "device_id": device})
+        again = self._post("/api/register", {"name": "HttpJan", "device_id": device})
+        self.assertEqual(again["player_id"], first["player_id"])
+        self.assertTrue(again["rejoined"])
+        with self.assertRaises(HTTPError) as ctx:
+            self._post("/api/register", {"name": "httpjan", "device_id": "e" * 32})
+        self.assertEqual(ctx.exception.code, 400)
+        self.assertEqual(json.loads(ctx.exception.read())["code"], "name_taken")
 
     def test_ws_client_does_not_deadlock_host_actions(self):
         """Host actions must not freeze the server while a WS client is open.
@@ -1871,7 +1937,9 @@ class TestQuestionTypes(unittest.TestCase):
         right = [shown.index(x) for x in items]  # display positions in the right order
         q.submit_answer(smart["player_id"], smart["player_secret"], right)
         self.assertEqual(q.answers[smart["player_id"]]["choice"], [0, 1, 2, 3])  # stored as bank items
-        self.assertEqual(q.public_state()["phase"], "reveal")  # everybody answered
+        self.assertTrue(q.public_state()["all_answered"])  # everybody answered: a short beat, then the result
+        with mock.patch("time.time", return_value=time.time() + server.ALL_ANSWERED_GRACE_SEC + 0.1):
+            self.assertEqual(q.public_state()["phase"], "reveal")
         state = q.public_state(smart["player_id"])
         self.assertEqual(state["question"]["items"], shown)
         self.assertEqual(state["my_choice"], right)  # the player sees the answer the way it was shown
@@ -3388,6 +3456,22 @@ class TestAudioTracks(unittest.TestCase):
     def test_no_credit_for_own_music(self):
         (self.tmp / "my_song.mp3").write_bytes(b"x")
         self.assertEqual(server.list_audio_tracks()["credits"], [])
+
+    def test_gain_evens_out_loudness(self):
+        for n in ("loud_loop.mp3", "quiet_loop.mp3", "target.mp3", "unmeasured.mp3", "broken.mp3"):
+            (self.tmp / n).write_bytes(b"x")
+        (self.tmp / "levels.json").write_text(json.dumps({
+            "loud_loop.mp3": {"lufs": -8.0}, "quiet_loop.mp3": {"lufs": -40.0},
+            "target.mp3": {"lufs": server.AUDIO_TARGET_LUFS}, "broken.mp3": {"lufs": "loud"}}))
+        gains = {t["name"]: t["gain"] for t in server.list_audio_tracks()["all"]}
+        self.assertAlmostEqual(gains["loud_loop.mp3"], 0.398, places=3)  # 8 dB down
+        self.assertEqual(gains["quiet_loop.mp3"], 2.0)                   # boost capped
+        self.assertEqual(gains["target.mp3"], 1.0)
+        self.assertEqual(gains["unmeasured.mp3"], 1.0)
+        self.assertEqual(gains["broken.mp3"], 1.0)
+        self.assertNotIn("levels.json", gains)  # not a track
+        (self.tmp / "levels.json").write_text("{not json")
+        self.assertEqual(server.list_audio_tracks()["all"][0]["gain"], 1.0)
 
 
 
@@ -5512,12 +5596,13 @@ class TestReadingTime(unittest.TestCase):
         qs.register_player("Alice")
         qs.host_action("start")
         started = qs.question_started_at
-        with mock.patch("time.time", return_value=started + 35):
+        # 3 s get-ready, then 30 s + 12 s reading time to answer
+        with mock.patch("time.time", return_value=started + 38):
             self.assertEqual(qs.public_state()["phase"], "question")  # base 30 s already over
-        with mock.patch("time.time", return_value=started + 42.5):
+        with mock.patch("time.time", return_value=started + 45.5):
             st = qs.public_state()
         self.assertEqual(st["phase"], "reveal")
-        self.assertAlmostEqual(qs.reveal_started_at, started + 42)
+        self.assertAlmostEqual(qs.reveal_started_at, started + 45)
 
     def test_switched_off_keeps_exact_time(self):
         qs = server.QuizState([self.LONG])
@@ -5550,6 +5635,379 @@ class TestPlayAnswerAreaStatic(unittest.TestCase):
         self.assertIn('id="timingAdaptive"', admin)
         self.assertIn("adaptive_time:", admin)
         self.assertIn("gameSetWarnings(editorQuestions)", admin)
+
+
+class TestGameFlow(unittest.TestCase):
+    """Game flow (#97): one player per device, nobody waits for a player who
+    stopped reacting, a short beat after everyone answered, reaction times and
+    the timeline kept with the history record."""
+
+    DEVICE_A = "a" * 32
+    DEVICE_B = "b" * 32
+
+    def _bank(self, n=6):
+        return [{"id": f"f{i}", "prompt": f"Q{i}?", "options": ["A", "B", "C", "D"], "correct_index": 0,
+                 "explanation": "E"} for i in range(n)]
+
+    def _game(self, n=6, get_ready=0):
+        qs = server.QuizState(self._bank(n))
+        qs.set_timing(get_ready_sec=get_ready)
+        return qs
+
+    @staticmethod
+    def _answer(qs, player, choice=0):
+        qs.submit_answer(player["player_id"], player["player_secret"], choice)
+
+    @staticmethod
+    def _time_out(qs):
+        """Let the current question run out of time."""
+        with mock.patch("time.time", return_value=qs._question_deadline_locked() + 0.1):
+            return qs.public_state()
+
+    # --- one player per device ---
+
+    def test_same_device_joins_as_the_same_player(self):
+        qs = self._game()
+        first = qs.register_player("Jan", device_id=self.DEVICE_A)
+        again = qs.register_player("Jan", device_id=self.DEVICE_A)  # a double tap on "Join"
+        self.assertEqual(again["player_id"], first["player_id"])
+        self.assertEqual(again["player_secret"], first["player_secret"])
+        self.assertTrue(again["rejoined"])
+        self.assertNotIn("rejoined", first)
+        self.assertEqual(len(qs.players), 1)
+        renamed = qs.register_player("Jan Novák", device_id=self.DEVICE_A)  # back to the join screen
+        self.assertEqual(renamed["player_id"], first["player_id"])
+        self.assertEqual(qs.players[first["player_id"]].name, "Jan Novák")
+        self.assertEqual([e["e"] for e in qs.events], ["join", "rejoin", "rejoin"])
+        self.assertEqual(qs.events[-1]["renamed_from"], "Jan")
+
+    def test_rejoin_during_the_game_keeps_the_points(self):
+        qs = self._game()
+        ema = qs.register_player("Ema", device_id=self.DEVICE_A)
+        qs.register_player("Olga", device_id=self.DEVICE_B)
+        qs.host_action("start")
+        self._answer(qs, ema)
+        qs.host_action("reveal")
+        score = qs.players[ema["player_id"]].score
+        self.assertGreater(score, 0)
+        again = qs.register_player("Ema", device_id=self.DEVICE_A)
+        self.assertEqual(again["player_id"], ema["player_id"])
+        self.assertEqual(qs.players[ema["player_id"]].score, score)
+        self.assertEqual(len(qs.players), 2)
+
+    def test_taken_nickname_is_refused_for_another_device(self):
+        qs = self._game()
+        qs.register_player("Jan", device_id=self.DEVICE_A)
+        with self.assertRaises(server.GameError) as ctx:
+            qs.register_player("  jan ", device_id=self.DEVICE_B)
+        self.assertEqual(ctx.exception.code, "name_taken")
+        with self.assertRaises(server.GameError):
+            qs.register_player("JAN")  # no device id at all
+        self.assertEqual(len(qs.players), 1)
+        qs.register_player("Jan B.", device_id=self.DEVICE_B)
+        with self.assertRaises(server.GameError):  # renaming onto a taken nickname
+            qs.register_player("Jan", device_id=self.DEVICE_B)
+        self.assertEqual(sorted(p.name for p in qs.players.values()), ["Jan", "Jan B."])
+        self.assertIn("name_taken", [e["e"] for e in qs.events])
+
+    def test_malformed_device_id_is_ignored(self):
+        qs = self._game()
+        for i, device in enumerate(("short", "short", "x" * 200, "<script>" * 4, 12345)):
+            qs.register_player(f"P{i}", device_id=device)
+        self.assertEqual(len(qs.players), 5)
+        self.assertTrue(all(p.device_id == "" for p in qs.players.values()))
+
+    def test_logged_in_account_joins_as_the_same_player(self):
+        qs = self._game()
+        with mock.patch.object(server.user_db, "get_user", return_value=None):  # no profile avatar
+            first = qs.register_player("Ucet", user_id=424242)
+            again = qs.register_player("Ucet", user_id=424242, device_id=self.DEVICE_B)  # another device
+        self.assertEqual(again["player_id"], first["player_id"])
+        self.assertEqual(len(qs.players), 1)
+
+    # --- timing ---
+
+    def test_get_ready_comes_on_top_of_the_answer_time(self):
+        qs = self._game(get_ready=3)
+        qs.set_timing(question_sec=20)
+        qs.register_player("A")
+        qs.host_action("start")
+        started = qs.question_started_at
+        st = qs.public_state()
+        self.assertAlmostEqual(st["answers_open_at"], started + 3)
+        self.assertAlmostEqual(st["question_ends_at"], started + 23)
+        self.assertEqual(st["question_time_sec"], 20)
+        with mock.patch("time.time", return_value=started + 22.5):
+            self.assertEqual(qs.public_state()["phase"], "question")
+        with mock.patch("time.time", return_value=started + 23.1):
+            st = qs.public_state()
+        self.assertEqual(st["phase"], "reveal")
+        self.assertEqual(st["end_reason"], "timeout")
+        self.assertAlmostEqual(qs.reveal_started_at, started + 23)
+
+    def test_everyone_answered_gives_a_short_beat_before_the_result(self):
+        qs = self._game()
+        a, b = qs.register_player("A"), qs.register_player("B")
+        qs.host_action("start")
+        self._answer(qs, a)
+        st = qs.public_state()
+        self.assertFalse(st["all_answered"])
+        self.assertEqual((st["waited_count"], st["waiting_for"]), (2, 1))
+        self._answer(qs, b, 1)
+        st = qs.public_state()
+        self.assertEqual(st["phase"], "question")
+        self.assertTrue(st["all_answered"])
+        self.assertEqual(st["waiting_for"], 0)
+        done = qs.all_answered_at
+        self.assertAlmostEqual(st["question_ends_at"], done + server.ALL_ANSWERED_GRACE_SEC)
+        self.assertLessEqual(st["phase_time_left"], 2)
+        with mock.patch("time.time", return_value=done + server.ALL_ANSWERED_GRACE_SEC + 0.05):
+            st = qs.public_state()
+        self.assertEqual(st["phase"], "reveal")
+        self.assertEqual(st["end_reason"], "all_answered")
+        self.assertAlmostEqual(qs.reveal_started_at, done + server.ALL_ANSWERED_GRACE_SEC)
+
+    def test_explanation_keeps_the_result_longer(self):
+        long_q = {"id": "x", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0, "explanation": "E" * 150}
+        self.assertEqual(server.explanation_bonus_sec(long_q), 6)  # (150 - 60) / 15
+        self.assertEqual(server.explanation_bonus_sec({"explanation": "E" * 5000}), server.EXPLANATION_BONUS_MAX_SEC)
+        self.assertEqual(server.explanation_bonus_sec({"type": "poll", "explanation": "E" * 500}), 0)
+        self.assertEqual(server.explanation_bonus_sec({"explanation": "Short."}), 0)
+        qs = server.QuizState([long_q, dict(long_q, id="y")])
+        qs.set_timing(reveal_sec=5, get_ready_sec=0)
+        qs.register_player("A")
+        qs.host_action("start")
+        qs.host_action("reveal")
+        st = qs.public_state()
+        self.assertEqual((st["reveal_duration_sec"], st["reveal_time_sec"]), (5, 11))
+        self.assertAlmostEqual(st["reveal_ends_at"], qs.reveal_started_at + 11)
+        with mock.patch("time.time", return_value=qs.reveal_started_at + 10):
+            self.assertEqual(qs.public_state()["phase"], "reveal")
+        with mock.patch("time.time", return_value=qs.reveal_started_at + 11.1):
+            self.assertEqual(qs.public_state()["phase"], "question")
+        qs.set_timing(adaptive_time=False)
+        self.assertEqual(qs.public_state()["reveal_time_sec"], 5)
+
+    # --- nobody waits for a player who does not react ---
+
+    def test_nobody_waits_for_a_player_who_stopped_reacting(self):
+        qs = self._game()
+        a, b = qs.register_player("Aktivni"), qs.register_player("Spici")
+        qs.host_action("start")
+        for _ in range(server.INACTIVE_AFTER_MISSED):
+            self._answer(qs, a)
+            self.assertFalse(qs.public_state()["all_answered"])  # still waiting for Spici
+            self.assertEqual(self._time_out(qs)["end_reason"], "timeout")
+            qs.host_action("next")
+        self.assertTrue(qs.players[b["player_id"]].inactive)
+        host = {p["name"]: p for p in qs.public_state(host_view=True)["players"]}
+        self.assertTrue(host["Spici"]["inactive"])
+        self.assertEqual(host["Spici"]["missed"], server.INACTIVE_AFTER_MISSED)
+        self.assertFalse(host["Aktivni"]["inactive"])
+        self.assertTrue(qs.public_state(b["player_id"])["me"]["inactive"])
+        self.assertNotIn("inactive", qs.public_state()["players"][0])  # not in the public view
+        # Aktivni alone completes the class now
+        self._answer(qs, a)
+        st = qs.public_state()
+        self.assertTrue(st["all_answered"])
+        self.assertEqual(st["waited_count"], 1)
+        qs.host_action("reveal")
+        qs.host_action("next")
+        # one answer and Spici is waited for again
+        self._answer(qs, b, 1)
+        self.assertFalse(qs.players[b["player_id"]].inactive)
+        self.assertFalse(qs.public_state()["all_answered"])  # Aktivni has not answered yet
+        kinds = [e["e"] for e in qs.events]
+        self.assertEqual(kinds.count("inactive"), 1)
+        self.assertIn("active_again", kinds)
+        flow = server.game_flow({"events": qs.events, "questions": qs.question_log})
+        self.assertEqual(flow["inactive_players"], ["Spici"])
+
+    def test_skipped_or_early_shown_questions_are_not_misses(self):
+        qs = self._game()
+        a, b = qs.register_player("A"), qs.register_player("B")
+        qs.host_action("start")
+        for _ in range(server.INACTIVE_AFTER_MISSED + 1):
+            self._answer(qs, a)
+            qs.host_action("reveal")  # the teacher shows the result before the time is up
+            qs.host_action("next")
+        qs.host_action("next")  # and skips a question
+        self.assertEqual(qs.players[b["player_id"]].missed_streak, 0)
+        self.assertFalse(qs.players[b["player_id"]].inactive)
+
+    def test_late_joiner_is_not_waited_for(self):
+        qs = self._game()
+        early = qs.register_player("Early")
+        qs.host_action("start")
+        with mock.patch("time.time", return_value=qs.question_started_at + 2):
+            qs.register_player("Late")
+            self._answer(qs, early)
+            st = qs.public_state()
+        self.assertTrue(st["all_answered"])
+        qs.host_action("reveal")
+        late = next(p for p in qs.players.values() if p.name == "Late")
+        self.assertEqual(late.missed_streak, 0)  # joined with the answers already up: not a miss
+        self.assertEqual([e for e in qs.events if e["e"] == "join"][-1]["during"], "question")
+
+    def test_disconnected_device_is_not_waited_for(self):
+        qs = self._game()
+        qs.room_key = "flow-test-room"  # presence known: nobody has a WebSocket in this room
+        here, gone = qs.register_player("Here"), qs.register_player("Gone")
+        qs.host_action("start")
+        self.assertEqual(qs.public_state()["waited_count"], 2)  # both seen just now
+        qs.players[gone["player_id"]].last_seen -= server.OFFLINE_AFTER_SEC + 1
+        self._answer(qs, here)
+        st = qs.public_state(host_view=True)
+        self.assertTrue(st["all_answered"])
+        self.assertFalse({p["name"]: p for p in st["players"]}["Gone"]["online"])
+        self.assertIn({"e": "offline", "player": "Gone"},
+                      [{k: e[k] for k in ("e", "player")} for e in qs.events if e["e"] == "offline"])
+        qs.mark_seen(gone["player_id"])  # the device polls again
+        players = {p["name"]: p for p in qs.public_state(host_view=True)["players"]}
+        self.assertTrue(players["Gone"]["online"])
+        self.assertEqual(qs.events[-1]["e"], "online")
+
+    def test_kicking_the_last_missing_player_completes_the_class(self):
+        qs = self._game()
+        a, b = qs.register_player("A"), qs.register_player("B")
+        qs.host_action("start")
+        self._answer(qs, a)
+        self.assertFalse(qs.public_state()["all_answered"])
+        qs.kick_player(b["player_id"])
+        self.assertTrue(qs.public_state()["all_answered"])
+        self.assertEqual(qs.events[-2]["e"], "kick")
+
+    def test_keep_waiting_resets_the_miss_streak(self):
+        qs = self._game()
+        b = qs.register_player("B")
+        qs.players[b["player_id"]].missed_streak = server.INACTIVE_AFTER_MISSED
+        self.assertTrue(qs.players[b["player_id"]].inactive)
+        qs.keep_waiting(b["player_id"])
+        self.assertFalse(qs.players[b["player_id"]].inactive)
+        self.assertEqual(qs.events[-1]["e"], "keep_waiting")
+        with self.assertRaises(ValueError):
+            qs.keep_waiting("nobody")
+
+    # --- reaction ---
+
+    def test_reaction_stats(self):
+        self.assertEqual(server.reaction_stats([]), {"avg_sec": None, "median_sec": None, "fastest_sec": None})
+        self.assertEqual(server.reaction_stats([4, 2, 9]), {"avg_sec": 5.0, "median_sec": 4.0, "fastest_sec": 2.0})
+        self.assertEqual(server.reaction_stats([1, 2, 3, 10])["median_sec"], 2.5)
+
+    def test_reaction_times_per_question_and_player(self):
+        qs = self._game(get_ready=3)
+        a, b, c = qs.register_player("A"), qs.register_player("B"), qs.register_player("C")
+        qs.host_action("start")
+        started = qs.question_started_at
+        for player, sec in ((a, 2.0), (b, 4.0), (c, 9.0)):
+            with mock.patch("time.time", return_value=started + 3 + sec):
+                self._answer(qs, player)
+        with mock.patch("time.time", return_value=started + 12 + server.ALL_ANSWERED_GRACE_SEC + 0.1):
+            st = qs.public_state(b["player_id"])
+        self.assertEqual(st["phase"], "reveal")
+        self.assertEqual((st["question_stats"]["avg_sec"], st["question_stats"]["median_sec"],
+                          st["question_stats"]["fastest_sec"]), (5.0, 4.0, 2.0))
+        self.assertEqual(st["me"]["sec"], 4.0)
+        entry = qs.question_log[0]
+        self.assertEqual((entry["end_reason"], entry["waited"]), ("all_answered", 3))
+        self.assertAlmostEqual(entry["duration_sec"], 9 + server.ALL_ANSWERED_GRACE_SEC, places=1)
+        self.assertEqual(qs.players[c["player_id"]].reaction_times, [9.0])
+
+    # --- the timeline and the analysis ---
+
+    def test_history_keeps_the_timeline_and_reaction(self):
+        qs = self._game(n=2)
+        a = qs.register_player("A", device_id=self.DEVICE_A)
+        qs.register_player("B")
+        qs.register_player("A", device_id=self.DEVICE_A)  # a double tap in the lobby
+        qs.host_action("start")
+        self._answer(qs, a)
+        self._time_out(qs)  # B never answers: the question runs out of time
+        qs.host_action("next")
+        self._answer(qs, a)
+        self._time_out(qs)
+        saved = []
+        real_save = server.save_game_history
+        with mock.patch.object(server, "save_game_history",
+                               side_effect=lambda quiz, class_id=None: saved.append(real_save(quiz, class_id))):
+            qs.host_action("next")  # the last question: the game is over and saved
+        record = saved[0]
+        self.assertEqual(record["timing"]["get_ready_sec"], 0)
+        self.assertEqual(record["timing"]["inactive_after_missed"], server.INACTIVE_AFTER_MISSED)
+        kinds = [e["e"] for e in record["events"]]
+        for kind in ("start", "question", "answer", "end", "finished"):
+            self.assertIn(kind, kinds)
+        rows = {p["name"]: p for p in record["players"]}
+        self.assertEqual((rows["A"]["answered"], rows["A"]["missed"]), (2, 0))
+        self.assertEqual((rows["B"]["answered"], rows["B"]["missed"], rows["B"]["inactive"]), (0, 2, False))
+        self.assertIsNotNone(rows["A"]["avg_sec"])
+        self.assertIsNone(rows["B"]["avg_sec"])
+        self.assertIsNotNone(record["reaction"]["avg_sec"])
+        detail = server.history_detail(record)
+        self.assertNotIn("events", detail)
+        self.assertEqual(detail["flow"]["ended"], {"timeout": 2})
+        lobby = [e for e in detail["flow"]["events"] if e["e"] == "rejoin"]
+        self.assertEqual(len(lobby), 1)  # kept from the lobby, before the start
+        self.assertLessEqual(lobby[0]["t"], 0)
+        self.assertEqual(qs.events, [])  # saved with the game: the next lobby starts afresh
+        self.assertTrue(detail["flow"]["has_timeline"])
+        self.assertIn("avg_sec", detail["items"][0])
+        self.assertEqual(detail["items"][0]["end_reason"], "timeout")
+        self.assertNotIn("events", server.history_overview(record))
+        self.assertIn("Prumerna reakce (s)", server.game_items_csv(record))
+
+    def test_old_records_without_flow_data_still_load(self):
+        detail = server.history_detail({"questions": [{"type": "choice", "players": 2, "answered": 1,
+                                                       "correct_count": 1}], "players": []})
+        self.assertEqual(detail["flow"]["ended"], {"unknown": 1})
+        self.assertFalse(detail["flow"]["has_timeline"])
+        self.assertIsNone(detail["items"][0]["avg_sec"])
+
+    def test_game_log_line_has_counts_but_no_names(self):
+        qs = self._game(n=1)
+        qs.room_key = "abcdef123456"
+        a = qs.register_player("Tajne Jmeno")
+        out = io.StringIO()
+        with mock.patch.object(server, "GAME_LOG", True), contextlib.redirect_stdout(out), \
+                mock.patch.object(server, "save_game_history"):
+            qs.host_action("start")
+            self._answer(qs, a)
+            qs.host_action("reveal")
+            qs.host_action("next")
+        log = out.getvalue()
+        self.assertIn("[game abcdef] start: 1 questions, 1 players", log)
+        self.assertIn("q1/1 ended (host): answered 1/1, waited for 1", log)
+        self.assertIn("finished: 1 players", log)
+        self.assertNotIn("Tajne", log)
+
+    def test_pages_use_the_game_flow(self):
+        host = (server.STATIC_DIR / "host.html").read_text(encoding="utf-8")
+        self.assertIn("['classrally.host', hostToken]", host)  # WebSocket, token not in the URL
+        self.assertIn("function fadeAudio(", host)              # music fades, never a hard cut
+        self.assertIn("scheduleQuestionMusic(state)", host)
+        self.assertNotIn("playStinger({", host)                 # no random stinger at the result
+        self.assertIn("handleAllAnswered(state)", host)
+        self.assertIn("state.question.top_answers", host)       # open answers on the projector
+        play = (server.STATIC_DIR / "play.html").read_text(encoding="utf-8")
+        self.assertIn("device_id: deviceId()", play)
+        self.assertIn("if (joining) return;", play)              # a double tap joins once
+        self.assertIn("e.code === 'name_taken'", play)
+        self.assertIn("state.answers_open_at", play)             # the countdown starts with the answers
+
+    def test_open_question_shows_the_class_answers_on_the_projector(self):
+        q = {"id": "o", "type": "openended", "prompt": "Port SSH?", "accepted_answers": ["22"]}
+        qs = server.QuizState([q])
+        qs.set_timing(get_ready_sec=0)
+        a, b = qs.register_player("A"), qs.register_player("B")
+        qs.host_action("start")
+        qs.submit_answer(a["player_id"], a["player_secret"], "22")
+        qs.submit_answer(b["player_id"], b["player_secret"], "23")
+        qs.host_action("reveal")
+        host_q = qs.public_state(host_view=True)["question"]
+        self.assertEqual(host_q["accepted_answers"], ["22"])
+        self.assertEqual(sorted(row[0] for row in host_q["top_answers"]), ["22", "23"])
+        self.assertNotIn("top_answers", qs.public_state(a["player_id"])["question"])
 
 
 if __name__ == "__main__":

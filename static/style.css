@@ -1765,6 +1765,37 @@ body.player-page[data-phase="finished"] .play-kpi .item.timer {
   box-shadow: none;
 }
 
+/* During a question and its result the projector shows the question: the
+   header shrinks to the join link, the PIN and the controls (1280×800
+   projectors otherwise cut off the answers C and D). */
+.host-page.in-game .host-intro .eyebrow,
+.host-page.in-game .host-intro h1,
+.host-page.in-game .host-intro [data-i18n="host.subheading"],
+.host-page.in-game .host-intro > .btn-row,
+.host-page.in-game #joinHint,
+.host-page.in-game #joinExtra,
+.host-page.in-game .class-switch {
+  display: none;
+}
+
+.host-page.in-game .host-hero {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.host-page.in-game .pin-row {
+  margin: 0;
+}
+
+.host-page.in-game .host-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* late joiners use the link and the PIN; the QR code comes back with the lobby */
+.host-page.in-game .host-qr-panel {
+  display: none;
+}
+
 .host-page details.music-controls {
   padding: 10px 16px;
 }

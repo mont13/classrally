@@ -30,8 +30,8 @@
  *   SFX.pop()               generic tiny UI click
  *
  *   Music (synthesized Kahoot-style quiz loop, lookahead-scheduled):
- *   SFX.music.start()
- *   SFX.music.stop()
+ *   SFX.music.start(fadeSec)    fade in (default 0.25 s)
+ *   SFX.music.stop(fadeSec)     fade out (default 0.12 s, click-free)
  *   SFX.music.setIntensity(v)   0..1 — 0 = calm ~112 BPM base; rising adds
  *                               hats/percussion and tempo (+20 BPM), ≥0.85
  *                               adds high octave arp + riser (final-seconds panic)
@@ -511,38 +511,58 @@
       } catch (_) {}
     }
 
-    function start() {
+    // A long fade-out keeps the scheduler running until the music is silent
+    let fading = null;   // { interval, timeout } of a fade-out in progress
+
+    function endFadeOut() {
+      if (!fading) return;
+      clearInterval(fading.interval);
+      clearTimeout(fading.timeout);
+      fading = null;
+    }
+
+    function start(fadeSec) {
       if (!ready() || playing) return;
       try {
+        endFadeOut();
         playing = true;
         step = 0;
         nextTime = ctx.currentTime + 0.06;
         const g = musicFade.gain;
         g.cancelScheduledValues(ctx.currentTime);
         g.setValueAtTime(Math.max(EPS, g.value), ctx.currentTime);
-        g.linearRampToValueAtTime(1, ctx.currentTime + 0.25);
+        g.linearRampToValueAtTime(1, ctx.currentTime + Math.max(0.25, Number(fadeSec) || 0));
         pump();
         timer = setInterval(pump, 25);
       } catch (_) { playing = false; }
     }
 
-    function stop() {
+    function stop(fadeSec) {
       if (!playing) return;
       playing = false;
-      if (timer) { clearInterval(timer); timer = null; }
+      const fade = Math.max(0.12, Number(fadeSec) || 0); // 0.12 s: click-free out
+      if (timer) {
+        const interval = timer;
+        timer = null;
+        if (fade > 0.2) {
+          fading = { interval: interval, timeout: setTimeout(endFadeOut, fade * 1000 + 60) };
+        } else {
+          clearInterval(interval);
+        }
+      }
       try {
         if (ctx && musicFade) {
           const g = musicFade.gain;
           g.cancelScheduledValues(ctx.currentTime);
           g.setValueAtTime(Math.max(EPS, g.value), ctx.currentTime);
-          g.linearRampToValueAtTime(0, ctx.currentTime + 0.12); // click-free out
+          g.linearRampToValueAtTime(0, ctx.currentTime + fade);
         }
       } catch (_) {}
     }
 
     return {
-      start: function () { try { start(); } catch (_) {} },
-      stop: function () { try { stop(); } catch (_) {} },
+      start: function (fadeSec) { try { start(fadeSec); } catch (_) {} },
+      stop: function (fadeSec) { try { stop(fadeSec); } catch (_) {} },
       setIntensity: function (v) { intensity = clamp01(v); },
       setVolume: function (v) {
         musicVol = clamp01(v);

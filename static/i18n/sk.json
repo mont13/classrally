@@ -92,6 +92,7 @@
     "rank_place": "{0}. miesto",
     "rank_leader": "Si na čele! 👑",
     "rank_behind": "Strácaš {0} b na {1} 🎯",
+    "rank_tied": "Rovnako bodov ako {0}",
     "streak_popup": "🔥 Séria {0}! (+{1} % bodov)",
     "streak_lost": "Séria je preč 💔",
     "finish_congrats": "Gratulujeme!",
@@ -110,7 +111,12 @@
     "pin_required": "Zadaj PIN hry.",
     "pin_guesses": "Príliš veľa pokusov o PIN. Skús to o pár minút.",
     "finish_points": "Tvoje body: {0}",
-    "kicked_notice": "Učiteľ ťa odobral z hry. Ak máš hrať ďalej, pripoj sa znova (napríklad s inou prezývkou)."
+    "kicked_notice": "Učiteľ ťa odobral z hry. Ak máš hrať ďalej, pripoj sa znova (napríklad s inou prezývkou).",
+    "name_taken": "Túto prezývku už v hre niekto má. Zvoľ inú.",
+    "inactive_note": "💤 Hra na teba teraz nečaká – odpovedz a si späť.",
+    "all_answered": "Všetci odpovedali – výsledok o chvíľu!",
+    "reaction_vs_class": "⏱ Tvoja reakcia {0} s · trieda priemerne {1} s",
+    "reaction_mine": "⏱ Tvoja reakcia {0} s"
   },
   "fun": {
     "correct": {
@@ -237,7 +243,15 @@
     "kick": "Vyhodiť",
     "kick_title": "Odobrať hráča „{0}“ z hry",
     "kick_confirm": "Vyhodiť hráča „{0}“ z hry?\n\nJeho body sa zmažú a na mobile uvidí, že ho učiteľ odobral. Môže sa znova pripojiť rovnakým PINom – ak nemá, zmeň PIN tlačidlom „Nová trieda“.",
-    "music_panel": "Hudba a zvukové efekty"
+    "music_panel": "Hudba a zvukové efekty",
+    "all_answered_banner": "Všetci odpovedali!",
+    "avg_reaction": "priemerná reakcia {0} s",
+    "not_waited": "nečaká sa na {0}",
+    "inactive_toast": "💤 {0} nereaguje – hra naň už nečaká",
+    "inactive_title": "💤 Nereagujú – hra na nich nečaká:",
+    "inactive_player": "{0} ({1}× bez odpovede)",
+    "keep_waiting": "Čakať naň",
+    "offline_player": "{0}: zariadenie nie je pripojené"
   },
   "exam": {
     "page_title": "ClassRally - Písomka",
@@ -611,7 +625,29 @@
     "exam_items_overlay": "Rozbor otázok písomky",
     "exam_items_hint": "Rozbor sa otvorí cez celú obrazovku, bez mien a známok, takže ho môžete premietnuť triede.",
     "exact_match_label": "Presná zhoda (bez tolerancie preklepov, napr. pri príkazoch a číslach portov)",
-    "activate_running_confirm": "Práve beží hra. Aktivácia inej sady rozohranú hru ukončí a vráti do čakárne (hráči zostanú pripojení, body z tohto kola sa stratia). Pokračovať?"
+    "activate_running_confirm": "Práve beží hra. Aktivácia inej sady rozohranú hru ukončí a vráti do čakárne (hráči zostanú pripojení, body z tohto kola sa stratia). Pokračovať?",
+    "th_avg_reaction": "Ø reakcia",
+    "th_ended": "Koniec otázky",
+    "th_missed": "Bez odpovede",
+    "ended_all_answered": "všetci odpovedali",
+    "ended_timeout": "vypršal čas",
+    "ended_host": "ukázal učiteľ",
+    "ended_skipped": "preskočené",
+    "flow_title": "Priebeh hry",
+    "flow_reaction": "Priemerná reakcia {0} (medián {1}, najrýchlejšia {2}).",
+    "flow_early": "Skôr skončilo, lebo všetci odpovedali: {0} z {1} otázok.",
+    "flow_inactive_players": "Prestali reagovať: {0}.",
+    "flow_join": "{0} sa pripojil(a) počas hry",
+    "flow_rejoin": "{0} sa pripojil(a) znova z rovnakého zariadenia",
+    "flow_renamed": "{0} sa premenoval(a) na {1}",
+    "flow_name_taken": "Prezývka {0} už bola obsadená – odmietnuté",
+    "flow_inactive": "{0} nereaguje ({1}× bez odpovede) – hra naň prestala čakať",
+    "flow_active_again": "{0} znova odpovedá",
+    "flow_keep_waiting": "Učiteľ: čakať na {0}",
+    "flow_kick": "Učiteľ vyhodil {0}",
+    "flow_offline": "{0}: zariadenie sa odpojilo",
+    "flow_online": "{0}: zariadenie je späť",
+    "flow_before_start": "pred štartom"
   },
   "profile": {
     "page_title": "ClassRally – Môj profil",

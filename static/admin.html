@@ -56,6 +56,8 @@
       font-weight: 800; font-size: 0.85rem; color: #0f172a; }
     .hotspot-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px;
       background: #dc2626; color: #fff; font-size: 0.75rem; font-weight: 800; vertical-align: middle; }
+    .flow-summary { margin: 4px 0 8px; }
+    .flow-events td:first-child { white-space: nowrap; color: #475569; }
     .matrix { overflow-x: auto; }
     .matrix td.cell { text-align: center; font-weight: 900; }
     .cell.ok { color: #15803d; }
@@ -879,6 +881,66 @@
       return String(c);
     }
 
+    function secText(v) {
+      return v === null || v === undefined ? '—' : String(v).replace('.', ',') + ' s';
+    }
+
+    const ENDED_FALLBACK = { all_answered: 'všichni odpověděli', timeout: 'vypršel čas',
+                             host: 'ukázal učitel', skipped: 'přeskočeno' };
+    function endedText(it) {
+      if (!it.end_reason) return '—';
+      const label = tr('admin.ended_' + it.end_reason, ENDED_FALLBACK[it.end_reason] || it.end_reason);
+      return it.duration_sec === null || it.duration_sec === undefined ? label : `${label} (${secText(it.duration_sec)})`;
+    }
+
+    const FLOW_FALLBACK = {
+      join: '{0} se připojil(a) během hry', rejoin: '{0} se připojil(a) znovu ze stejného zařízení',
+      renamed: '{0} se přejmenoval(a) na {1}', name_taken: 'Přezdívka {0} už byla obsazená – odmítnuto',
+      inactive: '{0} nereaguje ({1}× bez odpovědi) – hra na něj přestala čekat',
+      active_again: '{0} zase odpovídá', keep_waiting: 'Učitel: čekat na {0}', kick: 'Učitel vyhodil {0}',
+      offline: '{0}: zařízení se odpojilo', online: '{0}: zařízení je zpět',
+    };
+    function flowEventText(e) {
+      if (e.e === 'rejoin' && e.renamed_from) {
+        return tr('admin.flow_renamed', FLOW_FALLBACK.renamed, e.renamed_from, e.player);
+      }
+      const key = e.e;
+      return tr('admin.flow_' + key, FLOW_FALLBACK[key] || key, e.player || e.name || '', e.missed ?? '');
+    }
+
+    // How the game went: reaction, how questions ended, who stopped reacting
+    function renderGameFlow(box, flow, items) {
+      if (!flow || !flow.has_timeline) return;
+      box.appendChild(el('h5', null, tr('admin.flow_title', 'Průběh hry')));
+      const scoredQ = items.length;
+      const early = (flow.ended && flow.ended.all_answered) || 0;
+      const r = flow.reaction || {};
+      const parts = [];
+      if (r.avg_sec !== null && r.avg_sec !== undefined) {
+        parts.push(tr('admin.flow_reaction', 'Průměrná reakce {0} (medián {1}, nejrychlejší {2}).',
+          secText(r.avg_sec), secText(r.median_sec), secText(r.fastest_sec)));
+      }
+      parts.push(tr('admin.flow_early', 'Dřív skončilo, protože všichni odpověděli: {0} z {1} otázek.', early, scoredQ));
+      if ((flow.inactive_players || []).length) {
+        parts.push(tr('admin.flow_inactive_players', 'Přestali reagovat: {0}.', flow.inactive_players.join(', ')));
+      }
+      box.appendChild(el('p', 'flow-summary', parts.join(' ')));
+      const events = flow.events || [];
+      if (!events.length) return;
+      const table = el('table', 'flow-events');
+      const tbody = el('tbody');
+      events.forEach((e) => {
+        const row = el('tr');
+        const t = e.t === null || e.t === undefined ? '' : e.t < 0 ? tr('admin.flow_before_start', 'před startem')
+          : `${Math.floor(e.t / 60)}:${String(Math.floor(e.t % 60)).padStart(2, '0')}`;
+        row.appendChild(el('td', null, t));
+        row.appendChild(el('td', null, flowEventText(e)));
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      box.appendChild(table);
+    }
+
     function renderGameAnalysis(box, detail) {
       box.innerHTML = '';
       const items = detail.items || [];
@@ -891,7 +953,8 @@
       const head = el('tr');
       ['#', tr('admin.th_question', 'Otázka'), tr('admin.th_success', 'Úspěšnost'), tr('admin.th_correct', 'Správně'),
        tr('admin.th_answered', 'Odpovědělo'), tr('admin.th_top_wrong', 'Nejčastější chyba'),
-       tr('admin.th_avg_time', 'Ø čas správných')].forEach(t => head.appendChild(el('th', null, t)));
+       tr('admin.th_avg_time', 'Ø čas správných'), tr('admin.th_avg_reaction', 'Ø reakce'),
+       tr('admin.th_ended', 'Konec otázky')].forEach(t => head.appendChild(el('th', null, t)));
       const thead = el('thead');
       thead.appendChild(head);
       table.appendChild(thead);
@@ -911,12 +974,14 @@
         row.appendChild(el('td', null, scored ? `${it.correct}/${it.players}` : '—'));
         row.appendChild(el('td', null, `${it.answered}/${it.players}`));
         row.appendChild(el('td', null, it.top_wrong || '—'));
-        row.appendChild(el('td', null, it.avg_sec_correct === null || it.avg_sec_correct === undefined
-          ? '—' : String(it.avg_sec_correct).replace('.', ',') + ' s'));
+        row.appendChild(el('td', null, secText(it.avg_sec_correct)));
+        row.appendChild(el('td', null, secText(it.avg_sec)));
+        row.appendChild(el('td', null, endedText(it)));
         tbody.appendChild(row);
       });
       table.appendChild(tbody);
       box.appendChild(table);
+      renderGameFlow(box, detail.flow, items);
 
       const questions = detail.questions || [];
       const scoredQ = questions.map((q, i) => ({ q, i })).filter(x => !['poll', 'wordcloud', 'slide'].includes(x.q.type));
@@ -925,7 +990,8 @@
       const wrap = el('div', 'matrix');
       const m = el('table');
       const mh = el('tr');
-      ['#', tr('admin.th_name', 'Jméno'), tr('admin.th_points', 'Body')].forEach(t => mh.appendChild(el('th', null, t)));
+      ['#', tr('admin.th_name', 'Jméno'), tr('admin.th_points', 'Body'), tr('admin.th_avg_reaction', 'Ø reakce'),
+       tr('admin.th_missed', 'Bez odpovědi')].forEach(t => mh.appendChild(el('th', null, t)));
       scoredQ.forEach(({ q }) => {
         const th = el('th', null, 'O' + ((q.index ?? 0) + 1));
         th.title = q.prompt;
@@ -938,8 +1004,10 @@
       (detail.players || []).forEach(p => {
         const row = el('tr');
         row.appendChild(el('td', null, String(p.rank)));
-        row.appendChild(el('td', null, p.name));
+        row.appendChild(el('td', null, p.name + (p.inactive ? ' 💤' : '')));
         row.appendChild(el('td', null, String(p.score)));
+        row.appendChild(el('td', null, secText(p.avg_sec)));
+        row.appendChild(el('td', null, p.missed === undefined ? '—' : String(p.missed)));
         scoredQ.forEach(({ q, i }) => {
           const a = (p.answers || [])[i];
           let cls = 'none', mark = '–';

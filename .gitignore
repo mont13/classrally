@@ -24,6 +24,8 @@ static/audio/*.ogg
 static/audio/*.wav
 static/audio/*.m4a
 static/audio/*.aac
+# Loudness of the audio files above (measure_audio_levels.py)
+static/audio/levels.json
 
 # IDE / OS
 .vscode/
