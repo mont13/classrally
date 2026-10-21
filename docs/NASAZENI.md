@@ -205,10 +205,13 @@ Aplikaci nikdy nespoustejte pod rootem.
 - Hesla: ucitel min. 8 znaku, zak min. 4; ukladaji se jako solene PBKDF2-SHA256 (stare
   databaze s nesolenym SHA-256 se prevedou samy pri dalsim prihlaseni). Pro heslo portalu
   pouzijte dlouhe nahodne heslo (napr. `openssl rand -base64 24`).
-- Prihlaseni do uctu: na 5 minut se zablokuje po 8 spatnych pokusech na prezdivku z jedne IP,
+- Prihlaseni do uctu: prezdivkou, nebo potvrzenym e-mailem uctu (nepotvrzena adresa se
+  neprihlasi). Na 5 minut se zablokuje po 8 spatnych pokusech na prezdivku z jedne IP,
   po 40 na prezdivku celkem nebo po 50 z jedne IP (utocnik z jedne adresy tak ucitele
-  nezamkne pro ostatni).
-- Zapomenute heslo: na `/reset` si ho obnovi kazdy, kdo ma u uctu **potvrzeny e-mail**
+  nezamkne pro ostatni). Pokusy pres e-mail se pocitaji zvlast: spolecny zamek by
+  prozradil, ke kteremu uctu adresa patri.
+- Zapomenute heslo: na `/reset` (odkaz „Zapomenute heslo?“ je u kazdeho prihlaseni:
+  `/admin`, `/host`, `/profile`, uvodni stranka) si ho obnovi kazdy, kdo ma u uctu **potvrzeny e-mail**
   (odkaz plati 60 minut, jen jednou, a odhlasi vsechna zarizeni). Bez e-mailu heslo nastavi
   ucitel (Uzivatele → Reset hesla). E-mail se nastavuje pri registraci nebo v profilu a
   potvrzuje odkazem z e-mailu. Vyzaduje nastavene odesilani posty (kap. 2.6).

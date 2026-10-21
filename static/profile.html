@@ -95,6 +95,7 @@
     /* auto-join banner */
     .autojoin-banner { background: #dcfce7; border: 2px solid #16a34a; border-radius: 12px;
       padding: 14px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+    .autojoin-banner.hide { display: none; }  /* display:flex above would beat the global .hide */
     .autojoin-banner .autojoin-icon { font-size: 1.6rem; flex-shrink: 0; }
     .autojoin-banner .autojoin-text strong { display: block; color: #166534; font-size: 1.05rem; }
     .autojoin-banner .autojoin-text span { font-size: 0.92rem; color: #166534; }
@@ -123,8 +124,8 @@
 
       <div id="tab-login" class="tab-content active">
         <div class="form-group">
-          <label for="loginNick" data-i18n="profile.label_nickname"></label>
-          <input id="loginNick" type="text" data-i18n-placeholder="profile.nick_placeholder" maxlength="24" />
+          <label for="loginNick" data-i18n="profile.label_login"></label>
+          <input id="loginNick" type="text" data-i18n-placeholder="profile.login_placeholder" autocomplete="username" maxlength="254" />
         </div>
         <div class="form-group">
           <label for="loginPass" data-i18n="profile.label_password"></label>
@@ -334,7 +335,11 @@
       if (body) cfg.body = JSON.stringify(body);
       const res = await fetch(path, cfg);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || i18n.t('profile.request_failed'));
+      if (!res.ok) {
+        const err = new Error(data.error || i18n.t('profile.request_failed'));
+        err.status = res.status;
+        throw err;
+      }
       return data;
     }
 
@@ -362,14 +367,15 @@
       var password = document.getElementById('loginPass').value;
       var err = document.getElementById('loginErr');
       err.textContent = '';
-      if (!nickname || !password) { err.textContent = i18n.t('profile.fill_fields'); return; }
+      if (!nickname || !password) { err.textContent = i18n.t('profile.login_fill_fields'); return; }
       try {
         var data = await api('/api/auth/login', 'POST', { nickname: nickname, password: password });
         localStorage.setItem(TOKEN_KEY, data.token);
         currentUser = data.user;
         showProfile();
       } catch (e) {
-        err.textContent = e.message;
+        err.textContent = e.status === 401 ? i18n.t('host.login_error')
+          : e.status === 429 ? i18n.t('account.too_many') : e.message;
       }
     }
 
@@ -424,7 +430,7 @@
       var msg = document.getElementById('chpwMsg');
       msg.textContent = '';
       msg.style.color = '';
-      if (!oldPw || !newPw) { msg.textContent = i18n.t('profile.fill_fields'); return; }
+      if (!oldPw || !newPw) { msg.textContent = i18n.t('profile.chpw_fill_fields'); return; }
       if (newPw !== newPw2) { msg.textContent = i18n.t('profile.passwords_mismatch'); return; }
       try {
         await api('/api/auth/change-password', 'POST', { old_password: oldPw, new_password: newPw, lang: i18n.getLang() });

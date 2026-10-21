@@ -3027,6 +3027,51 @@ class TestEmailAndTokens(_DBTestBase):
         self.db.verify_email_with_token(raw2)
         self.assertEqual(self.db.find_user_for_reset("dana@example.com")["id"], self.user["id"])
 
+    def test_login_with_confirmed_address(self):
+        self.assertIsNone(self.db.authenticate_user("dana@example.com", "danapass"))  # not confirmed yet
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        user = self.db.authenticate_user(" DANA@example.com ", "danapass")
+        self.assertEqual(user["id"], self.user["id"])
+        self.assertNotIn("password_hash", user)
+        self.assertIsNone(self.db.authenticate_user("dana@example.com", "wrong"))
+        self.assertEqual(self.db.authenticate_user("Dana", "danapass")["id"], self.user["id"])
+
+    def test_nickname_shaped_like_address_still_logs_in(self):
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        other = self.db.create_user("dana@example.com", "other123", "student")
+        # Dana's password opens Dana's account, the other account keeps its own login
+        self.assertEqual(self.db.authenticate_user("dana@example.com", "danapass")["id"], self.user["id"])
+        self.assertEqual(self.db.authenticate_user("dana@example.com", "other123")["id"], other["id"])
+
+    def test_address_login_work_does_not_reveal_accounts(self):
+        # An address always costs two password checks, a nickname one, whatever exists:
+        # the response time must not tell whether someone has the address confirmed.
+        raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
+        self.db.verify_email_with_token(raw)
+        self.db.create_user("dana@example.com", "other123", "student")
+        self.db.create_user("solo@example.com", "solo1234", "student")
+        calls = []
+        orig = self.db._verify_password
+        self.db._verify_password = lambda pw, stored: calls.append(stored) or orig(pw, stored)
+        counts = {}
+        try:
+            for label, login, password in (
+                    ("confirmed address + look-alike nickname", "dana@example.com", "other123"),
+                    ("confirmed address, right password", "dana@example.com", "danapass"),
+                    ("look-alike nickname only", "solo@example.com", "solo1234"),
+                    ("unknown address", "nobody@example.com", "whatever"),
+                    ("nickname", "Dana", "wrong")):
+                calls.clear()
+                self.db.authenticate_user(login, password)
+                counts[label] = len(calls)
+        finally:
+            self.db._verify_password = orig
+        self.assertEqual(counts, {"confirmed address + look-alike nickname": 2,
+                                  "confirmed address, right password": 2,
+                                  "look-alike nickname only": 2, "unknown address": 2, "nickname": 1})
+
     def test_invite_for_confirmed_address_rejected(self):
         raw = self.db.create_user_token("verify", user_id=self.user["id"], email="dana@example.com")
         self.db.verify_email_with_token(raw)
@@ -3308,6 +3353,46 @@ class TestAccountRecoveryHTTP(_AccountHTTPBase):
             code, body = self._get(path)
             self.assertEqual(code, 200)
             self.assertIn(b"account.js", body)
+
+
+class TestLoginByEmailHTTP(_AccountHTTPBase):
+    """The login field takes the nickname or the account's confirmed e-mail."""
+
+    def _teacher_with_address(self, nick, address):
+        user = self.db.create_user(nick, "teachpass1", "teacher", email=address)
+        raw = self.db.create_user_token("verify", user_id=user["id"], email=address)
+        self.db.verify_email_with_token(raw)
+        return user
+
+    def test_login_with_address(self):
+        address = "ema." + "x" * 30 + "@example.com"  # longer than any nickname may be
+        user = self._teacher_with_address("Ema", address)
+        code, r = self._post("/api/auth/login", {"nickname": address.upper(), "password": "teachpass1"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual((r["user"]["id"], r["user"]["role"]), (user["id"], "teacher"))
+        code, _ = self._post("/api/auth/login", {"nickname": address, "password": "wrong"})
+        self.assertEqual(code, 401)
+
+    def test_lockout_does_not_tie_address_to_nickname(self):
+        # Failures with the address lock the address only: a lock carried over to the
+        # nickname would tell a stranger whose address it is (no account enumeration).
+        self._teacher_with_address("Filip", "filip@example.com")
+        for _ in range(server.LOGIN_FAIL_NICK_IP.max_failures):
+            code, _ = self._post("/api/auth/login", {"nickname": "filip@example.com", "password": "wrong"})
+            self.assertEqual(code, 401)
+        code, r = self._post("/api/auth/login", {"nickname": "Filip@example.com", "password": "teachpass1"})
+        self.assertEqual((code, r.get("code")), (429, "rate_limited"))
+        code, _ = self._post("/api/auth/login", {"nickname": "Filip", "password": "wrong"})
+        self.assertEqual(code, 401)
+
+    def test_login_forms_offer_reset_and_fit_an_address(self):
+        import re
+        for page, field in (("admin.html", "loginNick"), ("host.html", "hostLoginNick"),
+                            ("profile.html", "loginNick")):
+            html = (Path(server.STATIC_DIR) / page).read_text(encoding="utf-8")
+            self.assertIn('href="/reset"', html, page)
+            tag = re.search(rf'<input[^>]*id="{field}"[^>]*>', html).group(0)
+            self.assertIn('maxlength="254"', tag, page)
 
 
 class TestAIConfigHTTP(_AccountHTTPBase):

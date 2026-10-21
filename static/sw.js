@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classrally-v13';
+const CACHE_NAME = 'classrally-v14';
 
 const PRE_CACHE = [
   '/play',

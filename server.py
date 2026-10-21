@@ -5425,14 +5425,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/auth/login":
+                # "nickname" is the nickname or the account's verified e-mail address
                 nickname = str(data.get("nickname", ""))
                 password = str(data.get("password", ""))
-                if not nickname.strip() or len(nickname.strip()) > 24 or len(password) > 1024:
-                    # cannot be a real account (nicknames are 1-24 chars): answer like a
-                    # wrong password, without creating limiter keys or hashing megabytes
+                max_len = 254 if "@" in nickname else 24
+                if not nickname.strip() or len(nickname.strip()) > max_len or len(password) > 1024:
+                    # cannot be a real account (nicknames are 1-24 chars, addresses up to
+                    # 254): answer like a wrong password, without creating limiter keys
+                    # or hashing megabytes
                     self._json_response({"error": "Neplatne prihlasovaci udaje"}, status=401)
                     return
                 ip_key = self._get_client_ip()
+                # Keyed by what was typed: failures with the address never lock the
+                # nickname, otherwise the lock would tell a stranger whose address it is.
                 nick_key = nickname.strip().lower()
                 pair_key = f"{nick_key}|{ip_key}"
                 if (LOGIN_FAIL_IP.blocked(ip_key) or LOGIN_FAIL_NICK_IP.blocked(pair_key)

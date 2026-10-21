@@ -280,8 +280,9 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 
 - **Pristupovy klic** — server pri startu vygeneruje nahodny klic pro ovladani hry. Zobrazen v konzoli a v ucitelskem portalu (Pokrocile nastaveni).
 - **Heslo portalu** — volitelne (`--admin-password`), SHA-256, session tokeny (8h), rate limiting.
-- **Ucty** — hesla solena PBKDF2-SHA256 (ucitel min. 8 znaku), limit neuspesnych prihlaseni,
-  obnova zapomenuteho hesla potvrzenym e-mailem (`/reset`), pozvanky ucitelu e-mailem,
+- **Ucty** — hesla solena PBKDF2-SHA256 (ucitel min. 8 znaku), prihlaseni prezdivkou nebo
+  potvrzenym e-mailem, limit neuspesnych prihlaseni, obnova zapomenuteho hesla potvrzenym
+  e-mailem (`/reset`, odkaz „Zapomenute heslo?“ u kazdeho prihlaseni), pozvanky ucitelu e-mailem,
   nouzove heslo `python3 server.py --set-password <prezdivka>`.
 - **Ochrana hracu** — kazdy hrac ma tajny identifikator, nelze odpovedet za jineho.
 - **XSS prevence** — vsude DOM API, zadny innerHTML s uzivatelskymi daty.

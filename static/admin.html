@@ -284,8 +284,8 @@
       <h1 data-i18n="admin.login_title">Prihlaseni ucitele</h1>
       <p class="muted" data-i18n="admin.login_subtitle">Prihlaste se ucitelskym uctem.</p>
       <div class="form-group">
-        <label for="loginNick" data-i18n="admin.login_nick_label">Prezdivka</label>
-        <input id="loginNick" type="text" data-i18n-placeholder="admin.login_nick_placeholder" placeholder="Prezdivka..." autocomplete="username" />
+        <label for="loginNick" data-i18n="admin.login_nick_label">Prezdivka nebo e-mail</label>
+        <input id="loginNick" type="text" data-i18n-placeholder="admin.login_nick_placeholder" placeholder="Prezdivka nebo e-mail..." autocomplete="username" maxlength="254" />
       </div>
       <div class="form-group">
         <label for="loginPass" data-i18n="admin.login_password_label">Heslo</label>
@@ -293,7 +293,8 @@
       </div>
       <button class="btn good" id="btnLogin" data-i18n="admin.login_btn">Prihlasit se</button>
       <p id="loginErr" style="color:#b91c1c;font-weight:700;margin-top:10px;"></p>
-      <p style="margin-top:12px;"><a href="/" style="color:var(--accent);" data-i18n="admin.login_back">Zpet na vyber role</a></p>
+      <p style="margin-top:12px;"><a href="/reset" style="color:var(--accent);" data-i18n="admin.forgot_link">Zapomenute heslo?</a>
+        &nbsp;·&nbsp; <a href="/" style="color:var(--accent);" data-i18n="admin.login_back">Zpet na vyber role</a></p>
     </section>
 
     <section id="adminPanel" class="hide">
@@ -1120,6 +1121,8 @@
           body: JSON.stringify({ nickname: nick, password: pass }),
         });
         const d = await r.json();
+        if (r.status === 401) { err.textContent = i18n.t('host.login_error'); return; }
+        if (r.status === 429) { err.textContent = i18n.t('account.too_many'); return; }
         if (!r.ok) { err.textContent = d.error || i18n.t('admin.error'); return; }
         if (d.user && d.user.role !== 'teacher') {
           err.textContent = i18n.t('admin.login_not_teacher');

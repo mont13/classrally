@@ -170,7 +170,7 @@
       <h2 data-i18n="host.login_title">Prihlaseni ucitele</h2>
       <p data-i18n="host.login_desc">Prihlaste se ucitelskym uctem.</p>
       <div id="hostLoginError" class="login-error"></div>
-      <input type="text" id="hostLoginNick" data-i18n-placeholder="host.login_nick_placeholder" placeholder="Prezdivka" autocomplete="username" autofocus />
+      <input type="text" id="hostLoginNick" data-i18n-placeholder="host.login_nick_placeholder" placeholder="Prezdivka nebo e-mail" autocomplete="username" maxlength="254" autofocus />
       <input type="password" id="hostLoginPass" data-i18n-placeholder="host.login_pass_placeholder" placeholder="Heslo" autocomplete="current-password" />
       <button class="btn good" id="hostLoginBtn" style="width:100%;" data-i18n="host.login_btn">Prihlasit se</button>
       <p style="margin-top:16px;"><a href="/reset" style="color:var(--accent);" data-i18n="host.forgot_link">Zapomenute heslo?</a>
@@ -2341,7 +2341,8 @@
                 overlay.classList.add('hidden');
                 resolve();
               } else {
-                errorEl.textContent = data.error || i18n.t('host.login_error');
+                errorEl.textContent = resp.status === 429 ? i18n.t('account.too_many')
+                  : (resp.status === 401 ? i18n.t('host.login_error') : (data.error || i18n.t('host.login_error')));
                 errorEl.style.display = 'block';
               }
             } catch (_) {

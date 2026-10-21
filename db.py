@@ -369,22 +369,40 @@ def create_user(nickname: str, password: str, role: str = "student",
         conn.close()
 
 
-def authenticate_user(nickname: str, password: str) -> dict | None:
+def authenticate_user(login: str, password: str) -> dict | None:
     """Check credentials. Returns user dict or None.
 
+    ``login`` is a nickname or the account's verified e-mail address (an
+    unverified address could belong to anyone, so it never logs in). A
+    nickname that contains "@" still works: the address is tried first.
     A password stored in the old unsalted format is re-hashed on success.
+
+    The work never depends on which accounts exist: a nickname costs one
+    password check, an address always two (address owner, then a nickname
+    spelled like it), missing ones against a dummy hash. Otherwise the
+    response time would tell whether some account has that address confirmed.
     """
+    login = (login or "").strip()
+    columns = "id, nickname, role, total_score, games_played, avatar_id, password_hash"
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT id, nickname, role, total_score, games_played, avatar_id, password_hash "
-            "FROM users WHERE nickname = ? COLLATE NOCASE",
-            (nickname.strip(),),
+        slots = []  # nickname and verified address are unique: at most one row each
+        if "@" in login:
+            slots.append(conn.execute(
+                f"SELECT {columns} FROM users WHERE email_verified_at IS NOT NULL "
+                "AND email IS NOT NULL AND email = ? COLLATE NOCASE",
+                (login.lower(),),
+            ).fetchone())
+        by_nick = conn.execute(
+            f"SELECT {columns} FROM users WHERE nickname = ? COLLATE NOCASE", (login,),
         ).fetchone()
-        if not row:
-            _verify_password(password, _dummy_hash())  # same cost as a real check
-            return None
-        if not _verify_password(password, row["password_hash"]):
+        slots.append(None if by_nick and slots and slots[0] and slots[0]["id"] == by_nick["id"] else by_nick)
+        row = None
+        for candidate in slots:  # no early exit: every slot costs one check
+            ok = _verify_password(password, candidate["password_hash"] if candidate else _dummy_hash())
+            if ok and candidate is not None and row is None:
+                row = candidate
+        if row is None:
             return None
         if _needs_rehash(row["password_hash"]):
             conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
