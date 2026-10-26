@@ -718,6 +718,25 @@ class TestHTTPIntegration(unittest.TestCase):
         self.assertEqual(data["version"], server.APP_VERSION)
         self.assertEqual(server.APP_VERSION, "3.0")
 
+    def test_my_summary_needs_my_secret(self):
+        r1 = self._post("/api/register", {"name": "S1"})
+        r2 = self._post("/api/register", {"name": "S2"})
+        mine = {"player_id": r1["player_id"], "player_secret": r1["player_secret"]}
+        self.assertFalse(self._post("/api/my-summary", mine)["available"])  # lobby
+        self._host_post("/api/host/action", {"action": "start"})
+        self._post("/api/submit", dict(mine, choice=1))
+        self._host_post("/api/host/action", {"action": "reveal"})
+        self._host_post("/api/host/action", {"action": "next"})
+        self._host_post("/api/host/action", {"action": "reveal"})
+        self._host_post("/api/host/action", {"action": "next"})
+        data = self._post("/api/my-summary", mine)
+        self.assertTrue(data["available"])
+        self.assertEqual([r["result"] for r in data["questions"]], ["ok", "missed"])
+        self.assertEqual(data["questions"][0]["answer"], ["B"])
+        with self.assertRaises(HTTPError) as ctx:
+            self._post("/api/my-summary", {"player_id": r1["player_id"], "player_secret": r2["player_secret"]})
+        self.assertEqual(ctx.exception.code, 403)
+
     def test_register_and_state(self):
         reg = self._post("/api/register", {"name": "TestPlayer"})
         self.assertIn("player_id", reg)
@@ -4923,6 +4942,47 @@ class TestGameAnalysis(unittest.TestCase):
         self.assertNotIn("correct_count", poll)
         self.assertEqual(poll["counts"], [2, 0])
         self.assertEqual(open_["top_answers"], [["java", 1, False], ["python", 1, True]])
+
+    def test_player_summary_shows_only_my_answers_after_the_game(self):
+        ema, jan, olga = (self.p[n] for n in ("Ema", "Jan", "Olga"))
+        self.assertEqual(self.q.player_summary(ema["player_id"], ema["player_secret"]),
+                         {"available": False, "questions": []})  # not before the end
+        self._play()
+        mine = self.q.player_summary(ema["player_id"], ema["player_secret"])
+        self.assertTrue(mine["available"])
+        # the poll is not in the summary, the numbers stay those of the game
+        self.assertEqual([r["number"] for r in mine["questions"]], [1, 2, 4])
+        self.assertEqual(mine["correct_count"], 3)
+        first = mine["questions"][0]
+        self.assertEqual((first["answer"], first["correct"], first["result"]), (["53"], ["53"], "ok"))
+        self.assertEqual(first["explanation"], "DNS = 53")
+        theirs = self.q.player_summary(jan["player_id"], jan["player_secret"])
+        self.assertEqual([r["result"] for r in theirs["questions"]], ["wrong", "partial", "wrong"])
+        self.assertEqual(theirs["questions"][0]["answer"], ["110"])
+        self.assertEqual(theirs["questions"][1]["correct"], ["2", "4"])
+        self.assertEqual(theirs["questions"][2]["correct"], ["Python"])
+        self.assertNotIn("results", json.dumps(theirs))
+        missed = self.q.player_summary(olga["player_id"], olga["player_secret"])
+        self.assertEqual({r["result"] for r in missed["questions"]}, {"missed"})
+        self.assertEqual(missed["correct_count"], 0)
+        with self.assertRaises(PermissionError):
+            self.q.player_summary(jan["player_id"], ema["player_secret"])
+
+    def test_player_summary_ordering_in_my_order(self):
+        q = server.QuizState([{"id": "r", "type": "ordering", "prompt": "Seradte",
+                               "items": ["prvni", "druhy", "treti"]}])
+        q.get_ready_sec = 0
+        r = q.register_player("A")
+        q.host_action("start")
+        order = q._item_order_locked(0)
+        shown = [q.questions[0]["items"][i] for i in order] if order else q.questions[0]["items"]
+        # answer with the display positions of: treti, prvni, druhy
+        q.submit_answer(r["player_id"], r["player_secret"], [shown.index(t) for t in ("treti", "prvni", "druhy")])
+        q.host_action("next")
+        row = q.player_summary(r["player_id"], r["player_secret"])["questions"][0]
+        self.assertEqual(row["answer"], ["treti", "prvni", "druhy"])
+        self.assertEqual(row["correct"], ["prvni", "druhy", "treti"])
+        self.assertEqual(row["result"], "partial")
 
     def test_open_answers_follow_the_grading_verdict(self):
         q = server.QuizState([

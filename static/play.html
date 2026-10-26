@@ -253,6 +253,20 @@
     .awards-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
       border-radius: 10px; background: var(--pp-card); color: var(--pp-ink); border: 1px solid var(--pp-line); margin: 4px 0;
       font-size: 0.95rem; text-align: left; flex-wrap: wrap; }
+    /* --- Finished screen: my answers, question by question --- */
+    .my-summary { margin: 12px 0; text-align: left; color: var(--pp-ink); }
+    .my-summary > summary { font-weight: 900; font-size: 1.05rem; cursor: pointer; padding: 12px 14px;
+      border-radius: 12px; background: var(--pp-soft); border: 1px solid var(--pp-line); min-height: 44px;
+      box-sizing: border-box; }
+    .my-summary-row { padding: 10px 14px; margin: 8px 0 0; border-radius: 12px; background: var(--pp-card);
+      border: 1px solid var(--pp-line); border-left-width: 6px; overflow-wrap: anywhere; line-height: 1.4; }
+    .my-summary-row.ok { border-left-color: #16a34a; }
+    .my-summary-row.partial { border-left-color: #ca8a04; }
+    .my-summary-row.wrong { border-left-color: #dc2626; }
+    .my-summary-row.missed { border-left-color: var(--pp-line-strong); }
+    .my-summary-q { font-weight: 800; margin-bottom: 4px; }
+    .my-summary-right { font-weight: 700; color: var(--pp-ok-ink); }
+    .my-summary-why { color: var(--pp-muted); font-size: 0.92rem; margin-top: 4px; }
     /* --- Avatar picker (join screen) --- */
     .avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
       gap: 8px; margin: 8px 0 4px; }
@@ -267,7 +281,7 @@
        would override it at equal specificity. Re-assert .hide as the LAST
        rule, plus id.class rules for the toggled elements (same pattern as
        host.html #getReadyOverlay.hide). */
-    #getReadyOverlay.hide, #doubleChip.hide, #rankCard.hide, #finishCard.hide,
+    #getReadyOverlay.hide, #doubleChip.hide, #rankCard.hide, #finishCard.hide, #mySummary.hide,
     #streakBadge.hide, #teamBadge.hide, #loggedInBadge.hide,
     #avatarPickerWrap.hide { display: none; }
     .hide { display: none; }
@@ -370,6 +384,10 @@
       </div>
       <div id="finishCard" class="finish-card hide"></div>
       <div id="podium" class="hide"></div>
+      <details id="mySummary" class="my-summary hide" open>
+        <summary id="mySummaryTitle"></summary>
+        <div id="mySummaryList"></div>
+      </details>
       <p id="finalHint" class="help play-final-hint hide" data-i18n="play.answer_final">Odpověď je po odeslání finální.</p>
     </section>
 
@@ -888,6 +906,78 @@
         });
         card.appendChild(list);
       }
+    }
+
+    // --- Finished: my own answers, question by question (Buggy #96) ---
+    // Fetched once per finished game; only this player's answers come back.
+    let summaryGen = 0, summaryAsked = -1, summaryTries = 0, summaryData = null, summaryLang = '';
+    async function loadMySummary(state, playerId) {
+      const box = document.getElementById('mySummary');
+      if (state.phase !== 'finished' || !state.me || state.me.joined_after_game) {
+        if (summaryAsked === summaryGen) summaryGen++;  // a new game: ask again at its end
+        summaryData = null;
+        summaryTries = 0;
+        box.classList.add('hide');
+        return;
+      }
+      if (summaryData) {
+        if (summaryLang !== i18n.getLang()) renderMySummary(summaryData);
+        return;
+      }
+      if (summaryAsked === summaryGen || summaryTries >= 3) return;
+      const gen = summaryGen;
+      summaryAsked = gen;
+      summaryTries++;
+      let data;
+      try {
+        data = await api('/api/my-summary', 'POST',
+          { player_id: playerId, player_secret: localStorage.getItem(SECRET_KEY) || '' });
+      } catch (e) {
+        if (gen === summaryGen) summaryAsked = -1;  // try again with the next state
+        return;
+      }
+      if (gen !== summaryGen || !data.available || !(data.questions || []).length) return;
+      summaryData = data;
+      renderMySummary(data);
+    }
+
+    function renderMySummary(data) {
+      summaryLang = i18n.getLang();
+      const box = document.getElementById('mySummary');
+      const list = document.getElementById('mySummaryList');
+      const rows = data.questions || [];
+      document.getElementById('mySummaryTitle').textContent =
+        tfb('play.summary_title', 'Otázky a odpovědi: {0} z {1} správně', data.correct_count || 0, rows.length);
+      list.innerHTML = '';
+      const icons = { ok: '✅', partial: '\u{1F7E1}', wrong: '❌', missed: '⏳' };
+      const join = (row, texts) => texts.join(row.type === 'ordering' ? ' → ' : ', ');
+      rows.forEach(row => {
+        const item = document.createElement('div');
+        item.className = 'my-summary-row ' + row.result;
+        const head = document.createElement('div');
+        head.className = 'my-summary-q';
+        head.textContent = `${icons[row.result] || ''} ${row.number}. ${row.prompt}`;
+        item.appendChild(head);
+        const mine = document.createElement('div');
+        mine.textContent = row.answer.length
+          ? tfb('play.summary_yours', 'Tvoje odpověď: {0}', join(row, row.answer))
+          : tfb('play.summary_missed', 'Bez odpovědi');
+        item.appendChild(mine);
+        if (row.result !== 'ok' && row.correct.length) {
+          const right = document.createElement('div');
+          right.className = 'my-summary-right';
+          right.textContent = tfb('play.summary_correct', 'Správně: {0}', join(row, row.correct));
+          item.appendChild(right);
+        }
+        if (row.explanation) {
+          const why = document.createElement('div');
+          why.className = 'my-summary-why';
+          why.textContent = row.explanation;
+          item.appendChild(why);
+        }
+        list.appendChild(item);
+      });
+      box.classList.remove('hide');
     }
 
     // --- Multiselect state ---
@@ -1733,6 +1823,7 @@
       renderRankCard(state);
       renderDoubleChip(state);
       renderFinishCard(state);
+      loadMySummary(state, playerId);
 
       lastPhase = state.phase;
       lastQuestionIndex = state.current_index;
@@ -2066,6 +2157,12 @@
     } else {
       // Start polling only after join
     }
+
+    // render() takes its texts from the catalog: draw the game again once the
+    // catalog has loaded and after every language switch. With the WebSocket the
+    // page stops polling, so a quiet screen (the end of the game) kept the raw
+    // keys and the "Čekej na start od učitele." that i18n.apply() wrote over it.
+    i18n.onLangChange(() => { if (pollingTimer || ws) refresh(); });
 
     // i18n init + language switcher
     i18n.init().then(() => injectLangSwitcher());

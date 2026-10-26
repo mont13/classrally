@@ -2016,6 +2016,66 @@ class QuizState:
         """The question log without who answered what (safe for the projector)."""
         return [{k: v for k, v in entry.items() if k != "results"} for entry in self.question_log]
 
+    @staticmethod
+    def _answer_texts(entry: dict[str, Any], choice: Any) -> list[str]:
+        """An answer of the question log as the texts the student saw (ordering: in order)."""
+        q_type = entry.get("type")
+        if q_type in ("choice", "truefalse", "multiselect"):
+            options = entry.get("options", [])
+            picked = choice if isinstance(choice, list) else [choice]
+            return [str(options[i]) for i in picked
+                    if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(options)]
+        if q_type == "ordering":
+            items = entry.get("items", [])
+            return [str(items[i]) for i in choice or []
+                    if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(items)]
+        text = str(choice if choice is not None else "").strip()
+        return [text] if text else []
+
+    def player_summary(self, player_id: str, player_secret: str) -> dict[str, Any]:
+        """After the game: every scored question with this player's own answer
+        and the right one (Buggy #96). Nobody else's answers are included."""
+        if not self.verify_player(player_id, player_secret):
+            raise PermissionError("Neplatny player_secret")
+        with self._lock:
+            player = self.players.get(player_id)
+            if self.phase != "finished" or player is None:
+                return {"available": False, "questions": []}
+            if 0 < self.game_finished_at < player.joined_at:
+                return {"available": False, "questions": []}  # joined after the game
+            rows: list[dict[str, Any]] = []
+            for entry in sorted(self.question_log, key=lambda e: e["index"]):
+                q_type = entry.get("type")
+                if q_type in UNSCORED_QUESTION_TYPES:
+                    continue
+                mine = entry.get("results", {}).get(player_id)
+                if q_type in ("choice", "truefalse"):
+                    correct = self._answer_texts(entry, entry.get("correct"))
+                elif q_type == "multiselect":
+                    correct = self._answer_texts(entry, entry.get("correct", []))
+                elif q_type == "ordering":
+                    correct = [str(x) for x in entry.get("items", [])]
+                else:
+                    correct = [str(x) for x in entry.get("correct", [])]
+                if mine is None:
+                    result = "missed"
+                elif mine.get("ok"):
+                    result = "ok"
+                else:
+                    result = "partial" if mine.get("points", 0) > 0 else "wrong"
+                rows.append({
+                    "number": entry["index"] + 1,
+                    "type": q_type,
+                    "prompt": entry.get("prompt", ""),
+                    "answer": self._answer_texts(entry, mine["choice"]) if mine else [],
+                    "correct": correct,
+                    "result": result,
+                    "points": mine.get("points", 0) if mine else 0,
+                    "explanation": entry.get("explanation", ""),
+                })
+            return {"available": True, "questions": rows,
+                    "correct_count": sum(1 for r in rows if r["result"] == "ok")}
+
     def _question_is_double_locked(self, index: int) -> bool:
         """True when the question at index scores double points. Must hold self._lock."""
         if index < 0 or index >= len(self.questions):
@@ -5050,6 +5110,13 @@ class Handler(BaseHTTPRequestHandler):
                     choice = int(choice)
                 room = ROOMS.by_player(player_id) or DEFAULT_ROOM
                 self._json_response(room.quiz.submit_answer(player_id, player_secret, choice))
+                return
+
+            if path == "/api/my-summary":
+                # the student's own answers after the game; the secret proves who asks
+                player_id = str(data.get("player_id", ""))
+                room = ROOMS.by_player(player_id) or DEFAULT_ROOM
+                self._json_response(room.quiz.player_summary(player_id, str(data.get("player_secret", ""))))
                 return
 
             if path == "/api/host/kick":
