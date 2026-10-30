@@ -14,10 +14,11 @@ echo ""
 
 echo "=== Running smoke test (port ${PORT}) ==="
 # Isolated data dir: smoke must not depend on (or touch) the real data/ DB
-SMOKE_DATA_DIR="$(mktemp -d /tmp/quiz_smoke_data.XXXXXX)"
+SMOKE_DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/quiz_smoke_data.XXXXXX")"
+SMOKE_LOG="${TMPDIR:-/tmp}/quiz_smoke.log"
 mkdir -p "$SMOKE_DATA_DIR/history"
 QUIZ_DATA_DIR="$SMOKE_DATA_DIR" QUIZ_HISTORY_DIR="$SMOKE_DATA_DIR/history" MAIL_MODE=off \
-  python3 -u server.py --host 127.0.0.1 --port "$PORT" >/tmp/quiz_smoke.log 2>&1 &
+  python3 -u server.py --host 127.0.0.1 --port "$PORT" >"$SMOKE_LOG" 2>&1 &
 PID=$!
 cleanup() {
   kill "$PID" >/dev/null 2>&1 || true
@@ -27,10 +28,10 @@ trap cleanup EXIT
 sleep 2
 
 # Extract HOST_TOKEN from server log (printed as "*** HOST TOKEN: <hex> ***")
-HOST_TOKEN=$(grep -oiP 'HOST TOKEN: \*?\s*\K[a-f0-9]+' /tmp/quiz_smoke.log || echo "")
+HOST_TOKEN=$(grep -oiP 'HOST TOKEN: \*?\s*\K[a-f0-9]+' "$SMOKE_LOG" || echo "")
 if [[ -z "$HOST_TOKEN" ]]; then
   echo "Server log contents:"
-  cat /tmp/quiz_smoke.log
+  cat "$SMOKE_LOG"
   echo "ERROR: Could not extract HOST_TOKEN from server log"
   exit 1
 fi

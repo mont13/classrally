@@ -295,6 +295,9 @@ Generator vola OpenAI-kompatibilni API (napr. Ollama nebo jinou sluzbu): `AI_BAS
 
 Kdyz bezi vlastni sluzba na sber hlaseni (API `POST /api/reports` s `projectKey`), muze
 ClassRally na kazde strance ukazat tlacitko pro nahlaseni chyby se snimkem obrazovky.
+Na `/play` je skryte po celou fazi `question` (i po odpovedi) a `reveal`, aby neprekryvalo
+odpovedi a vyhodnoceni. V cekarne a po konci hry je dostupne; spodni odsazeni umozni
+odrolovat posledni obsah nad tlacitko. Ostatni stranky zustavaji beze zmeny.
 
 - Nastaveni serveru: `BUGGY_URL` (adresa collectoru), `BUGGY_PROJECT_KEY` (klic projektu),
   `BUGGY_ORIGIN` (verejna adresa ClassRally, ktera je v collectoru povolena) a

@@ -1694,9 +1694,11 @@
     }
 
     function render(state, playerId) {
+      // Homework owns its panes and phase, even with a saved live-game player.
+      if (urlParamsPin.get('hw')) return;
       const me = state.me || {};
-      // For the bug-report button (buggy-host.js): hidden while a question waits
-      // for this player's answer, so a tap near the edge never misses an answer.
+      // The bug-report button stays hidden throughout question and reveal,
+      // including after submission, to keep answers and feedback unobstructed.
       document.body.dataset.phase = state.phase || '';
       document.body.toggleAttribute('data-answered', state.my_choice !== undefined);
 
@@ -2146,7 +2148,7 @@
       connectWS();
     }
 
-    if (localStorage.getItem(KEY)) {
+    if (!urlParamsPin.get('hw') && localStorage.getItem(KEY)) {
       document.getElementById('joinCard').classList.add('hide');
       document.getElementById('gameCard').classList.remove('hide');
       if (localStorage.getItem('quiz_user_token')) {
@@ -2180,6 +2182,7 @@
       const params = new URLSearchParams(location.search);
       const hwSessionId = params.get('hw');
       if (!hwSessionId) return;
+      document.body.dataset.phase = 'lobby';
 
       // Hide normal join UI, show self-paced card
       document.getElementById('joinCard').classList.add('hide');
@@ -2207,6 +2210,7 @@
 
       // If already joined, go straight to quiz
       if (spPlayerId) {
+        document.body.dataset.phase = 'question';
         document.getElementById('spJoinPane').classList.add('hide');
         document.getElementById('spQuestionPane').classList.remove('hide');
         loadSpState();
@@ -2255,6 +2259,7 @@
           localStorage.setItem(SP_SECRET_KEY, spSecret);
           localStorage.setItem(SP_NAME_KEY, spPlayerName);
           document.getElementById('spBankName').textContent = data.bank_name ? data.bank_name.replace('.json','').replace(/_/g,' ') : '';
+          document.body.dataset.phase = 'question';
           document.getElementById('spJoinPane').classList.add('hide');
           document.getElementById('spQuestionPane').classList.remove('hide');
           await loadSpState();
@@ -2290,6 +2295,7 @@
       }
 
       function renderSpQuestion(state) {
+        document.body.dataset.phase = 'question';
         document.getElementById('spQuestionPane').classList.remove('hide');
         document.getElementById('spSummaryPane').classList.add('hide');
 
@@ -2444,6 +2450,7 @@
       }
 
       function showSpFeedback(result) {
+        document.body.dataset.phase = 'reveal';
         const pane = document.getElementById('spFeedbackPane');
         const feedback = document.getElementById('spFeedback');
         const expEl = document.getElementById('spExplanation');
@@ -2520,6 +2527,7 @@
       }
 
       function renderSpSummary(state) {
+        document.body.dataset.phase = 'finished';
         document.getElementById('spQuestionPane').classList.add('hide');
         document.getElementById('spSummaryPane').classList.remove('hide');
 

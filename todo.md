@@ -1,5 +1,19 @@
 # ClassRally - Roadmap k plnohodnotne platforme
 
+## Stav k 30. 10. 2026
+
+Sjednocený audit stavů funkcí; dílčí funkce zůstávají otevřené.
+
+- Z funkcí zbývá formát Quizlet, PDF export výsledků, ligy a verzování REST API.
+- Dílčí jsou power-ups: dvojité body už fungují, ochrana série a hráčské power-ups chybí.
+- Body napříč hrami a herní ocenění existují; chybí levely a trvalé odznaky za počet her/skóre.
+- Start bez admin hesla má jen běžný výpis; výrazné varování a volitelné jednorázové admin heslo chybí.
+- Zbývá ověřit skutečné volání Ollama/OpenAI, obě větve uložení AI sady a přepínání jazyků na všech stránkách.
+- Chromium ověřilo hru s výběrem a otevřenou odpovědí včetně podia; zbývá mobilní ověření ostatních typů a dlouhých odpovědí.
+- Hráčské zvuky odpovědí používají syntézu; požadavek na MP3 zůstává otevřený.
+- PWA ukládá rozhraní, živá hra potřebuje server; tmavý režim je automatický na hráčské stránce.
+- Starší přehledy a počty testů níže jsou historické; audit nemění uzavřený původní plán.
+
 ## Analyza: Co Kahoot dela dobre a co nam chybi
 
 ### Co uzivatele na Kahootu nejvic chvali
@@ -115,13 +129,13 @@
 - [x] PWA ikony — `icon-192.png`, `icon-512.png`, `favicon.png` (generovane icongen.py)
 
 #### 2.4 Admin vylepšení
-- [ ] Import/export otázek (CSV, JSON, Quizlet formát)
-- [ ] Drag & drop řazení otázek
-- [ ] Obrázky v otázkách (upload nebo URL)
-- [ ] Sdílení sad otázek (export jako link/soubor)
+- [ ] Import/export otázek (CSV, JSON, Quizlet formát) — CSV/JSON hotovo (`server.py`: `questions_from_csv()`, `questions_to_csv()`, export JSON; `static/admin.html`: import/export). Chybí podpora formátu Quizlet.
+- [x] Drag & drop řazení otázek — `static/admin.html`: `renderEditor()`, obsluha `dragstart`/`drop` přeskládá `editorQuestions`.
+- [x] Obrázky v otázkách (upload nebo URL) — `server.py`: `/api/admin/upload-image`, `image_url`; `static/admin.html`: editor a náhled; `static/play.html` a `static/host.html`: `questionImage`. Samostatný test obrázků chybí.
+- [x] Sdílení sad otázek (export jako odkaz/soubor) — JSON/CSV soubor přes `static/admin.html`: `btnExportJson`/`btnExportCsv`, `triggerDownload()`. Samostatný odkaz na sadu není implementovaný; požadavek splňuje soubor.
 - [x] Export výsledků písemky do CSV
-- [ ] Detailní per-otázkový export výsledků písemky
-- [ ] PDF export výsledků
+- [x] Detailní per-otázkový export výsledků písemky — `server.py`: `ExamState.answers_csv()`, `items_csv()` i export uložených písemek; `test_server.py`: `TestExamAnalysis.test_csv_exports()`.
+- [ ] PDF export výsledků — `server.py` a `static/admin.html` nabízejí CSV, vlastní PDF export ani jeho test není implementovaný.
 ### 1.7 Bezpecnost
 - [x] Filtr prezdivek — `_is_nickname_clean()` s `_BANNED_WORDS` (CZ+EN)
 - [x] Rate limiting — `_RegistrationRateLimiter` (10/min/IP)
@@ -146,7 +160,7 @@
 - [x] Export otazek JSON — download tlacitko v adminu
 - [x] Import otazek JSON — file upload v adminu
 - [x] CSV import/export (csv stdlib modul)
-- [x] Export vysledku CSV — `/api/admin/history/export?game_id=X`
+- [x] Export výsledků her do CSV pro učitele — `server.py`: `game_results_to_csv()`, `/api/admin/history/export`; `test_server.py`: `TestGameAnalysis.test_history_record_and_exports()`. PDF export tím není splněný.
 
 ### 2.2 i18n (CZ/EN/SK/DE)
 - [x] `static/i18n/` — JSON preklady per jazyk (cs, en, sk, de — 453 klicu)
@@ -171,7 +185,7 @@
 
 ---
 
-## FAZE 3: Pokrocile funkce — HOTOVO
+## FAZE 3: Pokrocile funkce — CASTECNE HOTOVO
 
 ### 3.1 Herni mody
 - [x] Klasicky (soucasny — live, teacher-paced)
@@ -181,13 +195,14 @@
 ### 3.2 Player experience
 - [x] Animovane podium (canvas confetti, WebAudio fanfare, staggered rise animace)
 - [x] Nahodny generator prezdivek (30 adjektiv + 30 zvirat, CZ)
-- [ ] Avatary / profilove obrazky (vyber z preddefinovanych)
-- [ ] Power-ups (ochrana streaku, double points) — volitelne
+- [x] Avatary / profilové obrázky (výběr z předdefinovaných) — `static/profile.html`: `AVATARS`, `renderAvatarGrid()`, `selectAvatar()`; `db.py`: `update_avatar()`; `test_server.py`: `TestRegisterAvatarHTTP`.
+- [x] Dark mode — hráčská stránka automaticky podle systému: `static/style.css`, `@media (prefers-color-scheme: dark)` pro `.player-page`. Globální přepínač ani plošné pokrytí ostatních stránek tím nevzniká; vizuální test chybí.
+- [ ] Power-ups (ochrana streaku, double points) — volitelne; dvojnásobné body otázky/finále už jsou (`test_server.py`: `TestDoublePoints`), ochrana streaku a hráčské power-ups chybí.
 
 ### 3.3 Admin vylepseni
 - [x] Drag & drop razeni otazek (HTML5 DnD API)
-- [ ] Obrazky v otazkach (upload nebo URL)
-- [ ] Sdileni sad otazek (export jako link/soubor)
+- [x] Obrázky v otázkách (upload nebo URL) — `server.py`: `/api/admin/upload-image`, `image_url`; `static/admin.html`: editor a náhled; `static/play.html` a `static/host.html`: `questionImage`. Samostatný test obrázků chybí.
+- [x] Sdílení sad otázek (export jako odkaz/soubor) — JSON/CSV soubor přes `static/admin.html`: `btnExportJson`/`btnExportCsv`, `triggerDownload()`. Samostatný odkaz na sadu není implementovaný; požadavek splňuje soubor.
 
 ### 3.4 Ankety a hlasovani
 - [x] Poll mod (zadna spravna odpoved, live vote bary s procenty)
@@ -195,23 +210,23 @@
 - [x] Slide/info karta mezi otazkami (title + body, zadny answer)
 
 ### 3.5 Gamifikace
-- [ ] XP system pres vice her
-- [ ] Achievementy / odznaky
-- [ ] Ligy mezi tridami
+- [ ] XP systém přes více her (body a postup po levelech) — `db.py`: `save_game_to_db()` sčítá `users.total_score` a počet her, `static/profile.html`: `kpiScore` zobrazuje součet; postup po levelech chybí.
+- [ ] Achievementy / odznaky (série, počet her a skóre) — herní ocenění včetně série už jsou (`server.py`: `QuizState._compute_awards_locked()`, `static/play.html`: `renderFinishCard()`, `test_server.py`: `TestAwards`); trvalé odznaky za počet her a kumulované skóre chybí.
+- [ ] Ligy mezi třídami — `db.py` má skupiny a jejich historii; liga, její pořadí ani testy nejsou implementované.
 
 #### 3.3 Moderace a bezpečnost
-- [ ] Při startu bez `QUIZ_ADMIN_PASSWORD` výrazně varovat, že admin je v lokální síti otevřený
-- [ ] Volitelně generovat jednorázové admin heslo/token při startu
-- [ ] Filtr nevhodných přezdívek
-- [ ] Generátor náhodných přezdívek (volitelné)
-- [ ] Anti-bot ochrana
-- [ ] Kick hráče
+- [ ] Při startu bez `QUIZ_ADMIN_PASSWORD` výrazně varovat, že admin je v lokální síti otevřený — `server.py`: `main()` jen vypíše „Admin portal: open (no password)“. Výrazné varování chybí; `Handler._require_admin()` už navíc vyžaduje přihlášení, pokud existuje učitelský účet.
+- [ ] Volitelně generovat jednorázové admin heslo/token při startu — `server.py`: `main()` umí zadané heslo; generovaný `HOST_TOKEN` chrání ovládání hry, nenahrazuje admin heslo.
+- [x] Filtr nevhodných přezdívek — `server.py`: `_BANNED_WORDS`, `_is_nickname_clean()`, kontrola v `QuizState.register_player()`; samostatný regresní test filtru chybí.
+- [x] Generátor náhodných přezdívek (volitelné) — `server.py`: `_generate_random_nickname()`, `/api/random-nickname`; `static/play.html`: `randomNickBtn`; samostatný regresní test generátoru chybí.
+- [x] Anti-bot ochrana — základní omezení registrací a detekce příliš rychlých odpovědí: `server.py`: `REGISTER_LIMITER`, `bot_score`; `test_server.py`: `TestRateLimiters.test_class_behind_nat_can_join()`. Detekce sama automaticky nevyhazuje hráče.
+- [x] Kick hráče — `server.py`: `QuizState.kick_player()`, `/api/host/kick`; `static/host.html`: `kickPlayer()`; `test_server.py`: `TestRoomsMulti.test_kicked_player_is_told_and_may_join_again()`.
 
 #### 3.4 Technické
-- [ ] i18n (přepínání jazyků v UI — CZ/EN/SK/DE)
-- [ ] PWA (offline přístup, instalace na mobil)
-- [ ] HTTPS podpora
-- [ ] REST API verzování
+- [x] i18n (přepínání jazyků v UI — CZ/EN/SK/DE) — `static/i18n.js`: `setLang()`, přepínač a katalogy CS/EN/SK/DE/UK; `test_server.py`: `TestI18nCatalogs` kontroluje klíče a parametry, nikoli celé UI v prohlížeči.
+- [x] PWA (offline přístup, instalace na mobil) — `static/manifest.json`, `static/sw.js`, registrace v `static/play.html`. Offline je dostupné uložené rozhraní/fallback; živá hra potřebuje spojení se serverem. Instalace na zařízení nemá automatický test.
+- [x] HTTPS podpora — konfigurace TLS a proxy v `deploy/caddy/Caddyfile` a `deploy/nginx/nginx.conf`; jde o podporu nasazení, nikoli o nové živé ověření certifikátu.
+- [ ] REST API verzování — routy v `server.py`: `Handler` jsou `/api/...`, verze typu `/api/v1/...` ani její testy nejsou zavedené.
 ### 3.6 Moderace
 - [x] Generator nahodnych prezdivek (adjektivum + zvire, CZ, 🎲 tlacitko)
 - [x] Anti-bot detekce (timing heuristika < 0.3s, bot_score, 🤖 indikator pro hosta)

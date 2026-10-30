@@ -157,9 +157,6 @@
     if (!config || !config.enabled || !config.script) return;
     try { await loadScript(config.script); } catch (error) { return; }
     if (!window.InvoAIMBuggy || typeof window.InvoAIMBuggy.mountBuggyWidget !== 'function') return;
-    const hide = document.createElement('style');
-    hide.textContent = 'body[data-phase="question"]:not([data-answered]) #classrally-buggy-root{display:none!important}';
-    document.head.appendChild(hide);
     const target = document.createElement('div');
     target.id = 'classrally-buggy-root';
     // Own stacking context above every page layer (language flags, overlays).
@@ -169,6 +166,20 @@
     window.InvoAIMBuggy.mountBuggyWidget({target, locale: locale(), capture, submit, url: location.pathname,
       captureNotice: 'Snímek zachytí právě viditelnou část stránky. Hesla a tokeny jsou skryté. ' +
         'Před odesláním náhled zkontroluj; přiložení snímku můžeš vypnout.'});
+    if (page() === 'play') {
+      const style = document.createElement('style');
+      // Keep the whole answer area and feedback clear, including after submission.
+      // Reporting remains available before/after play; reserve scroll space below
+      // the last content only while the launcher is visible. No widget CSS needed.
+      style.textContent = `
+        body.player-page[data-phase="question"] #classrally-buggy-root,
+        body.player-page[data-phase="reveal"] #classrally-buggy-root { display: none !important; }
+        body.player-page:not([data-phase="question"]):not([data-phase="reveal"]) {
+          padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+        }
+      `;
+      document.head.appendChild(style);
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

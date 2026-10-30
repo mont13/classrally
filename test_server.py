@@ -5704,6 +5704,32 @@ class TestBugReportBridge(unittest.TestCase):
             html = (server.STATIC_DIR / f"{name}.html").read_text(encoding="utf-8")
             self.assertIn('<script src="/static/buggy-host.js" defer></script>', html, name)
 
+    def test_player_bug_report_does_not_cover_answers_or_feedback(self):
+        script = (server.STATIC_DIR / "buggy-host.js").read_text(encoding="utf-8")
+        self.assertIn("if (page() === 'play')", script)
+        self.assertRegex(script, r'body\.player-page\[data-phase="question"\] #classrally-buggy-root,\s*'
+                                r'body\.player-page\[data-phase="reveal"\] #classrally-buggy-root\s*'
+                                r'\{\s*display:\s*none\s*!important;\s*\}')
+        self.assertNotIn(':not([data-answered])', script)
+        self.assertIn('body.player-page:not([data-phase="question"]):not([data-phase="reveal"])', script)
+        self.assertIn('padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px))', script)
+
+    def test_homework_bug_report_tracks_panes_without_live_updates(self):
+        html = (server.STATIC_DIR / "play.html").read_text(encoding="utf-8")
+        live_render = html.split('function render(state, playerId) {', 1)[1]
+        self.assertLess(live_render.index("if (urlParamsPin.get('hw')) return;"),
+                        live_render.index('document.body.dataset.phase = state.phase'))
+        self.assertIn("if (!urlParamsPin.get('hw') && localStorage.getItem(KEY)) {", html)
+        homework = html.split('(function initSelfPaced() {', 1)[1]
+        self.assertIn("if (!hwSessionId) return;\n      document.body.dataset.phase = 'lobby';", homework)
+        for name, phase in (("renderSpQuestion(state)", "question"),
+                            ("showSpFeedback(result)", "reveal"),
+                            ("renderSpSummary(state)", "finished")):
+            with self.subTest(pane=name):
+                self.assertIn(f"function {name} {{\n        document.body.dataset.phase = '{phase}';", homework)
+        # Hide the launcher before a joined/resumed question awaits its API state.
+        self.assertEqual(homework.count("document.body.dataset.phase = 'question';"), 3)
+
 
 class TestReadingTime(unittest.TestCase):
     """Longer questions get reading time on top of the teacher's setting (#91, #95)."""
