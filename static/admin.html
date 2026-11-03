@@ -533,6 +533,14 @@
               <input id="aiCount" type="number" value="5" min="1" max="20" />
             </div>
             <div class="form-group">
+              <label for="aiType" data-i18n="admin.ai_type_label">Typ otázek</label>
+              <select id="aiType">
+                <option value="abcd" data-i18n="admin.ai_type_abcd">ABCD (4 možnosti)</option>
+                <option value="open" data-i18n="admin.ai_type_open">Otevřená krátká odpověď</option>
+                <option value="exact" data-i18n="admin.ai_type_exact">Přesné číslo nebo slovo</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label for="aiModel" data-i18n="admin.ai_model_label">AI model</label>
               <input id="aiModel" />
             </div>
@@ -2141,6 +2149,7 @@
           base_url: document.getElementById('aiBaseUrl').value,
           api_key: document.getElementById('aiApiKey').value,
           language: document.getElementById('aiLang').value,
+          question_type: document.getElementById('aiType').value,
           source_text: document.getElementById('aiSourceText').value,
         });
         status.className = 'ai-status success';
@@ -2159,7 +2168,13 @@
           const h4 = document.createElement('h4');
           h4.textContent = `${i+1}. ${q.prompt}`;
           div.appendChild(h4);
-          q.options.forEach((o, oi) => {
+          if (q.type === 'openended') {
+            const ansDiv = document.createElement('div');
+            ansDiv.style.cssText = 'padding:4px 0;color:#16a34a;font-weight:900;';
+            ansDiv.textContent = i18n.t('admin.ai_accepted') + ': ' + (q.accepted_answers || []).join(' / ')
+              + (q.exact ? ' (' + i18n.t('admin.ai_exact_note') + ')' : '');
+            div.appendChild(ansDiv);
+          } else (q.options || []).forEach((o, oi) => {
             const optDiv = document.createElement('div');
             optDiv.style.padding = '4px 0';
             if (oi === q.correct_index) {

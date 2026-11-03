@@ -3626,6 +3626,80 @@ class TestAIGenerationParsing(unittest.TestCase):
 
 
 
+class TestAIGenerationTypesAndErrors(TestAIGenerationParsing):
+    """Open / exact questions, sloppy output of small models and friendly errors."""
+
+    def test_open_answers_become_openended(self):
+        content = '```json\n[{"prompt":"Co dělá DHCP?","accepted_answers":["přiděluje IP adresy","Přiděluje IP"],"explanation":"x"},]\n```'
+        out, sent = self._run(content, count=3, question_type="open")
+        self.assertEqual(out[0]["type"], "openended")
+        self.assertNotIn("exact", out[0])
+        self.assertEqual(len(out[0]["accepted_answers"]), 2)
+        self.assertIn("short-answer", sent["payload"]["messages"][1]["content"])
+        server._validate_question(out[0], 0)
+
+    def test_exact_sets_flag_and_accepts_wrapped_object_and_numbers(self):
+        content = 'Tady je to:\n{"questions":[{"question":"Port?","answer":67},{"prompt":"Příkaz?","accepted_answers":["ipconfig /all"]}]}'
+        out, _ = self._run(content, count=5, question_type="exact")
+        self.assertEqual([q["accepted_answers"] for q in out], [["67"], ["ipconfig /all"]])
+        self.assertTrue(all(q["exact"] is True for q in out))
+        self.assertEqual([q["id"] for q in out], ["ai_1", "ai_2"])
+        for i, q in enumerate(out):
+            server._validate_question(q, i)
+
+    def test_count_is_respected_and_broken_questions_skipped(self):
+        qs = [{"prompt": "bad", "options": ["a", "b"], "correct_index": 0}] + [
+            {"prompt": f"Q{i}", "options": ["a", "b", "c", "d"], "correct_index": "B"} for i in range(6)]
+        out, _ = self._run(json.dumps(qs), count=3)
+        self.assertEqual(len(out), 3)
+        for q in out:
+            self.assertEqual(q["options"][q["correct_index"]], "b")
+
+    def test_garbage_gives_readable_error(self):
+        with self.assertRaises(ValueError) as cm:
+            self._run("Omlouvám se, nemohu to udělat.", count=3)
+        self.assertIn("nevrátil použitelný seznam", str(cm.exception))
+
+    def test_unusable_shape_gives_readable_error(self):
+        with self.assertRaises(ValueError) as cm:
+            self._run('[{"prompt":"Q?","accepted_answers":[]}]', count=1, question_type="open")
+        self.assertIn("nepoužitelném tvaru", str(cm.exception))
+
+    def test_http_errors_are_translated(self):
+        import io as _io
+        from urllib.error import HTTPError
+
+        def boom(code):
+            def f(req, timeout=None):
+                raise HTTPError(req.full_url, code, "x", {}, _io.BytesIO(b'{"error":"nope"}'))
+            return f
+        orig = server.urlopen
+        try:
+            for code, word in ((401, "API klíč"), (404, "model"), (429, "limit"), (503, "nedostupný")):
+                server.urlopen = boom(code)
+                with self.assertRaises(RuntimeError) as cm:
+                    server.generate_questions_ai(topic="x", base_url="https://ai.example", model="gemma4")
+                self.assertIn(word, str(cm.exception))
+        finally:
+            server.urlopen = orig
+
+    def test_v1_suffix_in_base_url_is_not_doubled(self):
+        content = json.dumps([{"prompt": "Q?", "options": ["a", "b", "c", "d"], "correct_index": 0}])
+        sent = {}
+
+        class R:
+            def read(self): return json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        orig = server.urlopen
+        server.urlopen = lambda req, timeout=None: (sent.update(url=req.full_url), R())[1]
+        try:
+            server.generate_questions_ai(topic="x", base_url="https://ai.example/v1/")
+        finally:
+            server.urlopen = orig
+        self.assertEqual(sent["url"], "https://ai.example/v1/chat/completions")
+
+
 class TestAccountHardening(_DBTestBase):
     def setUp(self):
         super().setUp()

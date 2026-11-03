@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from qrgen import generate_qr_svg
 import bugreport
@@ -849,6 +849,163 @@ AI_LANGUAGES = {
 AI_SOURCE_TEXT_MAX = 12000
 
 
+AI_QUESTION_TYPES = ("abcd", "open", "exact")
+AI_TIMEOUT_SEC = 180
+
+
+def _ai_prompt(topic: str, count: int, lang_name: str, source_part: str, question_type: str) -> str:
+    if question_type == "open":
+        return f"""Create exactly {count} short-answer quiz questions for school students on the topic: "{topic}".
+{source_part}
+Write every question and explanation in {lang_name}, with correct spelling and diacritics.
+The student types the answer himself, so the answer must be short (one to four words).
+Each question is a JSON object with:
+- "prompt": the question text
+- "accepted_answers": array of 1 to 4 short accepted answers (the same answer in other common wordings or spellings)
+- "explanation": one sentence explaining the answer
+
+Reply ONLY with a valid JSON array, no markdown, no comments, nothing before or after it.
+Example: [{{"prompt":"Which protocol assigns IP addresses automatically?","accepted_answers":["DHCP"],"explanation":"..."}}]"""
+    if question_type == "exact":
+        return f"""Create exactly {count} quiz questions for school students on the topic: "{topic}".
+{source_part}
+Write every question and explanation in {lang_name}, with correct spelling and diacritics.
+The answer of every question is ONE exact value that has only one correct spelling: a number
+(e.g. a port, a size, a count), a command or a single technical term. The student types it and it is
+compared character by character, so the question must make clear what to type, and the answer must not
+have synonyms.
+Each question is a JSON object with:
+- "prompt": the question text
+- "accepted_answers": array with the exact answer (add a second item only when it is the very same value written differently, e.g. "67" and "UDP 67" is NOT allowed, "ipconfig /all" and "ipconfig/all" is)
+- "explanation": one sentence explaining the answer
+
+Reply ONLY with a valid JSON array, no markdown, no comments, nothing before or after it.
+Example: [{{"prompt":"Which UDP port does a DHCP server listen on?","accepted_answers":["67"],"explanation":"..."}}]"""
+    return f"""Create exactly {count} multiple-choice quiz questions for school students on the topic: "{topic}".
+{source_part}
+Write every question, option and explanation in {lang_name}, with correct spelling and diacritics.
+Each question is a JSON object with:
+- "prompt": the question text
+- "options": array of exactly 4 short answer options, only one of them correct, wrong options plausible
+- "correct_index": index of the correct option (0-3)
+- "explanation": one or two sentences explaining the correct answer
+
+Reply ONLY with a valid JSON array, no markdown, no comments, nothing before or after it.
+Example: [{{"prompt":"...?","options":["...","...","...","..."],"correct_index":0,"explanation":"..."}}]"""
+
+
+def _ai_parse_json_items(text: str) -> list[Any]:
+    """Pull the question objects out of a model reply, however it is wrapped.
+
+    Smaller models add ```json fences, a sentence before the array, trailing
+    commas or wrap the array in {"questions": [...]}. Parse leniently, and as a
+    last resort collect every standalone object that has a "prompt".
+    """
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+    text = re.sub(r"```(?:json|JSON)?", "", text).strip()
+    if not text:
+        return []
+    dec = json.JSONDecoder()
+
+    def unwrap(obj: Any) -> list[Any] | None:
+        if isinstance(obj, list):
+            return obj if any(isinstance(x, dict) for x in obj) else None
+        if isinstance(obj, dict):
+            for v in obj.values():
+                if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+                    return v
+            if "prompt" in obj:
+                return [obj]
+        return None
+
+    for candidate in (text, re.sub(r",\s*([\]}])", r"\1", text)):
+        for start_char in ("[", "{"):
+            pos = candidate.find(start_char)
+            while pos != -1:
+                try:
+                    obj, _ = dec.raw_decode(candidate[pos:])
+                except json.JSONDecodeError:
+                    pos = candidate.find(start_char, pos + 1)
+                    continue
+                items = unwrap(obj)
+                if items:
+                    return items
+                pos = candidate.find(start_char, pos + 1)
+    return []
+
+
+def _ai_clean_str(value: Any, limit: int = 300) -> str:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(value)
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _ai_normalize_choice(q: dict[str, Any]) -> dict[str, Any] | None:
+    raw_opts = q.get("options")
+    if not isinstance(raw_opts, list):
+        return None
+    options = [_ai_clean_str(o, 200) for o in raw_opts]
+    options = [re.sub(r"^[A-Da-d][\)\.:]\s+", "", o) for o in options]
+    if len(options) < 4 or not all(options):
+        return None
+    ci: Any = q.get("correct_index", q.get("correct"))
+    if isinstance(ci, str):
+        s = ci.strip()
+        if s.isdigit():
+            ci = int(s)
+        elif len(s) == 1 and s.upper() in "ABCD":
+            ci = "ABCD".index(s.upper())
+        elif s in options:
+            ci = options.index(s)
+    if isinstance(ci, bool) or not isinstance(ci, int) or not 0 <= ci < len(options):
+        return None
+    if len(options) > 4:  # keep the right option and the first three others
+        right = options[ci]
+        wrong = [o for i, o in enumerate(options) if i != ci][:3]
+        options, ci = wrong + [right], 3
+    if len(set(o.lower() for o in options)) < 4:
+        return None
+    # Models tend to put the right answer first; shuffle so it is not guessable.
+    perm = list(range(4))
+    random.shuffle(perm)
+    return {"options": [options[i] for i in perm], "correct_index": perm.index(ci)}
+
+
+def _ai_normalize_open(q: dict[str, Any], exact: bool) -> dict[str, Any] | None:
+    raw = q.get("accepted_answers", q.get("answers", q.get("answer", q.get("correct_answer"))))
+    if not isinstance(raw, list):
+        raw = [raw]
+    answers: list[str] = []
+    for a in raw:
+        s = _ai_clean_str(a, 80)
+        if s and s.lower() not in [x.lower() for x in answers]:
+            answers.append(s)
+    answers = answers[:4]
+    if not answers:
+        return None
+    out: dict[str, Any] = {"type": "openended", "accepted_answers": answers}
+    if exact:
+        out["exact"] = True
+    return out
+
+
+def _ai_http_error(e: HTTPError, base_url: str, model: str) -> RuntimeError:
+    try:
+        detail = e.read().decode("utf-8", "replace")[:200]
+    except Exception:
+        detail = ""
+    if e.code in (401, 403):
+        return RuntimeError("AI server odmítl přístup (chybný nebo chybějící API klíč, případně klíč nemá právo na model "
+                            f"{model}). Zkontrolujte AI_API_KEY na serveru.")
+    if e.code == 404 or (e.code == 400 and "model" in detail.lower()):
+        return RuntimeError(f"AI server model „{model}“ nezná nebo ho klíč nesmí použít. Zvolte jiný model. ({detail})")
+    if e.code == 429:
+        return RuntimeError("AI server hlásí příliš mnoho požadavků nebo vyčerpaný limit klíče. Zkuste to za minutu.")
+    if e.code in (502, 503, 504):
+        return RuntimeError(f"AI server je dočasně nedostupný (HTTP {e.code}). Zkuste to za chvíli.")
+    return RuntimeError(f"AI server odpověděl chybou HTTP {e.code}. {detail}")
+
+
 def generate_questions_ai(
     topic: str,
     count: int = 5,
@@ -857,7 +1014,15 @@ def generate_questions_ai(
     api_key: str = "",
     language: str = "cs",
     source_text: str = "",
+    question_type: str = "abcd",
 ) -> list[dict[str, Any]]:
+    """Ask an OpenAI-compatible endpoint for quiz questions.
+
+    question_type: "abcd" (4 options), "open" (short typed answer) or "exact"
+    (one number / word compared exactly, "exact": true).
+    """
+    if question_type not in AI_QUESTION_TYPES:
+        question_type = "abcd"
     lang_name = AI_LANGUAGES.get(language, language)
     source_part = ""
     if source_text.strip():
@@ -865,86 +1030,83 @@ def generate_questions_ai(
             "\nBase every question ONLY on the following source text (do not use facts that "
             "are not in it):\n<<<\n" + source_text.strip()[:AI_SOURCE_TEXT_MAX] + "\n>>>\n"
         )
-    prompt = f"""Create exactly {count} multiple-choice quiz questions for school students on the topic: "{topic}".
-{source_part}
-Write every question, option and explanation in {lang_name}, with correct spelling and diacritics.
-Each question is a JSON object with:
-- "id": unique identifier ("ai_1", "ai_2", ...)
-- "prompt": the question text
-- "options": exactly 4 answer options, only one of them correct, wrong options plausible
-- "correct_index": index of the correct option (0-3)
-- "explanation": one or two sentences explaining the correct answer
+    prompt = _ai_prompt(topic, count, lang_name, source_part, question_type)
 
-Reply ONLY with a valid JSON array, no markdown, no comments.
-Example: [{{"id":"ai_1","prompt":"...?","options":["...","...","...","..."],"correct_index":0,"explanation":"..."}}]"""
-
-    url = f"{base_url.rstrip('/')}/v1/chat/completions"
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3]
+    url = f"{root}/v1/chat/completions"
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload = json.dumps({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a quiz question generator. Respond ONLY with valid JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 8192,
-    }).encode("utf-8")
+    # Reasoning models (e.g. Gemma 4) spend part of max_tokens on hidden thinking and may
+    # return an empty reply when it runs out; then retry once with a much larger budget.
+    max_tokens = min(8192, 1500 * count + 3000)
+    for attempt in (1, 2):
+        payload = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a quiz question generator. Respond ONLY with valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.5,
+            "max_tokens": max_tokens,
+        }).encode("utf-8")
+        req = Request(url, data=payload, headers=headers, method="POST")
+        try:
+            with urlopen(req, timeout=AI_TIMEOUT_SEC) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+        except HTTPError as e:
+            raise _ai_http_error(e, base_url, model)
+        except (TimeoutError, socket.timeout):
+            raise ConnectionError("AI server neodpověděl včas (model se možná právě načítá nebo je server vytížený). "
+                                  "Zkuste to znovu, případně s menším počtem otázek.")
+        except URLError as e:
+            if isinstance(getattr(e, "reason", None), (TimeoutError, socket.timeout)):
+                raise ConnectionError("AI server neodpověděl včas. Zkuste to znovu, případně s menším počtem otázek.")
+            raise ConnectionError(f"Nelze se připojit k AI serveru ({e.reason}). Zkontrolujte adresu a síť.")
+        except Exception as e:
+            raise RuntimeError(f"Chyba při komunikaci s AI serverem: {e}")
+        try:
+            content = result["choices"][0]["message"].get("content") or ""
+        except (KeyError, IndexError, TypeError, AttributeError):
+            content = ""
+        if content.strip() or attempt == 2:
+            break
+        max_tokens = 16000
 
-    req = Request(url, data=payload, headers=headers, method="POST")
-    try:
-        with urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-    except URLError as e:
-        raise ConnectionError(f"Nelze se pripojit k AI API na {base_url}: {e}")
-    except Exception as e:
-        raise RuntimeError(f"Chyba pri komunikaci s AI API: {e}")
+    response_text = content
+    items = _ai_parse_json_items(response_text)
+    if not items and not response_text.strip():
+        raise ValueError("Model vrátil prázdnou odpověď (pravděpodobně vyčerpal limit tokenů při přemýšlení). "
+                         "Zkuste to znovu nebo snižte počet otázek.")
+    if not items:
+        raise ValueError("Model nevrátil použitelný seznam otázek (menší modely občas zabloudí). "
+                         f"Zkuste to znovu nebo snižte počet otázek. Začátek odpovědi: {response_text[:200]!r}")
 
-    response_text = result.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
-    # Reasoning models may prepend a <think>...</think> block that can contain brackets.
-    response_text = re.sub(r"<think>.*?</think>", "", response_text, flags=re.S).strip()
-    start = response_text.find("[")
-    end = response_text.rfind("]")
-    if start == -1 or end == -1:
-        raise ValueError(f"AI API nevrátila validní JSON pole. Odpoved: {response_text[:500]}")
-
-    json_str = response_text[start:end + 1]
-    try:
-        questions = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Nevalidní JSON z AI API: {e}. Text: {json_str[:500]}")
-
-    if not isinstance(questions, list):
-        raise ValueError("AI API nevrátila pole otázek")
-
-    valid = []
-    for i, q in enumerate(questions):
+    valid: list[dict[str, Any]] = []
+    for q in items:
         if not isinstance(q, dict):
             continue
-        if "id" not in q:
-            q["id"] = f"ai_{i+1}"
-        if "prompt" not in q or "options" not in q or "correct_index" not in q:
+        text = _ai_clean_str(q.get("prompt", q.get("question")), 500)
+        if not text:
             continue
-        if not isinstance(q["options"], list) or len(q["options"]) < 2:
+        if question_type == "abcd":
+            body = _ai_normalize_choice(q)
+        else:
+            body = _ai_normalize_open(q, exact=(question_type == "exact"))
+        if body is None:
             continue
-        while len(q["options"]) < 4:
-            q["options"].append(f"Moznost {len(q['options'])+1}")
-        q["options"] = q["options"][:4]
-        if not isinstance(q["correct_index"], int) or q["correct_index"] < 0 or q["correct_index"] > 3:
-            q["correct_index"] = 0
-        # Models tend to put the right answer first; shuffle so it is not guessable.
-        perm = list(range(len(q["options"])))
-        random.shuffle(perm)
-        q["options"] = [q["options"][i] for i in perm]
-        q["correct_index"] = perm.index(q["correct_index"])
-        if "explanation" not in q:
-            q["explanation"] = ""
-        valid.append(q)
+        out: dict[str, Any] = {"id": f"ai_{len(valid) + 1}", "prompt": text}
+        out.update(body)
+        out["explanation"] = _ai_clean_str(q.get("explanation"), 500)
+        valid.append(out)
+        if len(valid) >= count:
+            break
 
     if not valid:
-        raise ValueError("AI API nevygenerovala zadne validni otazky")
-
+        raise ValueError("Model vrátil otázky v nepoužitelném tvaru (chybí odpovědi nebo možnosti). "
+                         "Zkuste to znovu nebo zvolte jiný model.")
     return valid
 
 
@@ -5427,6 +5589,7 @@ class Handler(BaseHTTPRequestHandler):
                 model = str(data.get("model") or AI_CONFIG["model"])
                 language = str(data.get("language", "cs"))
                 source_text = str(data.get("source_text", ""))[:AI_SOURCE_TEXT_MAX]
+                question_type = str(data.get("question_type", "abcd"))
                 base_url, api_key = AI_CONFIG["base_url"], AI_CONFIG["api_key"]
                 if not AI_CONFIG_LOCKED and self._owner_scope() is None:
                     # Local single-teacher setups may still point a request elsewhere.
@@ -5449,7 +5612,7 @@ class Handler(BaseHTTPRequestHandler):
                         topic=topic, count=count,
                         base_url=base_url, model=model,
                         api_key=api_key, language=language,
-                        source_text=source_text,
+                        source_text=source_text, question_type=question_type,
                     )
                     self._json_response({"ok": True, "questions": questions})
                 except Exception as e:
