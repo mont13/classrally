@@ -149,6 +149,8 @@
   },
 
   "host": {
+    "join_wifi_step": "1. Připoj se k Wi-Fi",
+    "join_play": "Hraj",
     "title": "Kvíz host - ClassRally",
     "login_title": "Přihlášení učitele",
     "login_desc": "Přihlaste se učitelským účtem.",

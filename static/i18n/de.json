@@ -146,6 +146,8 @@
     }
   },
   "host": {
+    "join_wifi_step": "1. Mit WLAN verbinden",
+    "join_play": "Spielen",
     "title": "Quiz-Host - ClassRally",
     "login_title": "Lehrer-Anmeldung",
     "login_desc": "Melden Sie sich mit Ihrem Lehrerkonto an.",

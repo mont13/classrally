@@ -146,6 +146,8 @@
     }
   },
   "host": {
+    "join_wifi_step": "1. Connect to Wi-Fi",
+    "join_play": "Play",
     "title": "Quiz Host - ClassRally",
     "login_title": "Teacher Login",
     "login_desc": "Log in with your teacher account.",

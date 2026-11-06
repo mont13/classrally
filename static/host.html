@@ -162,6 +162,7 @@
     .award-value { color: #fde68a; font-weight: 800; font-size: 0.9rem; margin-top: 2px; }
     @keyframes award-pop { from { opacity: 0; transform: scale(0.6) translateY(16px); }
       to { opacity: 1; transform: scale(1) translateY(0); } }
+    #wifiQrBox[hidden] ~ #qrBox .qr-step { display: none; }
   </style>
 </head>
 <body class="host-page">
@@ -205,12 +206,12 @@
 
       <div class="host-qr-panel" style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;align-items:start;">
         <div id="wifiQrBox" hidden>
-          <p><strong>1. Připoj se k Wi-Fi</strong></p>
+          <p><strong data-i18n="host.join_wifi_step">1. Připoj se k Wi-Fi</strong></p>
           <img id="wifiQrImg" alt="QR pro připojení k Wi-Fi" style="max-width:280px;height:auto;cursor:pointer;background:#fff;padding:10px;border-radius:8px;" />
           <p id="wifiQrSsid"></p>
         </div>
         <div id="qrBox">
-          <p><strong>2. Hraj</strong></p>
+          <p><strong><span class="qr-step">2. </span><span data-i18n="host.join_play">Hraj</span></strong></p>
           <img id="qrImg" src="/api/qr" alt="QR kód pro připojení" style="max-width:280px;height:auto;cursor:pointer;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" title="Klikni pro zvětšení" data-i18n-title="host.qr_click_enlarge" />
         </div>
       </div>
