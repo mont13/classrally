@@ -7,6 +7,7 @@
   <title data-i18n="profile.page_title">ClassRally - Muj profil</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script src="/static/i18n.js"></script>
+  <script src="/static/portal.js" defer></script>
   <style>
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
     .tab { padding: 12px 20px; border-radius: 12px 12px 0 0; border: 2px solid #7dd3fc; border-bottom: 0;
@@ -132,6 +133,7 @@
           <input id="loginPass" type="password" data-i18n-placeholder="profile.pass_placeholder" />
         </div>
         <button class="btn good" id="btnLogin" data-i18n="profile.login_btn"></button>
+        <div data-portal-login hidden style="margin-top:12px;"><a class="btn secondary" rel="noreferrer"></a></div>
         <p id="loginErr" class="error-msg"></p>
         <p style="margin-top:12px;"><a href="/reset" data-i18n="profile.forgot_link"></a></p>
         <p class="hint-text" data-i18n="profile.forgot_password_hint" style="margin-top:6px;color:var(--muted);font-size:0.85rem;"></p>

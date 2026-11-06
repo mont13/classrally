@@ -7,6 +7,7 @@
   <title data-i18n="admin.page_title">ClassRally - Učitelský portál</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script src="/static/i18n.js"></script>
+  <script src="/static/portal.js" defer></script>
   <style>
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
     .tab { padding: 12px 20px; border-radius: 12px 12px 0 0; border: 2px solid #7dd3fc; border-bottom: 0;
@@ -292,6 +293,7 @@
         <input id="loginPass" type="password" data-i18n-placeholder="admin.login_password_placeholder" placeholder="Heslo..." autocomplete="current-password" />
       </div>
       <button class="btn good" id="btnLogin" data-i18n="admin.login_btn">Prihlasit se</button>
+      <div data-portal-login hidden style="margin-top:12px;"><a class="btn secondary" rel="noreferrer"></a></div>
       <p id="loginErr" style="color:#b91c1c;font-weight:700;margin-top:10px;"></p>
       <p style="margin-top:12px;"><a href="/reset" style="color:var(--accent);" data-i18n="admin.forgot_link">Zapomenute heslo?</a>
         &nbsp;·&nbsp; <a href="/" style="color:var(--accent);" data-i18n="admin.login_back">Zpet na vyber role</a></p>

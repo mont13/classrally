@@ -9,6 +9,10 @@
     "random_nick_title": "Random nickname",
     "random_nick_aria": "Generate a random nickname",
     "join_btn": "Join",
+    "account_signed_in": "Signed in — results will be saved to your account",
+    "account_signed_in_portal": "Signed in via {0} — results will be saved to your account",
+    "account_logout": "Sign out",
+    "account_logout_error": "Could not sign out. Please try again.",
     "has_account": "Have an account?",
     "login_link": "Log in",
     "no_account_needed": "No account required — you can play without one.",
@@ -823,5 +827,19 @@
     "too_many": "Too many attempts, please try again in a moment.",
     "error": "Something went wrong, please try again.",
     "mail_disabled": "Sending e-mails is not enabled on this server yet – no e-mail will arrive."
+  },
+
+  "portal": {
+    "page_title": "ClassRally – School portal sign-in",
+    "heading": "Sign in through your school portal",
+    "working": "Checking your sign-in…",
+    "error": "Sign-in failed. The link may have expired or already been used. Open a new link from your school portal.",
+    "disabled": "School portal sign-in is not enabled on this server.",
+    "storage_error": "Your sign-in could not be saved. Enable browser storage and open a new link from your school portal.",
+    "default_name": "School portal",
+    "login": "Sign in through {0}",
+    "back": "Back to {0}",
+    "home": "Back to ClassRally",
+    "javascript": "Enable JavaScript to sign in, then open a new link from your school portal."
   }
 }

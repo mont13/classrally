@@ -20,6 +20,7 @@ import hmac
 import io
 import ipaddress
 import json
+import logging
 import math
 import mimetypes
 import os
@@ -35,7 +36,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -4206,6 +4207,117 @@ def build_server_info(
     }
 
 
+_PORTAL_LOG = logging.getLogger("classrally.portal")
+_PORTAL_KEYS = {"v", "iss", "aud", "sub", "role", "name", "iat", "exp", "nonce"}
+_PORTAL_ERROR = {"error": "Přihlášení přes portál se nezdařilo. Vraťte se na portál a zkuste to znovu."}
+
+
+class PortalTokenError(ValueError):
+    """Fixed diagnostic code; never includes untrusted token data."""
+
+
+def portal_enabled() -> bool:
+    return len(os.environ.get("CLASSRALLY_PORTAL_SECRET", "")) >= 43
+
+
+def portal_public_config() -> dict:
+    if not portal_enabled():
+        return {"enabled": False}
+    return {"enabled": True, "login_url": os.environ.get("CLASSRALLY_PORTAL_LOGIN_URL", ""),
+            "name": os.environ.get("CLASSRALLY_PORTAL_NAME", "").strip() or "Školní portál"}
+
+
+def safe_portal_next(value: Any) -> bool:
+    """Only local absolute paths, including after browser/proxy URL decoding."""
+    if (not isinstance(value, str) or len(value) > 200
+            or not re.fullmatch(r"[A-Za-z0-9._~!$&'()*+,;=:@%/?-]+", value)):
+        return False
+    for _ in range(8):
+        if (not value.startswith("/") or value.startswith("//") or "\\" in value
+                or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+            return False
+        decoded = unquote(value)
+        if decoded == value:
+            return True
+        value = decoded
+    return False
+
+
+def _portal_decode(value: str) -> bytes:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        raise PortalTokenError("encoding")
+    try:
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except ValueError:
+        raise PortalTokenError("encoding") from None
+    if base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii") != value:
+        raise PortalTokenError("encoding")
+    return raw
+
+
+def _portal_json_pairs(pairs: list) -> dict:
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise PortalTokenError("duplicate_claim")
+        obj[key] = value
+    return obj
+
+
+def verify_portal_token(token: Any) -> dict:
+    """Validate contract v1; this does not consume the nonce or mint tokens."""
+    secret = os.environ.get("CLASSRALLY_PORTAL_SECRET", "")
+    issuer = os.environ.get("CLASSRALLY_PORTAL_ISSUER", "")
+    audience = os.environ.get("CLASSRALLY_PORTAL_AUDIENCE", "")
+    if not portal_enabled() or not issuer or not audience:
+        raise PortalTokenError("configuration")
+    if not isinstance(token, str) or len(token) > 8192 or token.count(".") != 1:
+        raise PortalTokenError("token_format")
+    payload, signature = token.split(".")
+    raw = _portal_decode(payload)
+    digest = _portal_decode(signature)
+    expected = hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest()
+    if not hmac.compare_digest(digest, expected):
+        raise PortalTokenError("signature")
+    try:
+        claims = json.loads(raw.decode("utf-8"), object_pairs_hook=_portal_json_pairs)
+    except (ValueError, UnicodeError, RecursionError):
+        raise PortalTokenError("payload_json") from None
+    if not isinstance(claims, dict) or not (_PORTAL_KEYS <= claims.keys() <= _PORTAL_KEYS | {"next"}):
+        raise PortalTokenError("claims")
+    if type(claims["v"]) is not int or claims["v"] != 1:
+        raise PortalTokenError("version")
+    if claims["iss"] != issuer or claims["aud"] != audience:
+        raise PortalTokenError("issuer_audience")
+    if not isinstance(claims["sub"], str) or not claims["sub"].strip() or len(claims["sub"]) > 1024:
+        raise PortalTokenError("subject")
+    try:
+        claims["sub"].encode("utf-8")
+    except UnicodeError:
+        raise PortalTokenError("subject") from None
+    if claims["role"] not in ("student", "teacher"):
+        raise PortalTokenError("role")
+    name = claims["name"]
+    if (not isinstance(name, str) or len(name) > 64
+            or any(ord(c) < 32 or ord(c) == 127 for c in name)):
+        raise PortalTokenError("name")
+    try:
+        name.encode("utf-8")
+    except UnicodeError:
+        raise PortalTokenError("name") from None
+    iat, exp = claims["iat"], claims["exp"]
+    now = time.time()
+    if (type(iat) is not int or type(exp) is not int or iat > now or exp < now - 30
+            or not 0 < exp - iat <= 60):
+        raise PortalTokenError("time")
+    nonce = claims["nonce"]
+    if not isinstance(nonce, str) or len(_portal_decode(nonce)) < 16:
+        raise PortalTokenError("nonce")
+    if "next" in claims and not safe_portal_next(claims["next"]):
+        raise PortalTokenError("next")
+    return claims
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ClassRally/{APP_VERSION}"
 
@@ -4666,6 +4778,14 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(STATIC_DIR / "profile.html")
             return
 
+        if path == "/sso/portal":
+            self._serve_file(STATIC_DIR / "portal-sso.html")
+            return
+
+        if path == "/api/auth/portal/config":
+            self._json_response(portal_public_config())
+            return
+
         if path in ("/reset", "/verify-email", "/invite"):
             # One page for forgotten password, e-mail confirmation and teacher
             # invitations; the token is redeemed by a POST from the page, so
@@ -4999,7 +5119,10 @@ class Handler(BaseHTTPRequestHandler):
             if not user_db.can_view_class(class_id, uid):
                 self._json_response({"error": "Trida nenalezena"}, status=404)
                 return
-            self._json_response(user_db.get_class_members(class_id))
+            viewer = user_db.get_user(uid)
+            teacher_view = bool(viewer and viewer["role"] == "teacher"
+                                and user_db.can_view_class(class_id, uid, teacher_only=True))
+            self._json_response(user_db.get_class_members(class_id, include_portal_name=teacher_view))
             return
 
         if path.startswith("/api/classes/") and path.endswith("/history"):
@@ -5196,6 +5319,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path
+            if path == "/api/auth/portal":
+                self._handle_portal_login()
+                return
             if path == "/api/bug-report":
                 self._handle_bug_report()
                 return
@@ -6276,6 +6402,47 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response({"error": "Hlaseni se nepodarilo predat", "code": exc.code}, status=502)
             return
         self._json_response(result, status=201)
+
+    def _handle_portal_login(self) -> None:
+        if not portal_enabled():
+            self._json_response({"error": "Not found"}, status=404)
+            return
+        ip_key = self._get_client_ip()
+        if LOGIN_FAIL_IP.blocked(ip_key):
+            self._json_response({"error": "Prilis mnoho neuspesnych pokusu, zkuste to za par minut",
+                                 "code": "rate_limited"}, status=429)
+            return
+        try:
+            data = self._read_json()
+            if not isinstance(data, dict):
+                raise ValueError("request_json")
+            claims = verify_portal_token(data.get("token"))
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            # The exception may include attacker-controlled JSON or bytes.
+            # Only fixed server-owned reasons ever reach the log.
+            LOGIN_FAIL_IP.fail(ip_key)
+            _PORTAL_LOG.warning("Portal login refused: %s", str(exc) if isinstance(exc, PortalTokenError) else "request_json")
+            self._json_response(_PORTAL_ERROR, status=401)
+            return
+        nick_key = "portal:" + hashlib.sha256(claims["sub"].encode("utf-8")).hexdigest()
+        pair_key = f"{nick_key}|{ip_key}"
+        if LOGIN_FAIL_NICK_IP.blocked(pair_key) or LOGIN_FAIL_NICK.blocked(nick_key):
+            self._json_response({"error": "Prilis mnoho neuspesnych pokusu, zkuste to za par minut",
+                                 "code": "rate_limited"}, status=429)
+            return
+        try:
+            user = user_db.login_portal_user(claims)
+        except ValueError as exc:
+            LOGIN_FAIL_IP.fail(ip_key)
+            LOGIN_FAIL_NICK_IP.fail(pair_key)
+            LOGIN_FAIL_NICK.fail(nick_key)
+            _PORTAL_LOG.warning("Portal login refused: %s", str(exc) if str(exc) in
+                                {"expired", "replayed_nonce", "unsupported_account_role"} else "account")
+            self._json_response(_PORTAL_ERROR, status=401)
+            return
+        token = user_db.create_session(user["id"])
+        self._json_response({"ok": True, "token": token, "user": user,
+                             "next": claims.get("next", "/host" if user["role"] == "teacher" else "/play")})
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         return

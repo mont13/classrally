@@ -2,12 +2,15 @@
 """Unit tests for ClassRally server."""
 
 import contextlib
+import base64
 import gzip
 import hashlib
+import hmac
 import io
 import json
 import math
 import os
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -3288,6 +3291,436 @@ class _AccountHTTPBase(unittest.TestCase):
         self.assertIsNotNone(m, body)
         return m.group(1)
 
+
+
+class TestPortalSSOHTTP(_AccountHTTPBase):
+    """Signed, one-time portal login against an isolated local HTTP server."""
+
+    def setUp(self):
+        super().setUp()
+        self.portal_env = mock.patch.dict(os.environ, {
+            "CLASSRALLY_PORTAL_SECRET": "test-only-portal-key-never-use-in-production",
+            "CLASSRALLY_PORTAL_ISSUER": "https://portal.example.com",
+            "CLASSRALLY_PORTAL_AUDIENCE": "https://quiz.example.com",
+            "CLASSRALLY_PORTAL_LOGIN_URL": "https://portal.example.com/classrally?lang=cs",
+            "CLASSRALLY_PORTAL_NAME": "Testovací portál",
+        })
+        self.portal_env.start()
+        self.addCleanup(self.portal_env.stop)
+        self.sub = self.id()
+
+    @staticmethod
+    def _b64(raw):
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+    def _claims(self, **changes):
+        now = int(time.time())
+        claims = {"v": 1, "iss": os.environ["CLASSRALLY_PORTAL_ISSUER"],
+                  "aud": os.environ["CLASSRALLY_PORTAL_AUDIENCE"], "sub": self.sub,
+                  "role": "student", "name": "Student z portálu",
+                  "iat": now, "exp": now + 60, "nonce": self._b64(secrets.token_bytes(16))}
+        claims.update(changes)
+        return claims
+
+    def _token(self, claims=None, secret=None):
+        payload = self._b64(json.dumps(claims or self._claims(), ensure_ascii=False).encode())
+        key = (secret or os.environ["CLASSRALLY_PORTAL_SECRET"]).encode()
+        return payload + "." + self._b64(hmac.new(key, payload.encode("ascii"), hashlib.sha256).digest())
+
+    def _login(self, **changes):
+        return self._post("/api/auth/portal", {"token": self._token(self._claims(**changes))})
+
+    def test_valid_token_creates_account_and_user_session(self):
+        code, result = self._login(next="/play?pin=123456")
+        self.assertEqual(code, 200)
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.db.validate_session(result["token"]), result["user"]["id"])
+        self.assertEqual(result["user"]["role"], "student")
+        self.assertTrue(result["user"]["portal_account"])
+        self.assertEqual(result["next"], "/play?pin=123456")
+        with contextlib.closing(self.db.get_conn()) as conn:
+            row = conn.execute("SELECT external_id, portal_name, password_hash FROM users WHERE id = ?",
+                               (result["user"]["id"],)).fetchone()
+            self.assertEqual(row["external_id"], "portal:" + self.sub)
+            self.assertEqual(row["portal_name"], "Student z portálu")
+            self.assertFalse(self.db._verify_password("", row["password_hash"]))
+
+    def test_new_portal_nickname_uses_first_name_and_last_initial(self):
+        cases = [("Jan Testovací Žák", "student", "Jan Ž."),
+                 ("Jan Testovací", "student", "Jan T."),
+                 ("  Žaneta  Marie  Černá  ", "student", "Žaneta Č."),
+                 ("Áňa", "student", "Áňa"),
+                 ("", "student", "Žák"), ("   ", "teacher", "Učitel"),
+                 ("A" * 30 + " Žák", "student", "A" * 21 + " Ž.")]
+        for index, (name, role, expected) in enumerate(cases):
+            with self.subTest(name=name, role=role):
+                code, result = self._login(sub=f"{self.sub}-{index}", name=name, role=role)
+                self.assertEqual(code, 200)
+                self.assertEqual(result["user"]["nickname"], expected)
+                self.assertEqual(result["user"]["portal_name"], name)
+
+    def test_short_portal_nickname_collisions_keep_unique_suffixes(self):
+        self.db.create_user("kolize t.", "password")
+        for index in (1, 2):
+            code, result = self._login(sub=f"{self.sub}-{index}", name="Kolize Testovací")
+            self.assertEqual(code, 200)
+            self.assertEqual(result["user"]["nickname"], f"Kolize T.-{index}")
+
+    def test_existing_portal_nickname_is_preserved_when_name_changes(self):
+        code, first = self._login(name="Původní Jméno")
+        self.assertEqual(code, 200)
+        # Accounts created before this change may still have a full nickname.
+        with contextlib.closing(self.db.get_conn()) as conn:
+            conn.execute("UPDATE users SET nickname = ? WHERE id = ?",
+                         ("Staré celé jméno", first["user"]["id"]))
+            conn.commit()
+        code, second = self._login(name="Nové Celé Jméno")
+        self.assertEqual(code, 200)
+        self.assertEqual(second["user"]["nickname"], "Staré celé jméno")
+        self.assertEqual(second["user"]["portal_name"], "Nové Celé Jméno")
+
+    def test_nonce_is_one_time_even_after_database_reinitialization(self):
+        token = self._token()
+        self.assertEqual(self._post("/api/auth/portal", {"token": token})[0], 200)
+        self.db.init_db()
+        self.assertEqual(self._post("/api/auth/portal", {"token": token})[0], 401)
+
+    def test_concurrent_redemption_creates_exactly_one_session(self):
+        from concurrent.futures import ThreadPoolExecutor
+        token = self._token()
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            codes = list(pool.map(lambda _: self._post("/api/auth/portal", {"token": token})[0], range(6)))
+        self.assertEqual(sorted(codes), [200, 401, 401, 401, 401, 401])
+
+    def test_invalid_claims_have_one_generic_error_and_no_side_effects(self):
+        now = int(time.time())
+        cases = [dict(iss="https://other.example.com"), dict(aud="https://other.example.com"),
+                 dict(iat=now - 100, exp=now - 40), dict(iat=now, exp=now + 61),
+                 dict(iat=now + 40, exp=now + 60), dict(role="admin"),
+                 dict(next="//evil.example.com"), dict(next="https://evil.example.com"),
+                 dict(next="/\\evil.example.com"), dict(next="/%2fevil.example.com"),
+                 dict(next="/%5cevil.example.com"), dict(next="/\nevil.example.com"),
+                 dict(next="/safe?x=\r\nLocation:bad"), dict(v=True), dict(v=2),
+                 dict(iat=True), dict(exp=str(now + 60)), dict(exp=now - 1, iat=now),
+                 dict(sub=""), dict(sub=123), dict(name="N" * 65), dict(name=[]),
+                 dict(name="Jan\tTestovací"), dict(name="Jan\nTestovací"),
+                 dict(nonce=self._b64(b"short")), dict(nonce="!" * 30),
+                 dict(email="existing@example.com"), dict(next=[])]
+        errors = []
+        for changes in cases:
+            with self.subTest(changes=changes):
+                code, result = self._login(**changes)
+                self.assertEqual(code, 401)
+                errors.append(result)
+        self.assertTrue(all(error == errors[0] for error in errors))
+        with contextlib.closing(self.db.get_conn()) as conn:
+            self.assertIsNone(conn.execute("SELECT id FROM users WHERE external_id = ?",
+                                           ("portal:" + self.sub,)).fetchone())
+
+    def test_bad_signature_and_malformed_bodies_are_rejected_without_logging_token(self):
+        token = self._token(secret="wrong-signing-key")
+        with self.assertLogs("classrally.portal", level="WARNING") as log:
+            self.assertEqual(self._post("/api/auth/portal", {"token": token})[0], 401)
+        self.assertNotIn(token, "\n".join(log.output))
+        for body in ({}, {"token": []}, {"token": "a.b.c"}, {"token": "a=.b"}, [], None):
+            with self.subTest(body=body):
+                self.assertEqual(self._post("/api/auth/portal", body)[0], 401)
+
+    def test_expiry_tolerance_and_nonce_retention(self):
+        now = int(time.time())
+        claims = self._claims(iat=now - 60, exp=now - 20)
+        self.assertEqual(self._post("/api/auth/portal", {"token": self._token(claims)})[0], 200)
+        with contextlib.closing(self.db.get_conn()) as conn:
+            row = conn.execute("SELECT expires_at FROM portal_nonces WHERE nonce_hash = ?",
+                               (hashlib.sha256(claims["nonce"].encode()).hexdigest(),)).fetchone()
+            self.assertEqual(row["expires_at"], claims["exp"] + 120)
+
+    def test_role_and_name_update_without_duplicate_account(self):
+        code, first = self._login()
+        self.assertEqual(code, 200)
+        code, second = self._login(role="teacher", name="Nové celé jméno učitele")
+        self.assertEqual(code, 200)
+        self.assertEqual(second["user"]["id"], first["user"]["id"])
+        self.assertEqual(second["user"]["role"], "teacher")
+        self.assertEqual(second["next"], "/host")
+        self.assertEqual(second["user"]["portal_name"], "Nové celé jméno učitele")
+        self.assertIsNone(self.db.validate_session(first["token"]))
+        code, third = self._login(role="student")
+        self.assertEqual(code, 200)
+        self.assertEqual(third["user"]["role"], "student")
+        self.assertIsNone(self.db.validate_session(second["token"]))
+
+    def test_portal_account_has_no_password_including_after_reset_attempts(self):
+        code, result = self._login()
+        self.assertEqual(code, 200)
+        user = result["user"]
+        for password in ("", "password", "!portal"):
+            code, response = self._post("/api/auth/login", {"nickname": user["nickname"], "password": password})
+            self.assertEqual((code, response), (401, {"error": "Neplatne prihlasovaci udaje"}))
+        with self.assertRaises(ValueError):
+            self.db.admin_set_password(user["nickname"], "newpassword")
+        reset = self.db.create_user_token("reset", user_id=user["id"])
+        self.assertIsNone(self.db.reset_password_with_token(reset, "newpassword"))
+
+    def test_nickname_and_email_never_automatically_link_accounts(self):
+        existing = self.db.create_user("portal-match", "password", email="portal-match@example.com", email_verified=True)
+        code, result = self._login(name="portal-match", sub="portal-match@example.com")
+        self.assertEqual(code, 200)
+        self.assertNotEqual(result["user"]["id"], existing["id"])
+        self.assertNotEqual(result["user"]["nickname"].lower(), existing["nickname"].lower())
+        self.assertIsNone(result["user"]["email"])
+
+    def test_linking_requires_explicit_cli_and_preserves_existing_data(self):
+        existing = self.db.create_user("explicit-link", "password")
+        session = self.db.create_session(existing["id"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.db.main(["link-portal", "explicit-link", self.sub]), 0)
+        self.assertIsNone(self.db.validate_session(session))
+        code, result = self._login(role="teacher", name="Jméno učitele")
+        self.assertEqual(code, 200)
+        self.assertEqual(result["user"]["id"], existing["id"])
+        self.assertEqual(result["user"]["nickname"], "explicit-link")
+        self.assertIsNotNone(self.db.authenticate_user("explicit-link", "password"))
+        other = self.db.create_user("explicit-other", "password")
+        with self.assertRaises(ValueError):
+            self.db.link_portal_account(other["nickname"], self.sub)
+        with self.assertRaises(ValueError):
+            self.db.link_portal_account(existing["nickname"], "different-sub")
+
+    def test_portal_disabled_is_404_and_config_has_no_secret(self):
+        with mock.patch.dict(os.environ, {"CLASSRALLY_PORTAL_SECRET": ""}):
+            self.assertEqual(self._login()[0], 404)
+            _, body = self._get("/api/auth/portal/config")
+            self.assertEqual(json.loads(body), {"enabled": False})
+        _, body = self._get("/api/auth/portal/config")
+        config = json.loads(body)
+        self.assertTrue(config["enabled"])
+        self.assertEqual(config["name"], "Testovací portál")
+        self.assertEqual(config["login_url"], os.environ["CLASSRALLY_PORTAL_LOGIN_URL"])
+        self.assertNotIn(os.environ["CLASSRALLY_PORTAL_SECRET"], body.decode())
+        self.assertEqual(self._get("/sso/portal")[0], 200)
+
+    def test_short_secret_disables_the_function_at_exact_contract_boundary(self):
+        for length in (0, 1, 31, 32, 42):
+            with self.subTest(length=length), mock.patch.dict(os.environ, {"CLASSRALLY_PORTAL_SECRET": "s" * length}):
+                self.assertEqual(self._post("/api/auth/portal", {"token": "invalid"})[0], 404)
+                self.assertEqual(json.loads(self._get("/api/auth/portal/config")[1]), {"enabled": False})
+        with mock.patch.dict(os.environ, {"CLASSRALLY_PORTAL_SECRET": "s" * 43, "CLASSRALLY_PORTAL_NAME": ""}):
+            self.assertEqual(self._login()[0], 200)
+            self.assertEqual(json.loads(self._get("/api/auth/portal/config")[1])["name"], "Školní portál")
+
+    def test_duplicate_or_missing_json_claims_and_noncanonical_base64_are_rejected(self):
+        claims = self._claims()
+        raw = json.dumps(claims)
+        duplicate = raw[:-1] + ', "sub": "different"}'
+        missing = dict(claims)
+        del missing["iss"]
+        for body in (duplicate, json.dumps(missing), "[]", '"text"', '{"x":NaN}'):
+            payload = self._b64(body.encode())
+            signature = self._b64(hmac.new(os.environ["CLASSRALLY_PORTAL_SECRET"].encode(),
+                                          payload.encode(), hashlib.sha256).digest())
+            self.assertEqual(self._post("/api/auth/portal", {"token": payload + "." + signature})[0], 401)
+        valid = self._token()
+        payload, signature = valid.split(".")
+        self.assertEqual(self._post("/api/auth/portal", {"token": payload + "=." + signature})[0], 401)
+
+    def test_used_nonce_cannot_be_reused_in_a_different_signed_token(self):
+        nonce = self._claims()["nonce"]
+        self.assertEqual(self._login(nonce=nonce)[0], 200)
+        self.assertEqual(self._login(nonce=nonce, sub="different-subject", name="Different")[0], 401)
+
+    def test_portal_full_name_is_visible_only_to_the_class_teacher(self):
+        teacher = self.db.create_user("portal-name-owner", "password", "teacher")
+        teacher_token = self.db.create_session(teacher["id"])
+        cls = self.db.create_class("SSO privacy", teacher["id"])
+        code, student = self._login(name="Alena Zkoušková")
+        self.assertEqual(code, 200)
+        self.db.join_class(cls["join_code"], student["user"]["id"])
+        other = self.db.create_user("privacy-classmate", "password")
+        self.db.join_class(cls["join_code"], other["id"])
+        other_token = self.db.create_session(other["id"])
+        path = f"/api/classes/{cls['id']}/members"
+        teacher_members = json.loads(self._get(path, teacher_token)[1])
+        self.assertEqual(next(m for m in teacher_members if m["id"] == student["user"]["id"])["portal_name"],
+                         "Alena Zkoušková")
+        for token in (student["token"], other_token):
+            members = json.loads(self._get(path, token)[1])
+            self.assertTrue(all("portal_name" not in member for member in members))
+            self.assertNotIn("Alena Zkoušková", json.dumps(members, ensure_ascii=False))
+
+    def test_portal_identity_does_not_expand_classmate_result_access(self):
+        teacher = self.db.create_user("surface-owner", "password", "teacher")
+        teacher_token = self.db.create_session(teacher["id"])
+        cls = self.db.create_class("Portal surfaces", teacher["id"])
+        code, portal = self._login(name="Skryté Portálové Jméno")
+        self.assertEqual(code, 200)
+        # A pre-existing portal account can still carry its original full nickname.
+        with contextlib.closing(self.db.get_conn()) as conn:
+            conn.execute("UPDATE users SET nickname = ? WHERE id = ?",
+                         ("Starší Celé Jméno", portal["user"]["id"]))
+            conn.commit()
+        other = self.db.create_user("surface-classmate", "password")
+        other_token = self.db.create_session(other["id"])
+        for uid in (portal["user"]["id"], other["id"]):
+            self.db.join_class(cls["join_code"], uid)
+
+        def get(path, token):
+            req = Request(self.base_url + path, headers={"Authorization": "UserToken " + token})
+            try:
+                with urlopen(req) as res:
+                    return res.status, json.loads(res.read())
+            except HTTPError as error:
+                return error.code, json.loads(error.read())
+
+        def no_account_identity(payload):
+            text = json.dumps(payload, ensure_ascii=False)
+            for value in ("portal_name", "Skryté Portálové Jméno", "Starší Celé Jméno"):
+                self.assertNotIn(value, text)
+
+        quiz = server.QuizState([])
+        player = quiz.register_player("Herní Liška", user_id=portal["user"]["id"])
+        quiz.register_player("Herní Vlk", user_id=other["id"])
+        no_account_identity(quiz.public_state())
+        self.assertEqual({p["name"] for p in quiz.public_state()["players"]}, {"Herní Liška", "Herní Vlk"})
+        record = {"id": secrets.token_hex(6), "class_id": cls["id"], "bank_name": "Privacy",
+                  "total_questions": 0, "player_count": 1,
+                  "players": [{"player_id": player["player_id"], "name": "Herní Liška", "score": 0, "rank": 1}]}
+        self.db.save_game_to_db(record, class_id=cls["id"], user_map=quiz._get_user_map())
+        for suffix in ("members", "history"):
+            status, payload = get(f"/api/classes/{cls['id']}/{suffix}", other_token)
+            self.assertEqual(status, 200)
+            no_account_identity(payload)
+        self.assertEqual(payload[0]["players"][0]["player_name"], "Herní Liška")
+        no_account_identity(get("/api/classes", other_token)[1])
+        code, peer_profile = get("/api/auth/profile", other_token)
+        self.assertEqual(code, 200)
+        self.assertEqual(peer_profile["id"], other["id"])
+        self.assertIsNone(peer_profile["portal_name"])
+
+        questions = [{"id": "privacy-q", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0}]
+        hw_id = self.db.create_selfpaced_session("Privacy", questions, owner_id=teacher["id"])
+        code, hw = self._post("/api/selfpaced/join", {"session_id": hw_id, "name": "Domácí Liška"}, portal["token"])
+        self.assertEqual(code, 200)
+        path = f"/api/selfpaced/state?session_id={hw_id}&player_id={hw['player_id']}"
+        self.assertEqual(get(path, other_token)[0], 404)
+        code, state = get(path + "&secret=" + hw["player_secret"], portal["token"])
+        self.assertEqual(code, 200)
+        no_account_identity(state)
+
+        restricted = ["/api/users", f"/api/classes/{cls['id']}/progress",
+                      "/api/selfpaced/mine", f"/api/selfpaced/results?session_id={hw_id}",
+                      "/api/host/exam/overview", "/api/admin/exam/overview",
+                      "/api/admin/exam/results.csv", "/api/admin/history",
+                      f"/api/admin/history/detail?game_id={record['id']}"]
+        for path in restricted:
+            for token in (portal["token"], other_token):
+                with self.subTest(path=path, portal_viewer=token == portal["token"]):
+                    status, payload = get(path, token)
+                    self.assertIn(status, (401, 403, 404))
+                    no_account_identity(payload)
+        status, users = get("/api/users", teacher_token)
+        self.assertEqual(status, 200)
+        self.assertEqual(next(u for u in users["users"] if u["id"] == portal["user"]["id"])["portal_name"],
+                         "Skryté Portálové Jméno")
+
+        exam = server.ExamState(questions)
+        own = exam.register_student("Písemková Liška")
+        peer = exam.register_student("Písemkový Vlk")
+        self.assertFalse(exam.student_view(own["player_id"], peer["player_secret"])["known"])
+        own_view = exam.student_view(own["player_id"], own["player_secret"])
+        no_account_identity(own_view)
+        self.assertNotIn("Písemkový Vlk", json.dumps(own_view, ensure_ascii=False))
+
+    def test_teacher_cannot_enable_password_on_portal_account(self):
+        code, student = self._login()
+        self.assertEqual(code, 200)
+        teacher = self.db.create_user("portal-reset-teacher", "password", "teacher")
+        cls = self.db.create_class("Passwordless", teacher["id"])
+        self.db.join_class(cls["join_code"], student["user"]["id"])
+        with self.assertRaises(ValueError):
+            self.db.reset_user_password(student["user"]["id"], "newpassword", teacher["id"])
+        with self.assertRaises(ValueError):
+            self.db.teacher_reset_password(student["user"]["id"], "newpassword", teacher["id"])
+        self.assertIsNone(self.db.authenticate_user(student["user"]["nickname"], "newpassword"))
+
+    def test_cleanup_expires_only_old_nonces_and_preserves_live_nonces(self):
+        with contextlib.closing(self.db.get_conn()) as conn:
+            conn.execute("INSERT INTO portal_nonces VALUES (?, ?)", ("expired-test-nonce", time.time() - 1))
+            conn.commit()
+        self.assertEqual(self._login()[0], 200)
+        with contextlib.closing(self.db.get_conn()) as conn:
+            self.assertIsNone(conn.execute("SELECT 1 FROM portal_nonces WHERE nonce_hash = 'expired-test-nonce'").fetchone())
+
+    def test_normal_account_also_keeps_game_name_and_account_binding(self):
+        user = self.db.create_user("ordinary-game-account", "password")
+        token = self.db.create_session(user["id"])
+        quiz = server.QuizState([])
+        with mock.patch.object(server.DEFAULT_ROOM, "quiz", quiz), mock.patch.object(server.DEFAULT_ROOM, "mode", "game"), \
+                mock.patch.object(server, "ROOM_MODE", "single"):
+            code, player = self._post("/api/register", {"name": "Herní Vlk", "user_token": token})
+            self.assertEqual(code, 200)
+            record = {"id": self.id(), "total_questions": 0, "player_count": 1,
+                      "players": [{"player_id": player["player_id"], "name": player["name"], "score": 0, "rank": 1}]}
+            self.db.save_game_to_db(record, user_map=quiz._get_user_map())
+        with contextlib.closing(self.db.get_conn()) as conn:
+            row = conn.execute("SELECT user_id, player_name FROM game_players WHERE game_id = ?", (self.id(),)).fetchone()
+            self.assertEqual((row["user_id"], row["player_name"]), (user["id"], "Herní Vlk"))
+
+    def test_missing_issuer_or_audience_fails_closed(self):
+        token = self._token()
+        for key in ("CLASSRALLY_PORTAL_ISSUER", "CLASSRALLY_PORTAL_AUDIENCE"):
+            with mock.patch.dict(os.environ, {key: ""}):
+                self.assertEqual(self._post("/api/auth/portal", {"token": token})[0], 401)
+
+    def test_rate_limit_is_shared_with_password_login(self):
+        server.LOGIN_FAIL_IP.max_failures = 2
+        self.addCleanup(setattr, server.LOGIN_FAIL_IP, "max_failures", 50)
+        for _ in range(2):
+            self.assertEqual(self._post("/api/auth/portal", {"token": "invalid"})[0], 401)
+        self.assertEqual(self._login()[0], 429)
+        self.assertEqual(self._post("/api/auth/login", {"nickname": "x", "password": "x"})[0], 429)
+
+    def test_game_keeps_chosen_nickname_and_records_portal_user(self):
+        code, result = self._login()
+        self.assertEqual(code, 200)
+        quiz = server.QuizState([{"id": "sso-q", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0}])
+        with mock.patch.object(server.DEFAULT_ROOM, "quiz", quiz), mock.patch.object(server.DEFAULT_ROOM, "mode", "quiz"), \
+                mock.patch.object(server, "ROOM_MODE", "single"):
+            code, player = self._post("/api/register", {"name": "Herní Liška", "user_token": result["token"]})
+            self.assertEqual(code, 200)
+            self.assertEqual(player["name"], "Herní Liška")
+            self.assertEqual(quiz.players[player["player_id"]].user_id, result["user"]["id"])
+            record = {"id": self.id(), "timestamp": "2026-11-06T08:00:00", "total_questions": 1,
+                      "player_count": 1, "players": [{"player_id": player["player_id"], "name": player["name"],
+                                                     "score": 100, "rank": 1}]}
+            self.db.save_game_to_db(record, user_map=quiz._get_user_map())
+        with contextlib.closing(self.db.get_conn()) as conn:
+            row = conn.execute("SELECT user_id, player_name FROM game_players WHERE game_id = ?", (self.id(),)).fetchone()
+            self.assertEqual((row["user_id"], row["player_name"]), (result["user"]["id"], "Herní Liška"))
+
+
+class TestPortalMigration(_DBTestBase):
+    def test_existing_database_migrates_idempotently_without_linking_accounts(self):
+        import db
+        legacy = Path(self.tmpdir) / "legacy.db"
+        with contextlib.closing(sqlite3.connect(legacy)) as conn:
+            conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, nickname TEXT NOT NULL UNIQUE COLLATE NOCASE, "
+                         "password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'student', "
+                         "total_score INTEGER NOT NULL DEFAULT 0, games_played INTEGER NOT NULL DEFAULT 0, "
+                         "created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+            conn.execute("INSERT INTO users (nickname, password_hash) VALUES (?, ?)",
+                         ("legacy-student", db._hash_password("password")))
+            conn.commit()
+        db.set_db_path(legacy)
+        db.init_db()
+        db.init_db()
+        self.assertIsNotNone(db.authenticate_user("legacy-student", "password"))
+        db.create_user("another-local", "password")
+        with contextlib.closing(db.get_conn()) as conn:
+            users = conn.execute("SELECT external_id FROM users").fetchall()
+            self.assertEqual([u["external_id"] for u in users], [None, None])
+            indexes = {row[1] for row in conn.execute("PRAGMA index_list(users)")}
+            self.assertIn("idx_users_external_id", indexes)
 
 
 class TestAccountRecoveryHTTP(_AccountHTTPBase):

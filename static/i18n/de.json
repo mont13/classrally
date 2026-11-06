@@ -9,6 +9,10 @@
     "random_nick_title": "Zufälliger Spitzname",
     "random_nick_aria": "Zufälligen Spitznamen generieren",
     "join_btn": "Beitreten",
+    "account_signed_in": "Angemeldet — die Ergebnisse werden in deinem Konto gespeichert",
+    "account_signed_in_portal": "Über {0} angemeldet — die Ergebnisse werden in deinem Konto gespeichert",
+    "account_logout": "Abmelden",
+    "account_logout_error": "Abmelden fehlgeschlagen. Bitte versuche es erneut.",
     "has_account": "Hast du ein Konto?",
     "login_link": "Anmelden",
     "no_account_needed": "Kein Konto nötig — du kannst auch ohne spielen.",
@@ -823,5 +827,19 @@
     "too_many": "Zu viele Versuche, bitte versuchen Sie es gleich noch einmal.",
     "error": "Etwas ist schiefgelaufen, bitte versuchen Sie es erneut.",
     "mail_disabled": "Der E-Mail-Versand ist auf diesem Server noch nicht aktiviert – es kommt keine E-Mail an."
+  },
+
+  "portal": {
+    "page_title": "ClassRally – Anmeldung über das Schulportal",
+    "heading": "Anmeldung über das Schulportal",
+    "working": "Anmeldung wird überprüft…",
+    "error": "Die Anmeldung ist fehlgeschlagen. Der Link ist möglicherweise abgelaufen oder wurde bereits verwendet. Öffne einen neuen Link im Schulportal.",
+    "disabled": "Die Anmeldung über das Schulportal ist auf diesem Server nicht aktiviert.",
+    "storage_error": "Die Anmeldung konnte nicht gespeichert werden. Erlaube den Browserspeicher und öffne einen neuen Link im Schulportal.",
+    "default_name": "Schulportal",
+    "login": "Über {0} anmelden",
+    "back": "Zurück zu {0}",
+    "home": "Zurück zu ClassRally",
+    "javascript": "Aktiviere JavaScript für die Anmeldung und öffne einen neuen Link im Schulportal."
   }
 }

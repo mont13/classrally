@@ -275,6 +275,20 @@ Celkem **142 otazek**. Dalsi sady lze vytvorit v ucitelskem portalu nebo pres AI
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | _(Ollama)_ | OpenAI-kompatibilni AI API pro generovani otazek (nastavene na serveru = zamcene, klic se neposila do prohlizece) |
 | `MAIL_MODE` | `log` | Odchozi posta: `off`, `log` (jen ulozit do `data/outbox`), `live` (SMTP) |
 | `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD` | — | SMTP pro obnovu hesla, overeni e-mailu a pozvanky ucitelu |
+| `CLASSRALLY_PORTAL_SECRET` | _(prázdné, SSO vypnuto)_ | Sdílený secret školního portálu, nejméně 43 znaků; nikdy do Gitu |
+| `CLASSRALLY_PORTAL_ISSUER` / `CLASSRALLY_PORTAL_AUDIENCE` | _(prázdné)_ | Přesné očekávané `iss` a `aud` podepsaného tokenu |
+| `CLASSRALLY_PORTAL_LOGIN_URL` | _(prázdné)_ | Adresa vstupu do portálu, například `https://portal.example.com/classrally` |
+| `CLASSRALLY_PORTAL_NAME` | `Školní portál` | Název v tlačítku přihlášení |
+
+### Přihlášení přes školní portál
+
+Volitelné SSO používá jednorázový podepsaný odkaz na `/sso/portal#t=…`.
+Bez secretu (nebo s hodnotou kratší než 43 znaků) zůstává přihlášení beze změn.
+Portálové účty se vážou jen přes neměnné ID; žádné párování podle jména ani e-mailu.
+Existující účet propojí správce výslovně příkazem `python3 db.py link-portal <přezdívka> <sub>`
+ve stejném prostředí a nad stejnou databází jako aplikace.
+Žák si dál zadává PIN a vlastní herní přezdívku, výsledky se ukládají k jeho účtu.
+Postup zapnutí a bezpečnostní pravidla jsou v kapitole „Školní portál SSO“ níže uvedeného návodu nasazení.
 
 ### Zabezpeceni
 

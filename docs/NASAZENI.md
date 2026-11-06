@@ -339,6 +339,54 @@ Na verejnem serveru pro vic ucitelu nastavte `QUIZ_ROOMS=multi` (a restartujte):
   s rozepsanou nebo neexportovanou pisemkou. Vysledky her, ukolu a ucty zustavaji
   v databazi. Hry a ukoly z doby pred zapnutim `multi` (bez vlastnika) vidi jen heslo portalu.
 
+## Školní portál SSO
+
+Funkce je volitelná. Chybějící `CLASSRALLY_PORTAL_SECRET` nebo hodnota kratší než 43 znaků
+ji vypne: tlačítka se nezobrazují a `POST /api/auth/portal` vrací 404. Dosavadní přihlášení
+heslem či potvrzeným e-mailem zůstává dostupné. Nastavte všech pět proměnných ze šablony
+konfigurace; kromě názvu nemají ostatní hodnoty výchozí adresu:
+
+```ini
+CLASSRALLY_PORTAL_SECRET=<stejná tajná hodnota jako CLASSRALLY_SSO_SECRET na portálu>
+CLASSRALLY_PORTAL_ISSUER=https://portal.example.com
+CLASSRALLY_PORTAL_AUDIENCE=https://classrally.example.com
+CLASSRALLY_PORTAL_LOGIN_URL=https://portal.example.com/classrally
+CLASSRALLY_PORTAL_NAME=Školní portál
+```
+
+`iss` a `aud` se porovnávají přesně, včetně případného koncového lomítka.
+Příklad školní konfigurace `CLASSRALLY_PORTAL_LOGIN_URL=https://portal.skola.example/classrally`
+patří pouze do soukromé konfigurace konkrétní instance. Vygenerujte secret příkazem
+`python3 -c "import secrets;print(secrets.token_urlsafe(32))"` a stejný text nastavte na obou
+stranách. HMAC používá přímo UTF-8 bajty této hodnoty, **bez base64 dekódování**.
+Secret ani skutečné ID žáků neukládejte do Gitu, příkazové historie, screenshotů či logů.
+Konfiguraci držte mimo Git v souboru s právy **600** (pro SSO také u systemd); uživatel
+služby musí mít přístup k tomuto souboru. Šablony Compose proměnné předávají do aplikace,
+systemd je načítá z existujícího `EnvironmentFile`. Python je sám z `.env` nenačítá.
+
+Portál musí ověřovat schválení a zmrazení účtu a nevydávat token v režimu náhledu cizího
+účtu. Odkaz vede na `/sso/portal#t=<token>`; fragment se ihned odstraní z adresního řádku
+a token se vymění POSTem za obvyklou osmihodinovou session. Používejte HTTPS na obou
+stranách a synchronizované hodiny. Token má životnost nejvýše 60 sekund, `iat` nesmí být
+v budoucnosti, u `exp` je tolerance 30 sekund. Nonce nejméně 16 náhodných bajtů se ukládá
+jen jako hash do `exp + 120` sekund; jeho kontrola i změna účtu probíhají v jedné SQLite
+transakci. Opakované použití vrací obecnou 401, příčina se loguje bez tokenu či osobních údajů.
+Bez správného issueru/audience přihlášení selže. Povoleny jsou jen role student/teacher
+a bezpečné místní `next` do 200 znaků, bez `//`, zpětných lomítek či fragmentu.
+
+Existující účet propojte **jen výslovně**, nad stejnou databází a pod stejným prostředím jako
+aplikace: `python3 db.py link-portal <přezdívka> <sub>`. Pro datový adresář zvolený přes
+`QUIZ_DATA_DIR` musí mít příkaz stejnou hodnotu. Příkaz nikdy nepáruje podle e-mailu ani
+přezdívky z tokenu, odmítne přepsání jiné vazby a ukončí dosavadní sessions.
+`external_id` je `portal:<sub>`. Již existující přezdívku a heslo ručně propojeného účtu
+zachová; role se synchronizuje při dalším přihlášení a při změně role se staré sessions zruší.
+Nově založený portálový účet nemá použitelné heslo; lokální obnova ani reset mu ho nezapnou.
+Celé jméno se aktualizuje v odděleném `portal_name`, přezdívka účtu zůstává stabilní.
+Celá jména ostatních žáků jsou dostupná jen oprávněnému učiteli, nikoli spolužákům.
+Žák si do hry i domácího úkolu zadává vlastní přezdívku; jméno z účtu se mu nepředvyplňuje.
+Výsledek živé hry se nadále váže na `game_players.user_id`. Odhlášení ruší pouze session
+ClassRally; přihlášení na portálu zůstává. Vypnutí SSO neruší již vydané sessions.
+
 ## 3. Provoz
 
 ### Kontrola, ze bezi

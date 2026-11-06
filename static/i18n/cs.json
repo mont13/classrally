@@ -10,6 +10,10 @@
     "random_nick_title": "Náhodná přezdívka",
     "random_nick_aria": "Vygeneruj náhodnou přezdívku",
     "join_btn": "Vstoupit",
+    "account_signed_in": "Přihlášen(a) — výsledky se uloží k tvému účtu",
+    "account_signed_in_portal": "Přihlášen(a) přes {0} — výsledky se uloží k tvému účtu",
+    "account_logout": "Odhlásit",
+    "account_logout_error": "Odhlášení se nepodařilo. Zkus to znovu.",
     "has_account": "Máš účet?",
     "login_link": "Přihlásit se",
     "no_account_needed": "Účet není povinný — můžeš hrát i bez něj.",
@@ -869,5 +873,19 @@
     "too_many": "Příliš mnoho pokusů, zkuste to za chvíli.",
     "error": "Něco se nepovedlo, zkuste to znovu.",
     "mail_disabled": "Odesílání e-mailů zatím není na tomto serveru zapnuté – e-mail nepřijde."
+  },
+
+  "portal": {
+    "page_title": "ClassRally – Přihlášení přes školní portál",
+    "heading": "Přihlášení přes školní portál",
+    "working": "Ověřuji přihlášení…",
+    "error": "Přihlášení se nepodařilo. Odkaz mohl vypršet nebo už byl použitý. Otevřete nový odkaz ve školním portálu.",
+    "disabled": "Přihlášení přes školní portál na tomto serveru není zapnuté.",
+    "storage_error": "Přihlášení nelze uložit. Povolte úložiště prohlížeče a otevřete nový odkaz ve školním portálu.",
+    "default_name": "Školní portál",
+    "login": "Přihlásit přes {0}",
+    "back": "Zpět na {0}",
+    "home": "Zpět na ClassRally",
+    "javascript": "Pro přihlášení zapněte JavaScript a otevřete nový odkaz ze školního portálu."
   }
 }

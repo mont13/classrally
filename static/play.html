@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="manifest" href="/static/manifest.json" />
   <script src="/static/i18n.js"></script>
+  <script src="/static/portal.js" defer></script>
   <script src="/static/sfx.js"></script>
   <script src="/static/confetti.js"></script>
   <meta name="theme-color" content="#0284c7" />
@@ -324,9 +325,15 @@
           </div>
         </div>
       </div>
-      <div style="margin-top:14px;text-align:center;font-size:0.95rem;">
+      <div data-account-login style="margin-top:14px;text-align:center;font-size:0.95rem;">
         <span class="muted" data-i18n="play.has_account">Máš účet?</span> <a href="/profile" style="font-weight:600;" data-i18n="play.login_link">Přihlásit se</a>
+        <div data-portal-login hidden style="margin-top:12px;"><a class="btn secondary" rel="noreferrer"></a></div>
         <p class="muted" style="margin:4px 0 0 0;font-size:0.85rem;" data-i18n="play.no_account_needed">Účet není povinný — můžeš hrát i bez něj.</p>
+      </div>
+      <div data-account-signed-in hidden style="margin-top:14px;text-align:center;font-size:0.95rem;">
+        <span class="muted" data-account-status></span>
+        <button type="button" class="btn ghost" data-account-logout data-i18n="play.account_logout" style="padding:4px 8px;font-size:0.85rem;">Odhlásit</button>
+        <p data-account-error hidden role="alert" data-i18n="play.account_logout_error">Odhlášení se nepodařilo. Zkus to znovu.</p>
       </div>
       <div id="qrJoin" style="text-align:center;margin:30px 0 10px 0;">
         <p class="muted" style="margin:0 0 12px 0;font-size:1.1rem;" data-i18n="play.qr_hint">QR kód pro připojení:</p>
@@ -403,6 +410,11 @@
         </div>
         <button id="spJoinBtn" class="btn good" style="width:100%;padding:16px;font-size:1.2rem;" data-i18n="play.sp_start_btn">Začít kvíz</button>
         <p id="spJoinErr" style="color:#b91c1c;font-weight:700;margin-top:8px;"></p>
+        <div data-account-signed-in hidden style="margin-top:14px;text-align:center;font-size:0.95rem;">
+          <span class="muted" data-account-status></span>
+          <button type="button" class="btn ghost" data-account-logout data-i18n="play.account_logout" style="padding:4px 8px;font-size:0.85rem;">Odhlásit</button>
+          <p data-account-error hidden role="alert" data-i18n="play.account_logout_error">Odhlášení se nepodařilo. Zkus to znovu.</p>
+        </div>
       </div>
 
       <!-- Question screen -->
@@ -1862,28 +1874,78 @@
 
     let isLoggedIn = false;
     let myAvatarId = 0;
+    let accountProfile = null;
+    let accountPortalName = '';
 
-    (async function autoFillFromAccount() {
+    function renderAccountState() {
+      document.querySelectorAll('[data-account-login]').forEach(el => { el.hidden = !!accountProfile; });
+      document.querySelectorAll('[data-account-signed-in]').forEach(el => { el.hidden = !accountProfile; });
+      const key = accountProfile?.portal_account ? 'play.account_signed_in_portal' : 'play.account_signed_in';
+      const name = accountPortalName || i18n.t('portal.default_name');
+      document.querySelectorAll('[data-account-status]').forEach(el => { el.textContent = i18n.t(key, name); });
+    }
+    i18n.onLangChange(renderAccountState);
+    document.addEventListener('classrally:portal-ready', event => {
+      accountPortalName = event.detail.name;
+      renderAccountState();
+    });
+
+    const accountProfileReady = (async function autoFillFromAccount() {
       const token = localStorage.getItem('quiz_user_token');
-      if (!token) return;
+      if (!token) return null;
       try {
         const res = await fetch('/api/auth/profile', {
-          headers: { 'Authorization': 'UserToken ' + token }
+          headers: { 'Authorization': 'UserToken ' + token }, cache: 'no-store'
         });
-        if (!res.ok) return;
+        if (!res.ok) return null;
         const profile = await res.json();
+        if (localStorage.getItem('quiz_user_token') !== token) return null;
+        accountProfile = profile;
+        isLoggedIn = true;
+        myAvatarId = profile.avatar_id || 0;
+        renderAccountState();
         if (profile.nickname) {
-          document.getElementById('nameInput').value = profile.nickname;
-          isLoggedIn = true;
-          myAvatarId = profile.avatar_id || 0;
+          if (!profile.portal_account && !document.getElementById('nameInput').value) {
+            document.getElementById('nameInput').value = profile.nickname;
+          }
           // Logged-in players already have a profile avatar — hide the picker
           const apw = document.getElementById('avatarPickerWrap');
           if (apw) apw.classList.add('hide');
         }
+        return profile;
       } catch (e) {
         console.error('Auto-fill from account failed:', e);
+        return null;
       }
     })();
+
+    document.querySelectorAll('[data-account-logout]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const token = localStorage.getItem('quiz_user_token');
+        const buttons = document.querySelectorAll('[data-account-logout]');
+        buttons.forEach(el => { el.disabled = true; });
+        document.querySelectorAll('[data-account-error]').forEach(el => { el.hidden = true; });
+        try {
+          if (token) {
+            const res = await fetch('/api/auth/logout', {
+              method: 'POST', headers: { 'Authorization': 'UserToken ' + token }
+            });
+            if (!res.ok && res.status !== 401) throw new Error('Logout failed');
+          }
+          if (localStorage.getItem('quiz_user_token') === token) localStorage.removeItem('quiz_user_token');
+          accountProfile = null;
+          isLoggedIn = false;
+          myAvatarId = 0;
+          document.getElementById('avatarPickerWrap').classList.remove('hide');
+          document.getElementById('loggedInBadge').classList.add('hide');
+          renderAccountState();
+        } catch {
+          document.querySelectorAll('[data-account-error]').forEach(el => { el.hidden = false; });
+        } finally {
+          buttons.forEach(el => { el.disabled = false; });
+        }
+      });
+    });
 
     // The browser's own id: joining again from it (a double tap, back to the
     // join screen, a second tab) continues as the same player on the server
@@ -2197,16 +2259,10 @@
       let spState = null; // last fetched state
 
       // Auto-fill name from account
-      (async function autoFillName() {
-        const token = localStorage.getItem('quiz_user_token');
-        if (!token) return;
-        try {
-          const res = await fetch('/api/auth/profile', { headers: { 'Authorization': 'UserToken ' + token } });
-          if (!res.ok) return;
-          const profile = await res.json();
-          if (profile.nickname) document.getElementById('spNameInput').value = profile.nickname;
-        } catch {}
-      })();
+      accountProfileReady.then(profile => {
+        const input = document.getElementById('spNameInput');
+        if (profile?.nickname && !profile.portal_account && !input.value) input.value = profile.nickname;
+      });
 
       // If already joined, go straight to quiz
       if (spPlayerId) {

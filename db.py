@@ -85,6 +85,7 @@ _PBKDF2_PREFIX = "pbkdf2_sha256"
 
 # Minimum password length by role (teachers manage classes and question banks).
 MIN_PASSWORD_LEN = {"teacher": 8, "student": 4}
+_PORTAL_PASSWORD = "!portal"
 
 
 def _hash_password(password: str) -> str:
@@ -94,6 +95,10 @@ def _hash_password(password: str) -> str:
 
 
 def _verify_password(password: str, stored: str) -> bool:
+    if stored == _PORTAL_PASSWORD:
+        # Passwordless accounts cost the same check as an unknown account.
+        _verify_password(password, _dummy_hash())
+        return False
     if stored.startswith(_PBKDF2_PREFIX + "$"):
         try:
             _, iterations, salt_hex, digest_hex = stored.split("$")
@@ -271,7 +276,18 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
         if "email_verified_at" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN email_verified_at REAL")
+        if "external_id" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+        if "portal_name" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN portal_name TEXT")
         conn.executescript("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_id ON users(external_id);
+            CREATE TABLE IF NOT EXISTS portal_nonces (
+                nonce_hash TEXT PRIMARY KEY,
+                expires_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_portal_nonces_expiry ON portal_nonces(expires_at);
+
             -- Only a CONFIRMED address is unique: an unconfirmed one may sit on
             -- several accounts, so nobody can block someone else's address and
             -- setting an address never reveals whether it is already in use.
@@ -421,14 +437,98 @@ def get_user(user_id: int) -> dict | None:
     try:
         row = conn.execute(
             "SELECT id, nickname, role, total_score, games_played, avatar_id, created_at, "
-            "email, email_verified_at FROM users WHERE id = ?",
+            "email, email_verified_at, portal_name, external_id IS NOT NULL AS portal_account "
+            "FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
         if not row:
             return None
         user = dict(row)
         user["email_verified"] = user.pop("email_verified_at") is not None
+        user["portal_account"] = bool(user["portal_account"])
         return user
+    finally:
+        conn.close()
+
+
+def get_user_by_external_id(external_id: str) -> dict | None:
+    """Find an explicit identity binding; never fall back to nickname or e-mail."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT id FROM users WHERE external_id = ?", (external_id,)).fetchone()
+        return get_user(row["id"]) if row else None
+    finally:
+        conn.close()
+
+
+def login_portal_user(claims: dict) -> dict:
+    """Atomically consume a verified nonce and create/update its bound account."""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = time.time()
+        if claims["exp"] < now - 30:
+            raise ValueError("expired")
+        conn.execute("DELETE FROM portal_nonces WHERE expires_at < ?", (now,))
+        try:
+            conn.execute("INSERT INTO portal_nonces (nonce_hash, expires_at) VALUES (?, ?)",
+                         (hashlib.sha256(claims["nonce"].encode("ascii")).hexdigest(), claims["exp"] + 120))
+        except sqlite3.IntegrityError:
+            raise ValueError("replayed_nonce") from None
+        external_id = "portal:" + claims["sub"]
+        row = conn.execute("SELECT id, role FROM users WHERE external_id = ?", (external_id,)).fetchone()
+        if row:
+            user_id = row["id"]
+            if row["role"] not in ("student", "teacher"):
+                raise ValueError("unsupported_account_role")
+            if row["role"] != claims["role"]:
+                conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            conn.execute("UPDATE users SET role = ?, portal_name = ? WHERE id = ?",
+                         (claims["role"], claims["name"], user_id))
+        else:
+            words = claims["name"].split()
+            if len(words) > 1:
+                # Keep the initial even when the first name needs truncating.
+                base = words[0][:21] + " " + words[-1][0] + "."
+            else:
+                base = words[0][:24] if words else ("Učitel" if claims["role"] == "teacher" else "Žák")
+            nickname, number = base, 1
+            while conn.execute("SELECT 1 FROM users WHERE nickname = ? COLLATE NOCASE", (nickname,)).fetchone():
+                suffix = f"-{number}"
+                nickname = base[:24 - len(suffix)] + suffix
+                number += 1
+            cur = conn.execute(
+                "INSERT INTO users (nickname, password_hash, role, avatar_id, external_id, portal_name) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (nickname, _PORTAL_PASSWORD, claims["role"], random.randint(1, 20), external_id, claims["name"]))
+            user_id = cur.lastrowid
+        conn.commit()
+        return get_user(user_id)
+    finally:
+        conn.close()  # rolls back both nonce and account on failure
+
+
+def link_portal_account(nickname: str, sub: str) -> dict:
+    """Console-only, explicit binding of an existing account. Refuse rebinding."""
+    if not isinstance(sub, str) or not sub.strip() or len(sub) > 1024:
+        raise ValueError("Neplatne ID uctu portalu.")
+    external_id = "portal:" + sub
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT id, external_id FROM users WHERE nickname = ? COLLATE NOCASE",
+                           (nickname.strip(),)).fetchone()
+        if not row:
+            raise ValueError("Ucet neexistuje.")
+        if row["external_id"] not in (None, external_id):
+            raise ValueError("Ucet je jiz propojen s jinou identitou.")
+        other = conn.execute("SELECT id FROM users WHERE external_id = ?", (external_id,)).fetchone()
+        if other and other["id"] != row["id"]:
+            raise ValueError("Identita je jiz propojena s jinym uctem.")
+        conn.execute("UPDATE users SET external_id = ? WHERE id = ?", (external_id, row["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
+        conn.commit()
+        return get_user(row["id"])
     finally:
         conn.close()
 
@@ -657,18 +757,27 @@ def can_view_class(class_id: int, user_id: int, teacher_only: bool = False) -> b
         conn.close()
 
 
-def get_class_members(class_id: int) -> list[dict]:
+def get_class_members(class_id: int, include_portal_name: bool = False) -> list[dict]:
     """Get class members with their stats."""
     conn = get_conn()
     try:
         rows = conn.execute("""
-            SELECT u.id, u.nickname, u.total_score, u.games_played, cm.joined_at
+            SELECT u.id, u.nickname, u.portal_name, u.external_id IS NOT NULL AS _portal_account,
+                   u.total_score, u.games_played, cm.joined_at
             FROM class_members cm
             JOIN users u ON u.id = cm.user_id
             WHERE cm.class_id = ?
             ORDER BY u.nickname COLLATE NOCASE
         """, (class_id,)).fetchall()
-        return [dict(r) for r in rows]
+        members = [dict(r) for r in rows]
+        for member in members:
+            portal_account = member.pop("_portal_account")
+            if not include_portal_name:
+                member.pop("portal_name", None)
+                if portal_account:
+                    # A short full name can also be the account's nickname.
+                    member["nickname"] = f"#{member['id']}"
+        return members
     finally:
         conn.close()
 
@@ -774,7 +883,7 @@ def reset_user_password(user_id: int, new_password: str, teacher_id: int) -> boo
     try:
         # Verify the target user is a student in one of teacher's classes
         row = conn.execute("""
-            SELECT u.id FROM users u
+            SELECT u.id, u.password_hash FROM users u
             JOIN class_members cm ON cm.user_id = u.id
             JOIN classes c ON c.id = cm.class_id
             WHERE u.id = ? AND u.role = 'student' AND c.teacher_id = ?
@@ -782,6 +891,8 @@ def reset_user_password(user_id: int, new_password: str, teacher_id: int) -> boo
         """, (user_id, teacher_id)).fetchone()
         if not row:
             raise ValueError("Student nenalezen ve vasich tridach.")
+        if row["password_hash"] == _PORTAL_PASSWORD:
+            raise ValueError("Ucet pouziva prihlaseni pres portal.")
 
         pw_hash = _hash_password(new_password)
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
@@ -900,7 +1011,7 @@ def list_all_users() -> list[dict]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, nickname, role, total_score, games_played, avatar_id "
+            "SELECT id, nickname, portal_name, role, total_score, games_played, avatar_id "
             "FROM users ORDER BY role DESC, nickname COLLATE NOCASE"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -913,7 +1024,7 @@ def list_users_for_teacher(teacher_id: int) -> list[dict]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, nickname, role, total_score, games_played, avatar_id FROM users u "
+            "SELECT id, nickname, portal_name, role, total_score, games_played, avatar_id FROM users u "
             "WHERE u.id = ? OR EXISTS (SELECT 1 FROM class_members m JOIN classes c "
             "ON c.id = m.class_id WHERE m.user_id = u.id AND c.teacher_id = ?) "
             "ORDER BY role DESC, nickname COLLATE NOCASE",
@@ -959,12 +1070,14 @@ def teacher_reset_password(target_user_id: int, new_password: str,
         raise ValueError("Pouzijte zmenu vlastniho hesla.")
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id, role FROM users WHERE id = ?",
+        row = conn.execute("SELECT id, role, password_hash FROM users WHERE id = ?",
                            (target_user_id,)).fetchone()
         if not row:
             raise ValueError("Uzivatel nenalezen.")
         if row["role"] == "teacher":
             raise ValueError(_TEACHER_PROTECTED)
+        if row["password_hash"] == _PORTAL_PASSWORD:
+            raise ValueError("Ucet pouziva prihlaseni pres portal.")
         _check_password_policy(new_password, row["role"])
         pw_hash = _hash_password(new_password)
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
@@ -1155,6 +1268,9 @@ def reset_password_with_token(raw: str, new_password: str) -> dict | None:
     _check_password_policy(new_password, user["role"])
     conn = get_conn()
     try:
+        row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],)).fetchone()
+        if not row or row["password_hash"] == _PORTAL_PASSWORD:
+            return None
         tok = _consume_token(conn, raw, "reset")
         if not tok:
             conn.commit()
@@ -1198,16 +1314,18 @@ def admin_set_password(nickname: str, new_password: str) -> dict:
     """Set a password from the server console (emergency access). Logs the user out."""
     conn = get_conn()
     try:
-        row = conn.execute("SELECT id, nickname, role FROM users WHERE nickname = ? COLLATE NOCASE",
+        row = conn.execute("SELECT id, nickname, role, password_hash FROM users WHERE nickname = ? COLLATE NOCASE",
                            (nickname.strip(),)).fetchone()
         if not row:
             raise ValueError(f"Ucet '{nickname}' neexistuje.")
+        if row["password_hash"] == _PORTAL_PASSWORD:
+            raise ValueError("Ucet pouziva prihlaseni pres portal.")
         _check_password_policy(new_password, row["role"])
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
                      (_hash_password(new_password), row["id"]))
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
         conn.commit()
-        return dict(row)
+        return {key: row[key] for key in ("id", "nickname", "role")}
     finally:
         conn.close()
 
@@ -1692,3 +1810,26 @@ def migrate_json_history(history_dir: Path) -> int:
             continue  # Skip invalid files
 
     return count
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Local administration only; no HTTP endpoint can link identities."""
+    import argparse
+    parser = argparse.ArgumentParser(description="ClassRally account administration")
+    commands = parser.add_subparsers(dest="command", required=True)
+    link = commands.add_parser("link-portal", help="Explicitly link an existing account to a portal subject")
+    link.add_argument("nickname")
+    link.add_argument("sub")
+    args = parser.parse_args(argv)
+    init_db()
+    try:
+        link_portal_account(args.nickname, args.sub)
+    except ValueError as exc:
+        print(f"CHYBA: {exc}")
+        return 1
+    print("Ucet propojen s portalem; stavajici prihlaseni ukoncena.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
