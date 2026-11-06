@@ -1,47 +1,52 @@
-============================================================
-  ClassRally — rychlý start pro učitele (Windows)
-============================================================
+﻿ClassRally pro učitele — první spuštění (Windows 10/11, 64 bitů)
 
-CO TO JE
-  Nástroj na kvíz NEBO písemku ve třídě. Server běží na vašem
-  notebooku, žáci se připojí mobilem přes QR kód. Funguje BEZ
-  internetu — stačí, aby notebook i mobily byly na stejné Wi-Fi.
+PŘÍPRAVA JEDNOU, JEŠTĚ PŘED HODINOU
+1. Na stažený ZIP klikněte pravým tlačítkem → Vlastnosti → Odblokovat → OK.
+   Teprve potom rozbalte CELÝ ZIP do vlastní složky. Nespouštějte nic uvnitř ZIPu.
+   Pokud jste jej rozbalili dříve, odblokujte původní ZIP a rozbalte znovu.
+2. Je-li k dispozici instalátor, lze jej místo ZIPu nainstalovat jen pro sebe;
+   používá složku %LOCALAPPDATA%\Programs\ClassRally a nabídku Start.
+3. SmartScreen může nabídnout „Další informace → Přesto spustit“.
+   Smart App Control ve Windows 11 nebo pravidla školy mohou blokovat i BAT,
+   PowerShell či instalátor bez této možnosti. Požádejte IT; aplikace ochranu
+   neobchází. Nevypínejte kvůli ní zabezpečení Windows.
+4. Požádejte IT/správce, aby spustil Povolit-firewall.bat a potvrdil správce.
+   Povolí pouze přibalený python.exe, TCP port 48217, místní podsíť,
+   soukromý i veřejný síťový profil. Bez správce to nejde. Běžný uživatel
+   nemá klikat na automatickou výzvu firewallu — mohl by program zablokovat.
+   Pokud se to stalo, IT musí odstranit explicitní blokovací pravidlo pro tento
+   Python. Po přemístění složky programu je třeba povolení spustit znovu.
+   Návrat: Odebrat-firewall.bat odstraní jen pravidlo vytvořené ClassRally.
 
+KAŽDOU HODINU
+1. Bez školní Wi-Fi spusťte Zapnout-hotspot.bat (postup v WIFI-NAVOD.txt).
+2. Dvojklikem spusťte Spustit-ClassRally.bat. Nechte černé okno otevřené.
+   Po ověření spuštění se otevře http://localhost:48217/host.
+   Při prvním použití založte účet učitele dříve, než připojíte žáky.
+   Pokud /host čeká na přihlášení, otevřete http://localhost:48217/admin,
+   založte účet a vyberte/aktivujte sadu otázek. Pak se vraťte na /host.
+3. Na /host otevřete „Wi-Fi pro třídu“ a načtěte údaje hotspotu tlačítkem.
+   Podle potřeby zapněte Wi-Fi QR „1. Připoj se k Wi-Fi“.
+   Údaje jiné vlastní sítě můžete zadat ručně. Nejde o změnu nastavení routeru.
+   Heslo se uloží pouze na notebooku a promítá se pouze v QR.
+4. U herního QR „2. Hraj“ vyberte správnou adresu, je-li jich více.
+   Pro hotspot Windows obvykle http://192.168.137.1:48217/play.
+   Žáci musí být ve stejné Wi-Fi; jejich mobil nepotřebuje internet.
+5. Po hodině zavřete server nebo stiskněte Ctrl+C; hotspot vypněte
+   přes Vypnout-hotspot.bat.
 
-SPUŠTĚNÍ (3 kroky)
-  1) Rozbalte celou složku ClassRally na plochu (nebo kamkoli).
-  2) Dvojklik na  Spustit-ClassRally.bat
-     - Při PRVNÍM spuštění Windows zobrazí dotaz firewallu —
-       klikněte na "Povolit přístup" (jinak se žáci nepřipojí).
-     - Objeví se černé okno. NECHTE HO OTEVŘENÉ — drží server.
-       Zavřením okna server vypnete.
-  3) Sám se otevře učitelský portál (http://127.0.0.1:48217/admin).
+DATA A AKTUALIZACE
+Všechny účty, výsledky, vlastní otázky, obrázky a Wi-Fi údaje jsou v:
+%LOCALAPPDATA%\ClassRally\
+Před aktualizací/zálohou server zavřete a zkopírujte celou tuto složku.
+Před první migrací zálohujte i celý starý balíček, ještě před rozbalením nového.
+Při prvním spuštění nového balíčku ve STEJNÉ složce jako starý balíček se data
+vedle původního BAT zkopírují do profilu; původní soubory se nemažou ani
+nepřepisují. Pokud je nový balíček jinde, nejprve do něj přeneste staré složky
+„data“, „history“, „questions“ a „static\uploads“ (se zavřeným serverem).
+Po první migraci už starý server nepoužívejte. Při další aktualizaci stačí
+vyměnit program; profilová data i při odinstalaci zůstávají.
 
-
-JAK ZADAT PÍSEMKU
-  V portálu klikněte na záložku  "Pisemka (test)":
-  1) Vyberte sadu otázek, nastavte časový limit a volby
-     (míchání pořadí, zákaz kopírování, auto-odevzdání…).
-  2) Klikněte "Pripravit pisemku".
-  3) Řekněte žákům, ať na mobilu otevřou URL pro žáky
-     (je nahoře v portálu) nebo naskenují QR kód.
-  4) Až jsou všichni přihlášení, klikněte "Spustit pisemku".
-  5) V "Zivy prehled" vidíte, kdo kde je a kdo opustil okno testu.
-  6) Po skončení "Stahnout vysledky (CSV)" — otevřete v Excelu.
-
-
-JAK SPUSTIT HRU (kvíz jako Kahoot)
-  V záložce "Sady otazek" klikněte u sady na "Aktivovat".
-  Pak otevřete "Host obrazovka" na projektoru a žáci hrají živě.
-
-
-PŘIPOJENÍ ŽÁKŮ NEFUNGUJE?
-  Viz soubor  WIFI-NAVOD.txt  — vysvětluje tři způsoby připojení
-  a nejčastější problém (oddělení klientů na školní Wi-Fi).
-
-
-HESLO DO PORTÁLU (volitelné)
-  Bez hesla je portál otevřený komukoli v síti. Chcete-li heslo,
-  spusťte přes příkaz:
-     set QUIZ_ADMIN_PASSWORD=mojeheslo  &&  Spustit-ClassRally.bat
-============================================================
+Aplikace je zdarma. Přenosný Python je přibalený; nic dalšího neinstalujete.
+Hra a písemka fungují bez internetu. Online služby, AI a doručování e-mailů
+nejsou pro hodinu potřeba; spouštěč odesílání e-mailů vypíná.

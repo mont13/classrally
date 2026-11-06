@@ -49,8 +49,8 @@ from ws import WSConnection, WSConnectionManager, ws_handshake_response
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 AUDIO_DIR = STATIC_DIR / "audio"
-UPLOADS_DIR = STATIC_DIR / "uploads"
-QUESTIONS_DIR = BASE_DIR / "questions"
+UPLOADS_DIR = Path(os.environ["QUIZ_UPLOADS_DIR"]) if os.environ.get("QUIZ_UPLOADS_DIR") else STATIC_DIR / "uploads"
+QUESTIONS_DIR = Path(os.environ["QUIZ_QUESTIONS_DIR"]) if os.environ.get("QUIZ_QUESTIONS_DIR") else BASE_DIR / "questions"
 HISTORY_DIR = Path(os.environ["QUIZ_HISTORY_DIR"]) if os.environ.get("QUIZ_HISTORY_DIR") else BASE_DIR / "history"
 DEFAULT_QUESTIONS_FILE = "default.json"
 APP_VERSION = "3.0"  # /api/health and the Server header
@@ -140,8 +140,8 @@ def _name_key(name: str) -> str:
 DEFAULT_PORT = int(os.environ.get("QUIZ_PORT", "48217"))
 
 # Ensure directories exist
-QUESTIONS_DIR.mkdir(exist_ok=True)
-HISTORY_DIR.mkdir(exist_ok=True)
+QUESTIONS_DIR.mkdir(parents=True, exist_ok=True)
+HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # Explicitly register audio MIME types that may be absent in minimal Docker images
 # (python:3.12-slim ships without /etc/mime.types, so .ogg and .m4a return None).
@@ -3951,6 +3951,9 @@ SERVER_INFO: dict[str, Any] = {
 # URLs derived from this base, and the app reports the public domain instead
 # of the detected LAN IP.  Expected format: "https://classrally.example.com"
 QUIZ_BASE_URL: str = os.environ.get("QUIZ_BASE_URL", "").rstrip("/")
+# Explicit opt-in: a single-room public server must never offer Wi-Fi secrets.
+LAPTOP_MODE = os.environ.get("QUIZ_LAPTOP", "0") == "1"
+WIFI_LOCK = threading.Lock()
 
 # Set of trusted reverse-proxy IP networks.  Only requests arriving from one
 # of these addresses are allowed to override the client IP via X-Forwarded-For.
@@ -4142,6 +4145,78 @@ def detect_lan_ipv4_candidates() -> list[str]:
     return ips
 
 
+def order_lan_addresses(addresses: list[str], selected: str | None = None) -> list[str]:
+    """Stable ordering: Windows hotspot first, or a manually selected candidate.
+
+    Selection never introduces an arbitrary URL/IP. The detected order of all
+    remaining addresses stays intact (including explicit --external-ip order).
+    """
+    addresses = list(dict.fromkeys(addresses))
+    if selected is not None:
+        if selected not in addresses:
+            raise ValueError("Vybraná adresa už není dostupná.")
+        return [selected] + [ip for ip in addresses if ip != selected]
+    def hotspot(ip: str) -> bool:
+        try:
+            return ipaddress.ip_address(ip) in ipaddress.ip_network("192.168.137.0/24")
+        except ValueError:
+            return False
+    return [ip for ip in addresses if hotspot(ip)] + [ip for ip in addresses if not hotspot(ip)]
+
+
+def laptop_wifi_enabled() -> bool:
+    return LAPTOP_MODE and ROOM_MODE == "single" and not QUIZ_BASE_URL and not SERVER_INFO.get("public")
+
+
+def wifi_qr_payload(ssid: str, password: str) -> str:
+    """ZXing Wi-Fi payload; escaping order matters (escape backslashes first)."""
+    def escape(value: str) -> str:
+        return "".join("\\" + ch if ch in '\\;,:"' else ch for ch in value)
+    auth = "WPA" if password else "nopass"
+    return f"WIFI:T:{auth};S:{escape(ssid)};P:{escape(password)};;"
+
+
+def validate_wifi_settings(data: Any) -> dict[str, str]:
+    # Errors deliberately contain no submitted values, including QR errors.
+    if not isinstance(data, dict):
+        raise ValueError("Vyplňte název Wi-Fi a heslo.")
+    ssid, password = data.get("ssid"), data.get("password", "")
+    if not isinstance(ssid, str) or not 1 <= len(ssid.encode("utf-8")) <= 32:
+        raise ValueError("Název Wi-Fi musí mít 1 až 32 bajtů v UTF-8.")
+    if not isinstance(password, str) or (password and not 8 <= len(password.encode("utf-8")) <= 63):
+        raise ValueError("Heslo musí mít 8 až 63 bajtů; pro otevřenou síť ho nechte prázdné.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in ssid + password):
+        raise ValueError("Název ani heslo nesmí obsahovat řídicí znaky.")
+    try:
+        generate_qr_svg(wifi_qr_payload(ssid, password))
+    except ValueError:
+        raise ValueError("Údaje jsou pro Wi-Fi QR příliš dlouhé.") from None
+    return {"ssid": ssid, "password": password}
+
+
+def load_wifi_settings() -> dict[str, str] | None:
+    try:
+        path = user_db._DB_DIR / "wifi.json"
+        if path.stat().st_size > 4096:
+            return None
+        return validate_wifi_settings(json.loads(path.read_text(encoding="utf-8-sig")))
+    except (OSError, ValueError, TypeError, UnicodeError):
+        return None
+
+
+def save_wifi_settings(data: Any) -> dict[str, str]:
+    settings = validate_wifi_settings(data)
+    with WIFI_LOCK:
+        path = user_db._DB_DIR / "wifi.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    return settings
+
+
 def build_server_info(
     bind_host: str,
     port: int,
@@ -4176,7 +4251,7 @@ def build_server_info(
                 "loopback_only": False,
             }
 
-    lan_ips = [ip for ip in detect_lan_ipv4_candidates() if not _is_docker_bridge(ip)]
+    lan_ips = order_lan_addresses([ip for ip in detect_lan_ipv4_candidates() if not _is_docker_bridge(ip)])
 
     if host in {"0.0.0.0", "::"}:
         if lan_ips:
@@ -4343,6 +4418,35 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _require_laptop_host(self) -> bool:
+        if not laptop_wifi_enabled():
+            self._json_response({"error": "Not found"}, status=404)
+            return False
+        # Direct localhost only, never a forwarded connection through a proxy.
+        # Host validation also prevents DNS rebinding against the local service.
+        peer = ipaddress.ip_address(self.client_address[0])
+        try:
+            hostname = urlparse("//" + self.headers.get("Host", "")).hostname
+        except ValueError:
+            hostname = None
+        if (not peer.is_loopback or hostname not in {"localhost", "127.0.0.1", "::1"}
+                or any(h in self.headers for h in ("Forwarded", "X-Forwarded-For", "X-Real-IP"))):
+            self._json_response({"error": "Nastavení Wi-Fi otevřete na notebooku přes localhost."}, status=403)
+            return False
+        return self._require_host_token()
+
+    def _wifi_response(self, settings: dict[str, str] | None) -> None:
+        # Only the teacher sees this metadata; the password is returned solely
+        # as pixels in the authenticated, non-cacheable SVG response below.
+        self.send_response(200)
+        body = json.dumps({"ssid": settings["ssid"] if settings else "", "configured": settings is not None},
+                          ensure_ascii=False).encode("utf-8")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -4795,6 +4899,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/static/"):
             relative = path.removeprefix("/static/")
+            if relative.startswith("uploads/"):
+                upload = (UPLOADS_DIR / relative.removeprefix("uploads/")).resolve()
+                if not upload.is_relative_to(UPLOADS_DIR.resolve()):
+                    self._text_response("Forbidden", status=403)
+                    return
+                self._serve_file(upload)
+                return
             safe = (STATIC_DIR / relative).resolve()
             if not str(safe).startswith(str(STATIC_DIR.resolve())):
                 self._text_response("Forbidden", status=403)
@@ -4833,7 +4944,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/health":
-            self._json_response({"ok": True, "service": "classrally", "version": APP_VERSION})
+            health = {"ok": True, "service": "classrally", "version": APP_VERSION}
+            if os.environ.get("QUIZ_INSTANCE_ID"):
+                health["instance"] = os.environ["QUIZ_INSTANCE_ID"]
+            self._json_response(health)
             return
 
         if path == "/api/bug-report/config":
@@ -4885,7 +4999,31 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/network":
+            # Hotspot may be enabled after the server started. Rediscover only
+            # on explicit refresh; normal polling keeps the cached candidates.
+            if parse_qs(parsed.query).get("refresh") == ["1"] and self._require_laptop_host():
+                SERVER_INFO.update(build_server_info(SERVER_INFO["bind_host"], SERVER_INFO["port"]))
+            elif parse_qs(parsed.query).get("refresh") == ["1"]:
+                return
             self._json_response(SERVER_INFO)
+            return
+
+        if path in ("/api/host/wifi", "/api/host/wifi/qr"):
+            if not self._require_laptop_host():
+                return
+            settings = load_wifi_settings()
+            if path == "/api/host/wifi":
+                self._wifi_response(settings)
+            elif settings is None:
+                self._json_response({"error": "Nejdříve uložte nastavení Wi-Fi."}, status=404)
+            else:
+                body = generate_qr_svg(wifi_qr_payload(**settings)).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "image/svg+xml")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
             return
 
         if path == "/api/audio-tracks":
@@ -5326,6 +5464,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_bug_report()
                 return
             data = self._read_json()
+
+            if path == "/api/host/wifi":
+                if not self._require_laptop_host():
+                    return
+                try:
+                    settings = save_wifi_settings(data)
+                except UnicodeError:
+                    self._json_response({"error": "Název a heslo musí být platný text UTF-8."}, status=400)
+                    return
+                except ValueError as exc:
+                    self._json_response({"error": str(exc)}, status=400)
+                    return
+                except OSError:
+                    self._json_response({"error": "Nastavení Wi-Fi se nepodařilo uložit."}, status=500)
+                    return
+                self._wifi_response(settings)
+                return
 
             if path == "/api/register":
                 client_ip = self._get_client_ip()

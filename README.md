@@ -75,7 +75,8 @@ Mobily musi byt ve stejne Wi-Fi siti jako server.
 
 ### Windows (pro ucitele bez znalosti)
 
-Na Windows nepouzivame `.exe` (kvuli podpisu/SmartScreen). Misto toho **prenosny Python v ZIPu**:
+Pro Windows 10/11 x64 je připravený **přenosný Python v ZIPu**. Pokud je při
+sestavování dostupný `makensis`, vznikne i instalátor pro aktuálního uživatele:
 
 ```bash
 # Sestaveni balicku (na Linux/Mac; stahne prenosny Python a zabali aplikaci)
@@ -84,10 +85,21 @@ Na Windows nepouzivame `.exe` (kvuli podpisu/SmartScreen). Misto toho **prenosny
 ```
 
 Ucitel pak:
-1. Rozbali `ClassRally-Windows.zip`.
-2. Dvojklik na `Spustit-ClassRally.bat` (zadny Python instalovat netreba).
-3. Pri prvnim spusteni klikne ve firewallu na **Povolit pristup**.
-4. Sam se otevre ucitelsky portal; zaci se pripoji pres QR.
+1. Odblokuje stažený ZIP ve Vlastnostech a rozbalí jej celý. Pokud ho blokuje
+   Smart App Control nebo školní politika, požádá IT.
+2. Jednou nechá správce spustit `Povolit-firewall.bat`. Běžný uživatel nemá
+   potvrzovat automatickou výzvu Pythonu; bez správce přístup nepovolí.
+3. Bez školní Wi-Fi spustí `Zapnout-hotspot.bat`, potom `Spustit-ClassRally.bat`.
+4. Po ověření serveru se otevře `http://localhost:48217/host`. Na něm lze
+   zobrazit Wi-Fi QR, přepnout herní adresu a načíst údaje zapnutého hotspotu.
+   Hotspot Windows dovoluje nejvýše 8 klientů; větší třída potřebuje vlastní router.
+
+Data jsou v `%LOCALAPPDATA%\ClassRally\`; stará data vedle spouštěče se při
+prvním spuštění kopírují bez smazání či přepsání existujících profilových dat.
+Před aktualizací server zavřete a starý balíček i data zálohujte.
+Spouštěč zapíná režim `QUIZ_LAPTOP=1` a vypíná odesílání e-mailů. Wi-Fi nastavení
+je dostupné pouze ověřenému hostovi přímo přes localhost v tomto režimu;
+na veřejném či vícemístnostním serveru se nenabízí.
 
 Navody pro ucitele jsou primo v ZIPu (`CTI-ME-PRVNI.txt`, `WIFI-NAVOD.txt`).
 

@@ -1,79 +1,73 @@
 #!/usr/bin/env bash
-# ===========================================================================
-# Sestavi ClassRally-Windows.zip = prenosny Python + aplikace + spousteci .bat
-# Spustitelne na Linuxu i Macu (jen stahne a zabali, NIC nekompiluje).
-# Vysledek: dist/ClassRally-Windows.zip -> ucitel rozbali a 2x klikne na .bat.
-#
-# Pouziti:  ./make-windows-package.sh
-# Vyzaduje: curl (nebo wget), unzip, zip
-# ===========================================================================
+# Linux/macOS -> Windows x64 ZIP; optional per-user NSIS installer.
+# Only the existing portable Python download from python.org is permitted.
 set -euo pipefail
-
 PYVER="3.11.9"
-PYTAG="python311"   # nazev ._pth souboru odpovida verzi (3.11 -> python311)
-ARCH="amd64"        # 64-bit Windows; pro stare 32-bit zmente na "win32"
+PYTAG="python311"
+ARCH="amd64"
 EMBED_URL="https://www.python.org/ftp/python/${PYVER}/python-${PYVER}-embed-${ARCH}.zip"
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD="${ROOT}/windows-build"
-APP="${BUILD}/ClassRally"
 DIST="${ROOT}/dist"
 CACHE="${ROOT}/.cache"
-
-echo ">> Cistim predchozi build..."
-rm -rf "${BUILD}"
-mkdir -p "${APP}/python" "${DIST}" "${CACHE}"
-
+mkdir -p "${ROOT}/windows-build" "${DIST}" "${CACHE}"
+# Fresh payload: never reuse a tree that could contain a teacher's runtime data.
+# Older builds are preserved; this script deletes no source or data folders.
+BUILD="$(mktemp -d "${ROOT}/windows-build/package.XXXXXX")"
+APP="${BUILD}/ClassRally"
+mkdir -p "${APP}/python"
 EMBED_ZIP="${CACHE}/python-${PYVER}-embed-${ARCH}.zip"
 if [ ! -f "${EMBED_ZIP}" ]; then
-  echo ">> Stahuji prenosny Python ${PYVER} (${ARCH})..."
+  echo ">> Stahuji přenosný Python ${PYVER} pro Windows x64..."
+  PART="${BUILD}/python-download.zip"
   if command -v curl >/dev/null 2>&1; then
-    curl -fL "${EMBED_URL}" -o "${EMBED_ZIP}"
+    curl -fL --max-time 180 --max-filesize 20000000 "${EMBED_URL}" -o "${PART}"
   else
-    wget -O "${EMBED_ZIP}" "${EMBED_URL}"
+    wget --timeout=180 -O "${PART}" "${EMBED_URL}"
   fi
+  unzip -tq "${PART}"
+  mv "${PART}" "${EMBED_ZIP}"
 else
-  echo ">> Pouzivam stazeny Python z cache: ${EMBED_ZIP}"
+  echo ">> Používám přenosný Python z cache."
 fi
-
-echo ">> Rozbaluji Python do balicku..."
-unzip -q -o "${EMBED_ZIP}" -d "${APP}/python"
-
-# Pridej korenovou slozku aplikace na sys.path (relativni k python.exe = "..")
+unzip -q "${EMBED_ZIP}" -d "${APP}/python"
 PTH="${APP}/python/${PYTAG}._pth"
-if [ -f "${PTH}" ]; then
-  # -F = fixed string (jinak by ".." byl regex "dva libovolne znaky" a matchnul radek ".")
-  if ! grep -Fqx ".." "${PTH}"; then
-    printf '..\r\n' >> "${PTH}"   # CRLF jako zbytek souboru (Windows)
-  fi
+[ -f "${PTH}" ] || { echo "CHYBA: chybí ${PYTAG}._pth" >&2; exit 1; }
+printf '..\r\n' >> "${PTH}"
+echo ">> Kopíruji pouze veřejné součásti aplikace..."
+python3 - "${ROOT}" "${APP}" <<'PY'
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+root, app = map(Path, sys.argv[1:])
+for name in ('server.py', 'qrgen.py', 'db.py', 'ws.py', 'mailer.py', 'bugreport.py', 'LICENSE'):
+    shutil.copy2(root / name, app / name)
+# No untracked/private uploads, question banks, music, data, history or secrets.
+paths = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z', '--', 'static', 'questions'])
+for raw in paths.split(b'\0'):
+    if not raw:
+        continue
+    path = Path(raw.decode('utf-8'))
+    if (path.parts[:2] in [('static', 'uploads'), ('questions', 'users')]
+            or (path.parts[:2] == ('static', 'audio') and path.suffix.lower() not in ('.md', '.txt'))):
+        continue
+    source = root / path
+    if not source.is_file() or source.is_symlink():
+        raise SystemExit(f'Nelze přibalit veřejný soubor: {path}')
+    dest = app / path
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest)
+for source in sorted((root / 'windows').iterdir()):
+    if source.suffix.lower() in ('.bat', '.cmd', '.ps1', '.txt', '.py') and source.is_file():
+        shutil.copy2(source, app / source.name)
+PY
+echo ">> Vytvářím ZIP..."
+( cd "${BUILD}" && zip -q -r ClassRally-Windows.zip ClassRally )
+mv "${BUILD}/ClassRally-Windows.zip" "${DIST}/ClassRally-Windows.zip"
+if command -v makensis >/dev/null 2>&1; then
+  makensis -V2 "-DAPP_SOURCE=${APP}" "-DOUTPUT_FILE=${DIST}/ClassRally-Windows-Setup.exe" "${ROOT}/windows/ClassRally.nsi"
 else
-  echo ">> POZOR: ${PTH} nenalezen (jina verze Pythonu?). Zkontrolujte nazev ._pth."
+  echo ">> makensis není dostupný: NSIS instalátor přeskakuji; ZIP je hotový."
 fi
-
-echo ">> Kopiruji aplikaci..."
-# server.py importuje db (ucty, SQLite) a ws (WebSockety) — musi byt v balicku,
-# jinak embedded Python spadne na ImportError pri startu.
-cp "${ROOT}/server.py" "${ROOT}/qrgen.py" "${ROOT}/db.py" "${ROOT}/ws.py" "${ROOT}/mailer.py" "${ROOT}/bugreport.py" "${APP}/"
-cp -r "${ROOT}/static" "${APP}/static"
-cp -r "${ROOT}/questions" "${APP}/questions"
-mkdir -p "${APP}/history" "${APP}/static/audio"
-# Audio ma licencni omezeni (viz .gitignore) — do distribuovaneho baliku nepatri;
-# ucitel si prida vlastni do static/audio/. Smazeme jen zkopirovana media v BUILDU
-# (zdrojova static/audio/ zustava netknuta), necháme README.
-find "${APP}/static/audio" -type f ! -iname 'README*' -delete 2>/dev/null || true
-
-echo ">> Kopiruji spousteci skripty a navody..."
-cp "${ROOT}/windows/"*.bat "${APP}/" 2>/dev/null || true
-cp "${ROOT}/windows/"*.txt "${APP}/" 2>/dev/null || true
-
-echo ">> Baleni do ZIP..."
-ZIPOUT="${DIST}/ClassRally-Windows.zip"
-rm -f "${ZIPOUT}"
-( cd "${BUILD}" && zip -q -r "${ZIPOUT}" "ClassRally" )
-
-SIZE="$(du -h "${ZIPOUT}" | cut -f1)"
-echo ""
-echo "================================================================"
-echo " Hotovo:  ${ZIPOUT}  (${SIZE})"
-echo " Predejte ucitelovi: rozbalit a 2x kliknout na Spustit-ClassRally.bat"
-echo "================================================================"
+echo "Hotovo: ${DIST}/ClassRally-Windows.zip ($(du -h "${DIST}/ClassRally-Windows.zip" | cut -f1))"
+echo "Rozbalte celý ZIP a spusťte Spustit-ClassRally.bat."

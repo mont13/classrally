@@ -6722,5 +6722,247 @@ class TestGameFlow(unittest.TestCase):
         self.assertNotIn("top_answers", qs.public_state(a["player_id"])["question"])
 
 
+
+class TestLaptopAddresses(unittest.TestCase):
+    def test_hotspot_first_and_remaining_order_unchanged(self):
+        ips = ["192.168.20.9", "192.168.137.1", "192.168.30.8", "192.168.137.2"]
+        self.assertEqual(server.order_lan_addresses(ips),
+                         [ips[1], ips[3], ips[0], ips[2]])
+        self.assertEqual(ips[0], "192.168.20.9")  # pure, no input mutation
+
+    def test_without_hotspot_keep_existing_order(self):
+        ips = ["192.168.20.9", "192.168.30.8"]
+        self.assertEqual(server.order_lan_addresses(ips), ips)
+        self.assertEqual(server.order_lan_addresses([]), [])
+
+    def test_manual_selection_overrides_hotspot(self):
+        ips = ["192.168.137.1", "192.168.20.9"]
+        self.assertEqual(server.order_lan_addresses(ips, ips[1]), list(reversed(ips)))
+        with self.assertRaises(ValueError):
+            server.order_lan_addresses(ips, "not-an-interface")
+
+    def test_detected_hotspot_is_default_qr_address(self):
+        with mock.patch.object(server, "detect_lan_ipv4_candidates",
+                               return_value=["192.168.20.9", "192.168.137.1"]):
+            info = server.build_server_info("0.0.0.0", 48217)
+        self.assertEqual(info["play_urls"][0], "http://192.168.137.1:48217/play")
+        self.assertEqual(len(info["play_urls"]), 2)
+
+    def test_explicit_public_and_external_configuration_is_preserved(self):
+        info = server.build_server_info("0.0.0.0", 48217, base_url="https://quiz.example.com")
+        self.assertEqual(info["play_urls"], ["https://quiz.example.com/play"])
+        self.assertTrue(info["public"])
+        info = server.build_server_info("0.0.0.0", 48217, external_ip="192.168.20.9,192.168.137.1")
+        self.assertEqual(info["play_urls"][0], "http://192.168.20.9:48217/play")
+
+
+class TestWifiQR(unittest.TestCase):
+    def test_escape_all_reserved_characters_and_backslash_first(self):
+        ssid = 'A\\;,:"B'
+        password = 'P\\;,:"123'
+        self.assertEqual(server.wifi_qr_payload(ssid, password),
+                         'WIFI:T:WPA;S:A\\\\\\;\\,\\:\\"B;P:P\\\\\\;\\,\\:\\"123;;')
+
+    def test_empty_password_is_open_wifi(self):
+        self.assertEqual(server.wifi_qr_payload("ClassRally", ""),
+                         "WIFI:T:nopass;S:ClassRally;P:;;")
+
+    def test_unicode_and_long_escaped_values_produce_svg(self):
+        data = server.validate_wifi_settings({"ssid": "Třída;\\", "password": ";" * 63})
+        svg = server.generate_qr_svg(server.wifi_qr_payload(**data))
+        self.assertTrue(svg.startswith('<svg'))
+        self.assertNotIn(data["ssid"], svg)
+        self.assertNotIn(data["password"], svg)
+
+    def test_validation_errors_never_echo_submitted_values(self):
+        for data in ({"ssid": "S" * 33, "password": "secret"},
+                     {"ssid": "Name", "password": "bad"},
+                     {"ssid": "Name", "password": "secret\npassword"}, None):
+            with self.assertRaises(ValueError) as caught:
+                server.validate_wifi_settings(data)
+            self.assertNotIn("secret", str(caught.exception))
+
+
+class TestWindowsDataMigration(unittest.TestCase):
+    def test_instance_lock_excludes_second_launcher_and_releases_on_exit(self):
+        from windows.launcher import instance_lock, InstanceBusy
+        with tempfile.TemporaryDirectory() as folder:
+            with instance_lock(Path(folder)):
+                with self.assertRaises(InstanceBusy):
+                    with instance_lock(Path(folder)):
+                        self.fail("second launcher entered migration")
+            with instance_lock(Path(folder)):
+                pass
+
+    def test_failed_copy_is_not_published_as_a_complete_file(self):
+        from windows.launcher import copy_missing
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = Path(folder) / "old", Path(folder) / "new"
+            source.mkdir()
+            (source / "classrally.db").write_bytes(b"complete")
+            with mock.patch("windows.launcher.shutil.copyfileobj", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    copy_missing(source, target)
+            self.assertFalse((target / "classrally.db").exists())
+            self.assertEqual((source / "classrally.db").read_bytes(), b"complete")
+            copy_missing(source, target)
+            self.assertEqual((target / "classrally.db").read_bytes(), b"complete")
+
+    def test_copy_legacy_data_questions_history_and_uploads_without_deleting(self):
+        from windows.launcher import prepare_data
+        with tempfile.TemporaryDirectory() as folder:
+            app, target = Path(folder) / "program", Path(folder) / "localappdata"
+            originals = {"data/classrally.db": b"legacy-db", "data/settings.key": b"legacy-key",
+                         "history/game.json": b"{}", "questions/custom.json": b"[]",
+                         "static/uploads/image.png": b"image"}
+            for rel, value in originals.items():
+                source = app / rel
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(value)
+            prepare_data(app, target)
+            for rel, value in originals.items():
+                self.assertEqual((app / rel).read_bytes(), value)
+                dest = rel.removeprefix("data/").replace("static/uploads/", "uploads/")
+                self.assertEqual((target / dest).read_bytes(), value)
+            (target / "classrally.db").write_bytes(b"newer-db")
+            (app / "data" / "resurrected.txt").write_text("stale")
+            (app / "questions" / "custom.json").write_text("new shipped version")
+            (target / "questions" / "custom.json").write_text("teacher changes")
+            prepare_data(app, target)
+            self.assertEqual((target / "classrally.db").read_bytes(), b"newer-db")
+            self.assertFalse((target / "resurrected.txt").exists())
+            self.assertEqual((target / "questions" / "custom.json").read_text(), "teacher changes")
+
+    def test_existing_data_survive_first_migration(self):
+        from windows.launcher import prepare_data
+        with tempfile.TemporaryDirectory() as folder:
+            app, target = Path(folder) / "program", Path(folder) / "profile"
+            (app / "data").mkdir(parents=True)
+            target.mkdir()
+            (app / "data" / "classrally.db").write_bytes(b"old")
+            (target / "classrally.db").write_bytes(b"current")
+            prepare_data(app, target)
+            self.assertEqual((target / "classrally.db").read_bytes(), b"current")
+
+    def test_browser_opens_only_after_health_of_own_instance(self):
+        from windows import launcher
+        health = io.BytesIO(json.dumps({"ok": True, "service": "classrally", "instance": "ours"}).encode())
+        network = io.BytesIO(b'{"play_urls": ["http://192.168.137.1:48217/play"]}')
+        opener = mock.Mock()
+        opener.open.side_effect = [health, network]
+        with mock.patch.object(launcher, "build_opener", return_value=opener), \
+                mock.patch.object(launcher.webbrowser, "open", return_value=True) as browser, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            launcher.open_when_ready("ours", threading.Event())
+        browser.assert_called_once_with("http://localhost:48217/host")
+        self.assertIn("192.168.137.1:48217/play", output.getvalue())
+
+    def test_unrelated_health_never_opens_browser(self):
+        from windows import launcher
+        opener = mock.Mock()
+        opener.open.return_value = io.BytesIO(b'{"ok":true,"service":"other"}')
+        with mock.patch.object(launcher, "build_opener", return_value=opener), \
+                mock.patch.object(launcher.time, "monotonic", side_effect=[0, 0, 46]), \
+                mock.patch.object(launcher.webbrowser, "open") as browser, \
+                contextlib.redirect_stdout(io.StringIO()):
+            launcher.open_when_ready("ours", mock.Mock(is_set=lambda: False))
+        browser.assert_not_called()
+
+
+class TestLaptopWifiHTTP(_AccountHTTPBase):
+    def setUp(self):
+        super().setUp()
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        for attr, value in (("LAPTOP_MODE", True), ("ROOM_MODE", "single"), ("QUIZ_BASE_URL", ""),
+                            ("SERVER_INFO", {"bind_host": "0.0.0.0", "port": 48217,
+                                             "play_urls": ["http://192.168.137.1:48217/play"]})):
+            self.stack.enter_context(mock.patch.object(server, attr, value))
+        self.settings = {"ssid": "Class;Rally", "password": "Dummy;Pass:123"}
+
+    def request_wifi(self, method="GET", path="/api/host/wifi", data=None, auth=True, headers=None):
+        req_headers = {"Content-Type": "application/json"}
+        if auth:
+            req_headers["X-Host-Token"] = server.HOST_TOKEN
+        req_headers.update(headers or {})
+        request = Request(self.base_url + path, method=method, headers=req_headers,
+                          data=json.dumps(data).encode() if data is not None else None)
+        try:
+            response = urlopen(request)
+        except HTTPError as error:
+            response = error
+        with response:
+            return response.code, response.read(), response.headers
+
+    def test_teacher_save_and_qr_but_no_password_in_metadata_state_network_or_logs(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code, body, headers = self.request_wifi("POST", data=self.settings)
+            self.assertEqual(code, 200)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertNotIn(self.settings["password"].encode(), body)
+            self.assertEqual(json.loads(body)["ssid"], self.settings["ssid"])
+            code, qr, headers = self.request_wifi(path="/api/host/wifi/qr")
+            self.assertEqual(code, 200)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertIn(b'<svg', qr)
+            for path in ("/api/state", "/api/state?host=1", "/api/network"):
+                code, body, _ = self.request_wifi(path=path, auth=False)
+                self.assertEqual(code, 200)
+                self.assertNotIn(self.settings["ssid"].encode(), body)
+                self.assertNotIn(self.settings["password"].encode(), body)
+        self.assertNotIn(self.settings["password"], out.getvalue() + err.getvalue())
+        self.assertNotIn(self.settings["ssid"], out.getvalue() + err.getvalue())
+        self.assertEqual(server.load_wifi_settings(), self.settings)
+
+    def test_reject_missing_token_proxy_headers_remote_host_and_remote_peer(self):
+        self.assertEqual(self.request_wifi(auth=False)[0], 403)
+        for headers in ({"X-Forwarded-For": "127.0.0.1"}, {"Forwarded": "for=127.0.0.1"},
+                        {"X-Real-IP": "127.0.0.1"}, {"Host": "quiz.example.com"}):
+            self.assertEqual(self.request_wifi(headers=headers)[0], 403)
+        handler = object.__new__(server.Handler)
+        handler.client_address = ("192.168.137.2", 10000)
+        handler.headers = {"Host": "localhost"}
+        handler._json_response = mock.Mock()
+        self.assertFalse(handler._require_laptop_host())
+        self.assertEqual(handler._json_response.call_args.kwargs["status"], 403)
+
+    def test_public_multi_and_non_laptop_servers_never_offer_wifi(self):
+        for attr, value in (("LAPTOP_MODE", False), ("ROOM_MODE", "multi"),
+                            ("QUIZ_BASE_URL", "https://quiz.example.com"),
+                            ("SERVER_INFO", {"public": True})):
+            with mock.patch.object(server, attr, value):
+                for method, path in (("GET", "/api/host/wifi"), ("GET", "/api/host/wifi/qr"),
+                                     ("POST", "/api/host/wifi")):
+                    self.assertEqual(self.request_wifi(method, path, self.settings if method == "POST" else None)[0], 404)
+
+    def test_wifi_configuration_not_served_as_file_and_invalid_input_is_generic(self):
+        for path in ("/wifi.json", "/data/wifi.json", "/static/../data/wifi.json"):
+            code, _, _ = self.request_wifi(path=path, auth=False)
+            self.assertIn(code, (403, 404))
+        code, body, _ = self.request_wifi("POST", data={"ssid": "Bad", "password": "short"})
+        self.assertEqual(code, 400)
+        self.assertNotIn(b"short", body)
+
+    def test_wifi_saved_by_powershell_with_bom_and_open_network(self):
+        path = server.user_db._DB_DIR / "wifi.json"
+        path.write_text(json.dumps({"ssid": "ClassRally", "password": ""}), encoding="utf-8-sig")
+        code, body, _ = self.request_wifi()
+        self.assertEqual(code, 200)
+        self.assertTrue(json.loads(body)["configured"])
+        self.assertEqual(server.load_wifi_settings()["password"], "")
+
+    def test_refresh_detects_hotspot_enabled_after_server_start(self):
+        with mock.patch.object(server, "detect_lan_ipv4_candidates", return_value=["192.168.137.1"]):
+            code, body, _ = self.request_wifi(path="/api/network?refresh=1")
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["play_urls"][0], "http://192.168.137.1:48217/play")
+
+    def test_uploaded_files_in_user_profile_are_served(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(server, "UPLOADS_DIR", Path(folder)):
+            (Path(folder) / "picture.png").write_bytes(b"test-image")
+            code, body, _ = self.request_wifi(path="/static/uploads/picture.png", auth=False)
+            self.assertEqual((code, body), (200, b"test-image"))
+            self.assertEqual(self.request_wifi(path="/static/uploads/../wifi.json", auth=False)[0], 403)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

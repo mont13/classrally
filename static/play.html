@@ -1955,8 +1955,9 @@
       try {
         let id = localStorage.getItem(DEVICE_KEY);
         if (!id || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) {
+          if (!globalThis.crypto || !globalThis.crypto.getRandomValues) return '';
           const bytes = new Uint8Array(16);
-          crypto.getRandomValues(bytes);
+          globalThis.crypto.getRandomValues(bytes);
           id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
           localStorage.setItem(DEVICE_KEY, id);
         }
@@ -2232,7 +2233,7 @@
     i18n.init().then(() => injectLangSwitcher());
 
     // PWA service worker
-    if ('serviceWorker' in navigator) {
+    if (window.isSecureContext && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/static/sw.js').catch(() => {});
     }
 

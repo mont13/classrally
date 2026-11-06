@@ -773,7 +773,7 @@
                 navigator.clipboard.writeText(joinCode).then(function() {
                   c.textContent = i18n.t('profile.copied');
                   setTimeout(function() { c.textContent = joinCode; }, 1500);
-                });
+                }).catch(function() {});
               }
             });
           })(code, cls.join_code);

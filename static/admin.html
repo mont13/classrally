@@ -1185,7 +1185,7 @@
     document.getElementById('hostTokenBox').addEventListener('click', () => {
       const text = document.getElementById('hostTokenBox').textContent;
       if (text && navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.token_copied')));
+        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.token_copied'))).catch(() => {});
       }
     });
 
@@ -2515,7 +2515,7 @@
             codeBox.addEventListener('click', (e) => {
               e.stopPropagation();
               if (navigator.clipboard) {
-                navigator.clipboard.writeText(cls.join_code).then(() => alert(i18n.t('admin.code_copied')));
+                navigator.clipboard.writeText(cls.join_code).then(() => alert(i18n.t('admin.code_copied'))).catch(() => {});
               }
             });
             infoDiv.appendChild(codeBox);
@@ -3033,7 +3033,7 @@
     document.getElementById('btnCopyHwLink').addEventListener('click', () => {
       const text = document.getElementById('hwLinkBox').textContent;
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.link_copied')));
+        navigator.clipboard.writeText(text).then(() => alert(i18n.t('admin.link_copied'))).catch(() => {});
       }
     });
 

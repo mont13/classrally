@@ -1,0 +1,6 @@
+# Soubory pro Windows (spoustece, PowerShell, navody, NSIS) musi mit konce radku CRLF.
+windows/*.bat text eol=crlf
+windows/*.cmd text eol=crlf
+windows/*.ps1 text eol=crlf
+windows/*.txt text eol=crlf
+windows/*.nsi text eol=crlf

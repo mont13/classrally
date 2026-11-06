@@ -203,11 +203,38 @@
         <ul id="joinExtra" class="join-extra hide"></ul>
       </div>
 
-      <div class="host-qr-panel">
+      <div class="host-qr-panel" style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;align-items:start;">
+        <div id="wifiQrBox" hidden>
+          <p><strong>1. Připoj se k Wi-Fi</strong></p>
+          <img id="wifiQrImg" alt="QR pro připojení k Wi-Fi" style="max-width:280px;height:auto;cursor:pointer;background:#fff;padding:10px;border-radius:8px;" />
+          <p id="wifiQrSsid"></p>
+        </div>
         <div id="qrBox">
+          <p><strong>2. Hraj</strong></p>
           <img id="qrImg" src="/api/qr" alt="QR kód pro připojení" style="max-width:280px;height:auto;cursor:pointer;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:10px;" title="Klikni pro zvětšení" data-i18n-title="host.qr_click_enlarge" />
         </div>
       </div>
+
+      <div id="joinAddressBox" hidden>
+        <label for="joinAddress">Adresa pro herní QR:</label>
+        <select id="joinAddress" aria-describedby="joinAddressHelp"></select>
+        <p id="joinAddressHelp">Vyberte síť, ke které jsou připojené telefony. Hotspot Windows má obvykle 192.168.137.1.</p>
+      </div>
+      <details id="wifiSettings" hidden>
+        <summary>Wi-Fi pro třídu (jen na tomto notebooku)</summary>
+        <p>Nejdříve zapněte hotspot skriptem „Zapnout-hotspot“. Zde pouze nastavíte QR pro již existující síť.</p>
+        <form id="wifiForm" autocomplete="off">
+          <label for="wifiSsid">Název Wi-Fi (SSID)</label>
+          <input id="wifiSsid" name="ssid" required maxlength="32" autocomplete="off" />
+          <label for="wifiPassword">Heslo Wi-Fi (prázdné = otevřená síť)</label>
+          <input id="wifiPassword" name="wifiPassword" type="password" maxlength="63" autocomplete="off" />
+          <p>Pro změnu zadejte znovu i heslo. Zobrazení QR umožní připojení každému, kdo ho vidí.</p>
+          <button class="btn secondary" type="submit">Uložit údaje pro QR</button>
+        </form>
+        <label><input id="showWifiQr" type="checkbox" /> Zobrazit Wi-Fi QR na projektoru</label>
+        <button class="btn ghost" id="refreshLaptopNetwork" type="button">Načíst údaje hotspotu a obnovit adresy</button>
+        <p id="wifiStatus" role="status"></p>
+      </details>
 
       <div class="btn-row host-action-row">
         <button class="btn good" id="btnStart" data-i18n="host.btn_start">Start</button>
@@ -882,7 +909,21 @@
 
       // Multi-room servers: the room PIN goes into the link and the QR code.
       const pinSuffix = appState.roomPin ? `?pin=${appState.roomPin}` : '';
-      const playUrl = (urls.length > 0 ? urls[0] : fallback) + pinSuffix;
+      // FIXED_POLICY: OS-detected interfaces, not a teacher-managed catalogue.
+      // Keep the manual choice across PIN changes and network refreshes.
+      const address = document.getElementById('joinAddress');
+      const selected = urls.includes(appState.manualPlayUrl) ? appState.manualPlayUrl : (urls[0] || fallback);
+      if (!urls.includes(appState.manualPlayUrl)) appState.manualPlayUrl = null;
+      address.replaceChildren();
+      for (const url of urls) {
+        const option = document.createElement('option');
+        option.value = url;
+        option.textContent = url;
+        address.appendChild(option);
+      }
+      address.value = selected;
+      document.getElementById('joinAddressBox').hidden = urls.length < 2;
+      const playUrl = selected + pinSuffix;
       document.getElementById('roomPin').textContent = appState.roomPin
         ? appState.roomPin.replace(/(\d{3})(\d{3})/, '$1 $2') : '';
       document.getElementById('pinRow').classList.toggle('hide', !appState.roomPin);
@@ -916,6 +957,77 @@
         joinHint.classList.remove('warn-inline');
       }
     }
+
+    document.getElementById('joinAddress').addEventListener('change', (event) => {
+      appState.manualPlayUrl = event.target.value;
+      renderJoinInfo(appState.joinInfo);
+    });
+
+    let wifiQrObjectUrl = '';
+    let wifiQrRequest = 0;
+    async function updateWifiQr() {
+      const request = ++wifiQrRequest;
+      const box = document.getElementById('wifiQrBox');
+      box.hidden = true;
+      document.getElementById('wifiQrImg').removeAttribute('src');
+      if (wifiQrObjectUrl) URL.revokeObjectURL(wifiQrObjectUrl);
+      wifiQrObjectUrl = '';
+      if (!document.getElementById('showWifiQr').checked) return;
+      try {
+        const response = await fetch('/api/host/wifi/qr', {
+          headers: { 'X-Host-Token': hostToken }, cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('Nejdříve uložte údaje Wi-Fi nebo je načtěte po zapnutí hotspotu.');
+        const blob = await response.blob();
+        if (request !== wifiQrRequest || !document.getElementById('showWifiQr').checked) return;
+        wifiQrObjectUrl = URL.createObjectURL(blob);
+        document.getElementById('wifiQrImg').src = wifiQrObjectUrl;
+        box.hidden = false;
+      } catch (error) {
+        if (request === wifiQrRequest) document.getElementById('wifiStatus').textContent = error.message;
+      }
+    }
+
+    async function loadLaptopWifi() {
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
+      try {
+        const response = await fetch('/api/host/wifi', { headers: { 'X-Host-Token': hostToken }, cache: 'no-store' });
+        if (!response.ok) return; // public/multi-room servers never offer these controls
+        const data = await response.json();
+        document.getElementById('wifiSettings').hidden = false;
+        document.getElementById('wifiSsid').value = data.ssid;
+        document.getElementById('wifiQrSsid').textContent = data.ssid;
+        document.getElementById('wifiStatus').textContent = data.configured
+          ? 'Údaje Wi-Fi jsou uložené. Zapněte zobrazení QR, až ho budete potřebovat.'
+          : 'Zadejte údaje Wi-Fi nebo spusťte Zapnout-hotspot a obnovte je tlačítkem.';
+        await updateWifiQr();
+      } catch (_) { /* optional, the game works without Wi-Fi settings */ }
+    }
+
+    document.getElementById('showWifiQr').addEventListener('change', updateWifiQr);
+    document.getElementById('wifiForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const status = document.getElementById('wifiStatus');
+      const input = document.getElementById('wifiPassword');
+      try {
+        const response = await fetch('/api/host/wifi', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Host-Token': hostToken },
+          body: JSON.stringify({ ssid: document.getElementById('wifiSsid').value, password: input.value }),
+          cache: 'no-store'
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Nastavení se nepodařilo uložit.');
+        input.value = ''; // credentials never go into browser storage or a URL
+        document.getElementById('wifiQrSsid').textContent = data.ssid;
+        status.textContent = 'Údaje pro Wi-Fi QR byly uložené na notebooku.';
+        await updateWifiQr();
+      } catch (error) { status.textContent = error.message; }
+    });
+    document.getElementById('refreshLaptopNetwork').addEventListener('click', async () => {
+      await loadLaptopWifi();
+      try { renderJoinInfo(await api('/api/network?refresh=1')); }
+      catch (_) { document.getElementById('wifiStatus').textContent = 'Adresy se nepodařilo obnovit. Zkuste znovu.'; }
+    });
 
     function renderOptions(state) {
       const box = document.getElementById('options');
@@ -2233,12 +2345,12 @@
     // QR code over the whole screen: from the QR in the lobby, and during the
     // game (when the header has no QR) from the button next to the join link,
     // so a late student can still join with the camera.
-    function showQrOverlay() {
+    function showQrOverlay(source) {
       const overlay = document.createElement('div');
       overlay.id = 'qrOverlay';
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:4500;display:flex;align-items:center;justify-content:center;cursor:pointer;';
       const bigImg = document.createElement('img');
-      bigImg.src = document.getElementById('qrImg').src;
+      bigImg.src = source instanceof HTMLImageElement ? source.src : document.getElementById('qrImg').src;
       bigImg.alt = i18n.t('host.qr_code');
       bigImg.style.cssText = 'max-width:80vmin;max-height:80vmin;background:#fff;padding:16px;border-radius:12px;';
       overlay.appendChild(bigImg);
@@ -2246,6 +2358,7 @@
       document.body.appendChild(overlay);
     }
     document.getElementById('qrImg').addEventListener('click', showQrOverlay);
+    document.getElementById('wifiQrImg').addEventListener('click', (event) => showQrOverlay(event.currentTarget));
     document.getElementById('btnQrInGame').addEventListener('click', showQrOverlay);
 
     initMp3Players();
@@ -2361,6 +2474,7 @@
 
       await ensureHostToken();
       reacquireHostToken = ensureHostToken;
+      await loadLaptopWifi();
 
       startStateFeed();
     });

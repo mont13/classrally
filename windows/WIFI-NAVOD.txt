@@ -1,67 +1,43 @@
-============================================================
-  ClassRally — jak připojit žáky (Wi-Fi / síť)
-============================================================
+﻿ClassRally bez internetu a školní Wi-Fi
 
-DŮLEŽITÉ: notebook NEMUSÍ být router. Stačí, aby byl notebook
-i mobily žáků na STEJNÉ síti. Server jen běží na notebooku.
+UČITEL
+1. Zapněte Wi-Fi notebooku, vypněte jeho režim letadlo.
+2. Spusťte Zapnout-hotspot.bat. Používá Windows PowerShell 5.1, nic nestahuje.
+   Ukáže název sítě, heslo a adresy. Heslo nesdílejte v e-mailech ani logu.
+   Spouštíte-li skript přímo, použijte powershell.exe, nikoli pwsh.
+3. Spusťte ClassRally a na /host načtěte údaje hotspotu. Dle potřeby zobrazte
+   Wi-Fi QR. Žáci po připojení načtou druhý QR s herní adresou.
+4. Windows hotspot má limit 8 připojených zařízení. Pro větší třídu použijte
+   vlastní cestovní Wi-Fi router, který dovoluje komunikaci mezi klienty.
+   Router nepotřebuje připojení k internetu. Vypněte izolaci klientů/hostů.
+5. Zavřete-li hru, hotspot zůstává zapnutý; vypíná jej Vypnout-hotspot.bat.
+   Skript může vypnout i hotspot zapnutý dříve v Nastavení Windows.
 
+ŽÁCI
+1. Zapněte režim letadlo a potom znovu zapněte jen Wi-Fi; mobilní data vypněte.
+2. Připojte se k síti učitele (prvním QR nebo ručně jménem a heslem).
+3. Telefon hlásí „Bez internetu“? Vyberte „Zůstat připojeno“ / „Použít síť“.
+   Vypněte automatické přepínání na mobilní data či jinou Wi-Fi.
+4. Načtěte herní QR „2. Hraj“, nebo zadejte CELOU adresu od učitele včetně http://
+   a :48217. U Windows hotspotu obvykle http://192.168.137.1:48217/play.
+   „Nezabezpečeno“ u místní http adresy je očekávané; internet není potřeba.
+   Hra funguje i bez instalace aplikace a bez kopírování do schránky.
 
-────────────────────────────────────────────────────────────
-ZPŮSOB 1 — Školní Wi-Fi (nejjednodušší, když funguje)
-────────────────────────────────────────────────────────────
-  - Notebook i mobily žáků připojte na stejnou školní Wi-Fi.
-  - Spusťte ClassRally, žákům dejte QR / URL z portálu.
+KDYŽ WINDOWS ODMÍTÁ HOTSPOT BEZ INTERNETU
+Některé ovladače/počítače potřebují existující profil připojení. Skript vyzkouší
+internetový i ostatní profily. Úplně odpojený notebook nemusí žádný mít.
+- Připojte notebook na chvíli k hotspotu telefonu a zkuste skript znovu.
+  Pak ověřte, zda hotspot funguje i po odpojení internetu; nelze to zaručit.
+- IT může předem nainstalovat adaptér Microsoft KM-TEST Loopback (správce).
+  ClassRally žádný ovladač sám neinstaluje; výsledek závisí na Windows/ovladači.
+- Otevřete Nastavení → Síť a internet → Mobilní hotspot, nebo vložte do nabídky
+  Start: ms-settings:network-mobilehotspot. Zkuste pásmo 2,4 GHz.
+- Spolehlivější pro větší třídu je vlastní cestovní router.
 
-  POZOR na "oddělení klientů" (AP / client isolation):
-  Některé školní Wi-Fi záměrně NEDOVOLÍ, aby se zařízení viděla
-  navzájem (kvůli bezpečnosti). Pak se mobil k notebooku
-  nepřipojí, i když jsou na stejné síti.
-  Poznáte to tak, že žákům se stránka vůbec nenačte.
-  Řešení: použijte ZPŮSOB 2 (hotspot z telefonu).
-
-
-────────────────────────────────────────────────────────────
-ZPŮSOB 2 — Hotspot z telefonu učitele (nejspolehlivější)
-────────────────────────────────────────────────────────────
-  Telefon udělá vlastní Wi-Fi (router), zvládne celou třídu.
-  1) Na telefonu zapněte "Přenosný hotspot / Sdílení internetu".
-  2) Notebook připojte na tento hotspot.
-  3) Mobily žáků připojte na stejný hotspot.
-  4) Spusťte ClassRally, rozdejte QR / URL.
-  (Mobilní data ani nemusí být zapnutá — stačí, že hotspot
-   vytvoří síť. Vše běží lokálně.)
-
-
-────────────────────────────────────────────────────────────
-ZPŮSOB 3 — Windows "Mobilní hotspot" (jen malá skupina)
-────────────────────────────────────────────────────────────
-  Windows umí udělat z notebooku Wi-Fi: Nastavení -> Síť a internet
-  -> Mobilní hotspot -> zapnout.
-  POZOR: Windows hotspot zvládne spolehlivě jen ~8 zařízení —
-  na celou třídu NESTAČÍ. Pro pár žáků ano.
-
-
-────────────────────────────────────────────────────────────
-ZPŮSOB 4 — Levný cestovní Wi-Fi router
-────────────────────────────────────────────────────────────
-  Malý router (i bez internetu) vytvoří síť pro celou třídu.
-  Notebook i mobily na něj připojte. Nejstabilnější pro velké třídy.
-
-
-────────────────────────────────────────────────────────────
-JAKOU ADRESU DÁT ŽÁKŮM
-────────────────────────────────────────────────────────────
-  Portál nahoře ukazuje "URL pro žáky", např.:
-      http://192.168.1.10:48217/play
-  Žáci ji buď naskenují z QR kódu, nebo napíšou do prohlížeče.
-  Číslo 192.168.x.x je adresa notebooku v síti — mění se podle
-  sítě, proto vždy použijte to, co ukazuje portál.
-
-
-────────────────────────────────────────────────────────────
-RYCHLÉ OVĚŘENÍ, ŽE TO PŮJDE
-────────────────────────────────────────────────────────────
-  Vezměte jeden mobil, naskenujte QR. Když se přihlašovací
-  stránka načte = síť je v pořádku, můžete rozdat žákům.
-  Když se NEnačte = nejspíš oddělení klientů -> ZPŮSOB 2.
-============================================================
+KDYŽ JE TELEFON PŘIPOJENÝ, ALE HRA NEJDE
+- Ověřte běžící černé okno ClassRally a správnou adresu na /host. Hotspot lze
+  zapnout i po hře: pak tlačítkem obnovte adresy a vyberte tu pro hotspot.
+- Učitel otevírá http://localhost:48217/host; žáci localhost použít nemohou.
+- IT ověří Povolit-firewall.bat a případné starší blokovací pravidlo Pythonu.
+- Vypněte na telefonu VPN a automatické opouštění sítě bez internetu.
+- Na HTTP adrese telefonu se neinstaluje offline PWA; to hraní nebrání.
