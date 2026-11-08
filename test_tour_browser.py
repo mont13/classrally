@@ -53,6 +53,7 @@ def run():
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         results, errors, foreign, mutations, state_checks, offer_checks, student_checks = [], [], [], [], [], [], []
+        launcher_checks, game_checks = [], []
         try:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True, args=['--disable-background-networking', '--disable-component-update', '--disable-sync'])
@@ -86,6 +87,58 @@ def run():
                     page.goto(base + path)
                     page.wait_for_selector('#cr-tour-launch', state='attached')
                     page.wait_for_load_state('networkidle')
+                    launcher_geometry(page, 'ready:' + path)
+                def launcher_geometry(page, label, *, hidden=None):
+                    # Independent DOM measurement: include custom click targets,
+                    # QR images and the Buggy fixture, not just native buttons.
+                    # Restarting homework reloads the document; wait for i18n
+                    # and tour initialization before measuring the new page.
+                    page.locator('#cr-tour-launch').wait_for(state='attached')
+                    probe = """() => {
+                      const launch=document.querySelector('#cr-tour-launch');
+                      const visible=e=>e.getBoundingClientRect().width>0 && e.getBoundingClientRect().height>0 &&
+                        e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+                      if(!visible(launch)) return {hidden:true,collisions:[]};
+                      const a=launch.getBoundingClientRect(), collisions=[];
+                      for(const e of document.body.querySelectorAll('*')) {
+                        if(e.closest('[id^="cr-tour"],.cr-tour-shade') || !visible(e)) continue;
+                        const s=getComputedStyle(e);
+                        if(s.pointerEvents==='none' || !(e.matches('button,a[href],input:not([type="hidden"]),select,textarea,summary,[role="button"],[role="link"],[tabindex],[onclick]') || s.cursor==='pointer')) continue;
+                        const b=e.getBoundingClientRect();
+                        if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>.5 &&
+                           Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>.5)
+                          collisions.push({id:e.id,tag:e.tagName,rect:{x:b.x,y:b.y,w:b.width,h:b.height}});
+                      }
+                      return {hidden:false,rect:{x:a.x,y:a.y,w:a.width,h:a.height},collisions};
+                    }"""
+                    page.wait_for_function('(' + probe + ')().collisions.length === 0')
+                    if hidden is not None:
+                        try:
+                            page.locator('#cr-tour-launch').wait_for(state='hidden' if hidden else 'visible')
+                        except Exception:
+                            print('FAIL launcher availability: ' + label + ' ' + json.dumps(page.evaluate(probe)), flush=True)
+                            page.screenshot(path=str(shots / 'launcher-failure.png'))
+                            raise
+                    state = page.evaluate(probe)
+                    assert not state['collisions'], (label, state)
+                    assert hidden is None or state['hidden'] == hidden, (label, state)
+                    launcher_checks.append({'label': label, 'viewport': page.viewport_size, **state})
+                def overlay_roundtrip(page, label, selector, open_overlay, close_overlay):
+                    launcher_geometry(page, label + ':before', hidden=False)
+                    open_overlay()
+                    page.locator(selector).wait_for(state='visible')
+                    launcher_geometry(page, label + ':open', hidden=True)
+                    # A running guide must not be started above the page dialog.
+                    page.evaluate("ClassRallyTour.start('language')")
+                    assert not page.locator('#cr-tour-card').is_visible(), label
+                    close_overlay()
+                    # Podiums close by fading opacity to zero, retaining their
+                    # layout box (Playwright's `hidden` does not cover that).
+                    page.wait_for_function("""sel => {
+                      const el=document.querySelector(sel);
+                      return !el || !el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+                    }""", arg=selector)
+                    launcher_geometry(page, label + ':closed', hidden=False)
                 def student_catalog(page, label, *, wait=True):
                     if wait: page.wait_for_timeout(1600)
                     assert not page.locator('#cr-tour-offer').count(), ('student auto-offer', label)
@@ -182,6 +235,183 @@ def run():
                         assert page.evaluate("JSON.parse(localStorage.getItem('classrally.tour.page.v1:/host')).completed")
                     results.append({'viewport': size, 'guide': guide, 'steps': seen})
                     print(f'PASS {size}/{guide}: {len(seen)} steps', flush=True)
+                # Full game, real teacher room + separate player's browser. The
+                # host's normal buttons drive both questions through the podium.
+                viewports = [(1440, 900), (1280, 720), (1024, 768), (390, 844), (844, 390)]
+                server.save_wifi_settings({'ssid': 'Tour QA local fixture', 'password': ''})
+                original_laptop = server.LAPTOP_MODE
+                server.LAPTOP_MODE = True
+                for room_mode in ('single', 'multi'):
+                    server.ROOM_MODE = room_mode
+                    room = server.DEFAULT_ROOM if room_mode == 'single' else server.ROOMS.for_owner(teacher['id'])
+                    for width, height in viewports:
+                        viewport = {'width': width, 'height': height}
+                        label = f'{room_mode}-{width}x{height}'
+                        room.mode = 'game'
+                        room.quiz.reload_questions(bank, 'tour.json')
+                        room.quiz.get_ready_sec = 0
+                        room.quiz.question_duration_sec = 300
+                        room.quiz.reveal_duration_sec = 300
+                        host_ctx = context(viewport); host = host_ctx.new_page(); ready(host, '/host')
+                        phone_ctx = context(viewport, authenticated=False)
+                        phone = phone_ctx.new_page(); ready(phone, '/play?pin=' + room.pin)
+                        phone.locator('#nameInput').fill('Tour-' + label)
+                        phone.locator('#joinBtn').click(); phone.locator('#gameCard').wait_for(state='visible')
+                        launcher_geometry(host, label + ':host-lobby', hidden=False)
+                        launcher_geometry(phone, label + ':phone-lobby', hidden=False)
+                        overlay_roundtrip(host, label + ':QR', '#qrOverlay',
+                                          lambda: host.locator('#qrImg').click(),
+                                          lambda: host.locator('#qrOverlay').click(position={'x': 8, 'y': 8}))
+                        if room_mode == 'single':
+                            host.locator('#wifiSettings summary').click()
+                            host.locator('#showWifiQr').check()
+                            host.locator('#wifiQrImg').wait_for(state='visible')
+                            overlay_roundtrip(host, label + ':WiFi-QR', '#qrOverlay',
+                                              lambda: host.locator('#wifiQrImg').click(),
+                                              lambda: host.locator('#qrOverlay').click(position={'x': 8, 'y': 8}))
+                        host.locator('#btnStart').click()
+                        for question in range(len(bank)):
+                            phone.wait_for_function("document.body.dataset.phase === 'question'")
+                            host.wait_for_function("document.body.classList.contains('in-game')")
+                            launcher_geometry(host, label + f':host-question-{question}', hidden=True)
+                            launcher_geometry(phone, label + f':phone-question-{question}', hidden=True)
+                            # Cover both teacher reveal and a real pupil answer.
+                            answer = bank[question]['options'][bank[question]['correct_index']]
+                            with phone.expect_response(lambda response: urlparse(response.url).path == '/api/submit') as submission:
+                                phone.locator('#options button').filter(has_text=answer).click()
+                            assert submission.value.ok, submission.value.status
+                            # This embedded server intentionally has no ticker;
+                            # reveal explicitly if the answer has not ended it.
+                            if room.quiz.phase == 'question': host.locator('#btnReveal').click()
+                            phone.wait_for_function("document.body.dataset.phase === 'reveal'")
+                            launcher_geometry(host, label + f':host-reveal-{question}', hidden=True)
+                            launcher_geometry(phone, label + f':phone-reveal-{question}', hidden=True)
+                            host.locator('#btnNext').click()
+                        phone.wait_for_function("document.body.dataset.phase === 'finished'")
+                        phone.locator('#finishCard').wait_for(state='visible')
+                        host.locator('#podiumOverlay.visible').wait_for(state='visible')
+                        launcher_geometry(phone, label + ':phone-finished', hidden=True)
+                        launcher_geometry(host, label + ':podium', hidden=True)
+                        host.locator('#podiumAwards .award-card').first.wait_for(state='visible')
+                        launcher_geometry(host, label + ':awards', hidden=True)
+                        launcher_geometry(phone, label + ':phone-awards', hidden=True)
+                        host.screenshot(path=str(shots / (label + '-podium.png')))
+                        # Never force clicks: this is the original regression.
+                        host.locator('#podiumClose').click()
+                        launcher_geometry(host, label + ':podium-closed', hidden=False)
+                        overlay_roundtrip(host, label + ':analysis', '#analysisOverlay',
+                                          lambda: host.locator('#btnAnalysis').click(),
+                                          lambda: host.locator('#btnAnalysisClose').click())
+                        if width == 390:
+                            overlay_roundtrip(host, label + ':team-podium-fixture', '#teamPodiumOverlay',
+                                              lambda: host.evaluate("document.querySelector('#teamPodiumOverlay').classList.add('visible')"),
+                                              lambda: host.locator('#teamPodiumClose').click())
+                        host.once('dialog', lambda dialog: dialog.accept())
+                        host.locator('#btnReset').click()
+                        phone.wait_for_function("document.body.dataset.phase === 'lobby'")
+                        launcher_geometry(host, label + ':host-reset', hidden=False)
+                        launcher_geometry(phone, label + ':phone-reset', hidden=False)
+                        host_ctx.close(); phone_ctx.close()
+                        game_checks.append({'mode': room_mode, 'viewport': viewport, 'questions': len(bank),
+                                            'podium_close': True, 'analysis_open_close': True, 'awards': True})
+                        print(f'PASS full game {label}: lobby/QR/question/reveal/podium/analysis/reset', flush=True)
+                server.ROOM_MODE = 'single'
+                server.LAPTOP_MODE = original_laptop
+                # Actual page dialogs and future overlays: styles, insertion,
+                # native dialog open/close and viewport/scroll changes.
+                for width, height in viewports:
+                    ctx = context({'width': width, 'height': height}); page = ctx.new_page()
+                    for path, selector, opening, close_selector in (
+                        ('/admin', '#analysisOverlay', "showAnalysis('Tour QA', {items:[],students:0})", '#analysisClose'),
+                        ('/profile', '#qrOverlay', "showQrModal({name:'Tour QA',join_code:'LOCALQA'})", '#btnQrClose'),
+                        ('/exam', '#antiCheatOverlay', "document.querySelector('#antiCheatOverlay').classList.remove('hide')", None),
+                    ):
+                        server.DEFAULT_ROOM.mode = 'exam' if path == '/exam' else 'game'
+                        ready(page, path)
+                        overlay_roundtrip(page, f'{width}x{height}{path}', selector,
+                                          lambda script=opening: page.evaluate(script),
+                                          lambda sel=close_selector, overlay=selector: page.locator(sel).click() if sel else
+                                              page.evaluate('(sel)=>document.querySelector(sel).classList.add("hide")', overlay))
+                    server.DEFAULT_ROOM.mode = 'game'
+                    ready(page, '/admin')
+                    page.evaluate("""() => {
+                      const layer=document.createElement('div'); layer.id='qa-future-layer';
+                      layer.style.cssText='position:fixed;inset:0;z-index:200;background:white;display:none';
+                      const close=document.createElement('button'); close.textContent='Close';
+                      close.onclick=()=>layer.style.display='none'; layer.append(close); document.body.append(layer);
+                    }""")
+                    overlay_roundtrip(page, f'{width}:unnamed-fixed-overlay', '#qa-future-layer',
+                                      lambda: page.evaluate("document.querySelector('#qa-future-layer').style.display='block'"),
+                                      lambda: page.locator('#qa-future-layer button').click())
+                    page.evaluate("document.querySelector('#qa-future-layer').remove()")
+                    launcher_geometry(page, f'{width}:removed-overlay', hidden=False)
+                    page.evaluate("""() => {
+                      const dialog=document.createElement('dialog'); dialog.id='qa-dialog';
+                      const close=document.createElement('button'); close.textContent='Close';
+                      close.onclick=()=>dialog.close(); dialog.append(close);
+                      document.body.append(dialog); dialog.showModal();
+                    }""")
+                    launcher_geometry(page, f'{width}:native-dialog', hidden=True)
+                    page.locator('#qa-dialog button').click()
+                    launcher_geometry(page, f'{width}:native-dialog-closed', hidden=False)
+                    # Simulate the optional offline Buggy button and a control
+                    # placed at the launcher's old position, without its service.
+                    page.evaluate("""() => {
+                      const a=document.querySelector('#cr-tour-launch').getBoundingClientRect();
+                      const button=document.createElement('button'); button.id='qa-corner-control'; button.textContent='Page control';
+                      button.style.cssText=`position:fixed;right:8px;top:${a.top}px;width:160px;height:44px;z-index:200`;
+                      document.body.append(button);
+                      const buggy=document.createElement('button'); buggy.id='qa-buggy'; buggy.textContent='Buggy';
+                      buggy.style.cssText='position:fixed;right:8px;bottom:8px;width:100px;height:44px;z-index:200';
+                      document.body.append(buggy);
+                    }""")
+                    launcher_geometry(page, f'{width}:corner-controls')
+                    page.locator('#qa-corner-control').click(); page.locator('#qa-buggy').click()
+                    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    launcher_geometry(page, f'{width}:scrolled-corner-controls')
+                    page.set_viewport_size({'width': 844, 'height': 390})
+                    launcher_geometry(page, f'{width}:resized-corner-controls')
+                    page.evaluate("document.querySelector('#qa-corner-control').remove(); document.querySelector('#qa-buggy').remove()")
+                    launcher_geometry(page, f'{width}:controls-removed', hidden=False)
+                    page.locator('#cr-tour-launch').click()
+                    page.keyboard.press('Escape')
+                    page.wait_for_function("document.activeElement.id === 'cr-tour-launch'")
+                    if width == 1440:
+                        page.evaluate("ClassRallyTour.start('language')")
+                        page.wait_for_selector('[data-step="language"]')
+                        page.evaluate("showAnalysis('Tour QA', {items:[],students:0})")
+                        page.locator('#cr-tour-card').wait_for(state='hidden')
+                        launcher_geometry(page, 'dialog-interrupts-active-tour', hidden=True)
+                        page.locator('#analysisClose').click()
+                        launcher_geometry(page, 'interrupted-tour-dialog-closed', hidden=False)
+                    ctx.close()
+                # Keep the timer fallback and selective, nested layer detection
+                # covered independently of Chromium's requestIdleCallback path.
+                for fallback in (False, True):
+                    ctx = context({'width': 390, 'height': 844})
+                    if fallback:
+                        ctx.add_init_script('window.requestIdleCallback=undefined; window.cancelIdleCallback=undefined;')
+                    page = ctx.new_page(); ready(page, '/admin')
+                    page.add_style_tag(content='.qa-sheet {position:fixed;inset:0;z-index:4000;background:white}')
+                    page.evaluate("""() => {
+                      const holder=document.createElement('div'); holder.id='qa-layer-holder';
+                      const layer=document.createElement('div'); layer.className='qa-sheet'; layer.hidden=true;
+                      const close=document.createElement('button'); close.textContent='Close';
+                      close.onclick=()=>layer.hidden=true; layer.append(close); holder.append(layer);
+                      document.querySelector('main').append(holder);
+                    }""")
+                    overlay_roundtrip(page, f'idle-fallback-{fallback}:nested-css-layer', '.qa-sheet',
+                                      lambda: page.evaluate("document.querySelector('.qa-sheet').hidden=false"),
+                                      lambda: page.locator('.qa-sheet button').click())
+                    page.evaluate("document.querySelector('.qa-sheet button').remove()")
+                    overlay_roundtrip(page, f'idle-fallback-{fallback}:empty-css-layer', '.qa-sheet',
+                                      lambda: page.evaluate("document.querySelector('.qa-sheet').hidden=false"),
+                                      lambda: page.evaluate("document.querySelector('.qa-sheet').hidden=true"))
+                    page.locator('#cr-tour-launch').click()
+                    page.keyboard.press('Escape')
+                    page.wait_for_function("document.activeElement.id === 'cr-tour-launch'")
+                    launcher_geometry(page, f'idle-fallback-{fallback}:focus-restored', hidden=False)
+                    ctx.close()
                 for name, viewport in [('desktop', {'width': 1440, 'height': 900}), ('mobile', {'width': 390, 'height': 844})]:
                     for guide in ['quiz', 'questions', 'results', 'homework', 'exam', 'classes', 'join', 'music', 'language', 'bug']:
                         ctx = context(viewport)
@@ -458,7 +688,9 @@ def run():
                 page.wait_for_function("document.body.dataset.phase === 'reveal'")
                 page.locator('#spNextBtn').click()
                 page.wait_for_function("document.body.dataset.phase === 'finished'")
-                page.wait_for_selector('#cr-tour-launch')
+                launcher_geometry(page, 'homework-results', hidden=True)
+                page.locator('#spRestartBtn').click()
+                launcher_geometry(page, 'homework-results-closed', hidden=False)
                 assert not hw_requests, hw_requests
                 ctx.close()
                 print('PASS homework: manual-only/join/question/reveal/finished, 0 live state requests', flush=True)
@@ -469,7 +701,8 @@ def run():
         assert not foreign, ('non-local requests attempted', foreign)
         report = {'status': 'PASS', 'catalog_runs': len(results), 'runs': results, 'js_errors': errors,
                   'foreign_requests': foreign, 'state_checks': state_checks, 'offer_checks': offer_checks,
-                  'student_checks': student_checks, 'screenshots': str(shots)}
+                  'student_checks': student_checks, 'launcher_checks': launcher_checks,
+                  'game_checks': game_checks, 'screenshots': str(shots)}
         (QA / 'browser-results.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(json.dumps({'status': 'PASS', 'catalog_runs': len(results), 'js_errors': len(errors), 'foreign_requests': len(foreign), 'screenshots': str(shots)}, ensure_ascii=False))
 

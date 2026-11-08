@@ -461,6 +461,7 @@
   const stepsById = Object.fromEntries(DATA.steps.map(step => [step.id, step]));
   let active = null, view = '', card, ring, shades = [], launcher, offer;
   let target = null, previousFocus = null, frame = 0, tracking = 0, lastRect = '', generation = 0, dirty = false;
+  let availabilityTimer = 0, availabilityIdle = 0, lastAvailability = -Infinity, restoreFocus = false;
   let visited = new Set();
   let originalPadding = '', basePadding = 0;
   const memory = {};
@@ -480,7 +481,102 @@
   const find = selector => selector ? [...document.querySelectorAll(selector)].find(visible) || null : null;
   function busy() {
     return (page === '/play' && ['question', 'reveal'].includes(document.body.dataset.phase)) ||
+      (page === '/host' && document.body.classList.contains('in-game')) ||
       (page === '/exam' && visible(document.getElementById('testSection')));
+  }
+  const TOUR_UI = '[id^="cr-tour"], .cr-tour-shade';
+  const PAGE_OVERLAYS = '[role="dialog"], [aria-modal="true"], dialog[open], .overlay, .modal, .qr-overlay, ' +
+    '#podiumOverlay, #teamPodiumOverlay, #analysisOverlay, #qrOverlay, #hostLoginOverlay, ' +
+    '#getReadyOverlay, #finishCard, #spSummaryPane';
+  const CONTROLS = 'button, a[href], input:not([type="hidden"]), select, textarea, summary, ' +
+    '[role="button"], [role="link"], [tabindex], [onclick]';
+  const CONTROL_CANDIDATES = CONTROLS + ', img, label, [style*="cursor"]';
+  const LAYER_CANDIDATES = PAGE_OVERLAYS + ', [class*="overlay"], [class*="modal"], [style*="position"]';
+  const ANIMATED_CONTENT = '#scoreBody, #teamLeaderboard, #kTimer, #kTimerItem, #timer, #timerItem, ' +
+    '#countdownFill, #kAnswered, #kPlayers, #answered, #players, .countdown-bar, .confetti, canvas';
+  const ANIMATED_IDS = new Set(['scoreBody', 'teamLeaderboard', 'kTimer', 'kTimerItem', 'timer', 'timerItem',
+    'countdownFill', 'kAnswered', 'kPlayers', 'answered', 'players']);
+  const STYLE_TARGETS = LAYER_CANDIDATES + ', ' + CONTROL_CANDIDATES + ', main, section, form, .card, [style]';
+  const PAGE_OBSERVATION = {attributes: true, attributeOldValue: true,
+    attributeFilter: ['data-phase', 'class', 'hidden', 'open', 'aria-modal', 'role'], childList: true, subtree: true};
+  const layers = new Set();
+  let styleObserver, pageObserver, gameplayBlocked = false;
+  function watchStyle(el) {
+    if (!el.closest(TOUR_UI) && !el.closest(ANIMATED_CONTENT)) {
+      styleObserver.observe(el, {attributes: true, attributeFilter: ['style'], attributeOldValue: true});
+    }
+  }
+  function rememberLayers(root) {
+    if (root.nodeType !== 1 || root.closest(TOUR_UI) || root.closest(ANIMATED_CONTENT)) return;
+    if (root.parentElement === document.body || root.matches(LAYER_CANDIDATES)) layers.add(root);
+    if (root === document.body) {
+      [...root.children].forEach(el => { layers.add(el); watchStyle(el); });
+    }
+    root.querySelectorAll(LAYER_CANDIDATES).forEach(el => layers.add(el));
+    watchStyle(root);
+    root.querySelectorAll(STYLE_TARGETS).forEach(watchStyle);
+  }
+  function pageOverlayOpen() {
+    // Registered dialogs/layers and direct body children, never the whole DOM.
+    // Hit testing also finds nested, unlabelled layers positioned by a stylesheet.
+    const candidates = new Set(layers);
+    document.elementsFromPoint(innerWidth / 2, innerHeight / 2).forEach(el => {
+      if (el !== document.body && el !== document.documentElement) candidates.add(el);
+    });
+    return [...candidates].some(el => {
+      if (!el.isConnected) { layers.delete(el); return false; }
+      if (el.closest(TOUR_UI) || el.closest('[hidden], .hide, .hidden')) return false;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const style = getComputedStyle(el);
+      if (style.visibility !== 'visible' || style.pointerEvents === 'none' ||
+          el.checkVisibility?.({checkVisibilityCSS: true}) === false) return false;
+      // A podium starts fading in at opacity zero but already intercepts clicks.
+      if (el.matches(PAGE_OVERLAYS)) return true;
+      if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+      return ['fixed', 'absolute'].includes(style.position) && Number(style.zIndex) > 0 &&
+        r.width >= innerWidth * .75 && r.height >= innerHeight * .75;
+    });
+  }
+  function placeLauncher() {
+    if (launcher.hidden) return;
+    const languages = find('.i18n-switcher');
+    const top = Math.max(12, (languages?.getBoundingClientRect().bottom || 0) + 10);
+    launcher.style.top = top + 'px';
+    launcher.style.right = innerWidth <= 600 ? '8px' : '12px';
+    const r = launcher.getBoundingClientRect();
+    // Read rectangles only for controls, then visibility/style only in the two
+    // corner strips where the launcher can actually be placed.
+    const columns = [r.left, 8];
+    const candidates = new Set(document.querySelectorAll(CONTROL_CANDIDATES));
+    for (const x of columns) {
+      document.elementsFromPoint(x + r.width / 2, top + r.height / 2).forEach(el => candidates.add(el));
+    }
+    const obstacles = [];
+    for (const el of candidates) {
+      if (el.closest(TOUR_UI) || el.closest('[hidden], .hide, .hidden')) continue;
+      const b = el.getBoundingClientRect();
+      if (!b.width || !b.height || b.bottom <= 0 || b.top >= innerHeight ||
+          !columns.some(x => b.right + 8 > x && b.left < x + r.width + 8)) continue;
+      const style = getComputedStyle(el);
+      if (style.pointerEvents === 'none' || !(el.matches(CONTROLS) || style.cursor === 'pointer') ||
+          el.checkVisibility?.({checkOpacity: true, checkVisibilityCSS: true}) === false) continue;
+      obstacles.push(b);
+    }
+    const rows = [top, 12, ...obstacles.flatMap(b => [b.bottom + 8, b.top - r.height - 8])];
+    let safe = null;
+    for (const x of columns) {
+      if (x < 8 || x + r.width > innerWidth - 8) continue;
+      const y = rows.find(y => y >= 8 && y + r.height <= innerHeight - 8 && obstacles.every(b =>
+        x + r.width + 8 <= b.left || x >= b.right + 8 || y + r.height + 8 <= b.top || y >= b.bottom + 8));
+      if (y != null) { safe = {x, y}; break; }
+    }
+    // If the viewport has no free place, yield the space to the page controls.
+    launcher.hidden = !safe;
+    if (safe) {
+      launcher.style.right = (innerWidth - safe.x - r.width) + 'px';
+      launcher.style.top = safe.y + 'px';
+    }
   }
   function eligible(step) {
     switch (step.condition) {
@@ -539,8 +635,8 @@
     generation++; active = null; view = ''; card.hidden = true; hideSpotlight();
     document.body.style.paddingBottom = originalPadding;
     write('sessionStorage', SESSION, null);
-    if (restore && previousFocus?.isConnected && visible(previousFocus)) previousFocus.focus({preventScroll: true});
-    else if (restore) launcher.focus({preventScroll: true});
+    restoreFocus = restore;
+    schedule();
   }
   function prepareCard(title, text, modal = false) {
     hideSpotlight(); card.replaceChildren(); card.hidden = false;
@@ -553,7 +649,7 @@
     card.setAttribute('aria-describedby', text ? 'cr-tour-text' : 'cr-tour-title');
   }
   function followTarget() {
-    if (!target || card.hidden) { tracking = 0; return; }
+    if (document.hidden || !target || card.hidden) { tracking = 0; return; }
     const r = target.getBoundingClientRect();
     const key = [r.x, r.y, r.width, r.height].map(value => value.toFixed(1)).join(':');
     if (key !== lastRect) { lastRect = key; schedule(); }
@@ -632,14 +728,14 @@
   }
   function previousStep() { return (active?.shown || []).filter(index => index < active.index).at(-1); }
   function start(id) {
-    if (busy()) return;
+    if (document.hidden || busy() || pageOverlayOpen()) return;
     previousFocus = document.activeElement;
     if (offer) offer.hidden = true;
     visited = new Set(); active = {id, index: 0, origin: page, steps: buildSteps(id, page)};
     if (active.steps.length) show(0);
   }
   function catalog() {
-    if (busy()) return;
+    if (document.hidden || busy() || pageOverlayOpen()) return;
     previousFocus = document.activeElement; close(false); view = 'catalog';
     if (offer) offer.hidden = true;
     prepareCard(t(student ? 'studentCatalog' : 'catalog'), '', false);
@@ -654,16 +750,40 @@
     }
     card.append(list, button('end', () => close())); focusCard();
   }
-  function schedule() { if (!frame) frame = requestAnimationFrame(layout); }
+  function refreshAvailability() {
+    if (document.hidden) return;
+    lastAvailability = performance.now();
+    updateAvailability();
+    placeLauncher();
+    if (restoreFocus && !view) {
+      restoreFocus = false;
+      if (previousFocus?.isConnected && visible(previousFocus)) previousFocus.focus({preventScroll: true});
+      else if (!launcher.hidden) launcher.focus({preventScroll: true});
+    }
+  }
+  function scheduleAvailability() {
+    if (document.hidden || availabilityTimer || availabilityIdle) return;
+    availabilityTimer = setTimeout(() => {
+      availabilityTimer = 0;
+      if (document.hidden) return;
+      if (window.requestIdleCallback) {
+        availabilityIdle = requestIdleCallback(() => { availabilityIdle = 0; refreshAvailability(); }, {timeout: 100});
+      } else refreshAvailability();
+    }, Math.max(0, 250 - (performance.now() - lastAvailability)));
+  }
+  function schedule() {
+    if (document.hidden) return;
+    scheduleAvailability();
+    // Spotlight follows its target at frame speed without re-scanning controls.
+    if (view && !frame) frame = requestAnimationFrame(layout);
+  }
   function layout() {
     frame = 0;
-    // Keep launcher beneath the language switcher and away from Buggy (bottom right).
-    const languages = find('.i18n-switcher');
-    launcher.style.top = Math.max(12, (languages?.getBoundingClientRect().bottom || 0) + 10) + 'px';
-    if (card.hidden) return;
+    if (document.hidden || card.hidden) return;
     const width = window.innerWidth, height = window.innerHeight, gap = 16;
     card.style.maxHeight = (height - gap * 2) + 'px';
-    document.body.style.paddingBottom = target ? (basePadding + card.getBoundingClientRect().height + gap * 3) + 'px' : originalPadding;
+    const padding = target ? (basePadding + card.getBoundingClientRect().height + gap * 3) + 'px' : originalPadding;
+    if (document.body.style.paddingBottom !== padding) document.body.style.paddingBottom = padding;
     card.style.top = ''; card.style.bottom = '16px';
     card.style.left = '50%'; card.style.transform = 'translateX(-50%)';
     if (!visible(target)) { hideSpotlight(); return; }
@@ -697,13 +817,28 @@
     box(shades[2], right, y, width - right, bottom - y); box(shades[3], 0, bottom, width, height - bottom);
   }
   function updateAvailability() {
-    launcher.hidden = busy();
+    const playing = busy();
+    if (['/host', '/play'].includes(page) && playing !== gameplayBlocked) {
+      gameplayBlocked = playing;
+      pageObserver.disconnect(); styleObserver.disconnect();
+      if (playing) {
+        // During questions/reveal the guide is unavailable. Only the game's
+        // body phase/class can bring it back; do not watch animated descendants.
+        pageObserver.observe(document.body, {attributes: true, attributeOldValue: true,
+          attributeFilter: ['data-phase', 'class']});
+      } else {
+        pageObserver.observe(document.body, PAGE_OBSERVATION);
+        layers.clear(); rememberLayers(document.body);
+      }
+    }
+    const blocked = playing || pageOverlayOpen();
+    launcher.hidden = blocked || !card.hidden;
     if (page === '/host' && document.body.classList.contains('in-game') && offer) offer.hidden = true;
-    if (busy()) { if (offer) offer.hidden = true; if (active || view) close(false); }
+    if (blocked) { if (offer) offer.hidden = true; if (active || view) close(false); }
   }
   function offerTour() {
     // Pupils open the catalog explicitly; joining must never need a dismissal.
-    if (student || busy() || (page === '/host' && document.body.classList.contains('in-game')) || active || view || pref().never || pref().completed || pref().offered) return;
+    if (document.hidden || student || busy() || pageOverlayOpen() || active || view || pref().never || pref().completed || pref().offered) return;
     remember({offered: true});
     offer = element('aside', 'cr-tour-offer'); offer.id = 'cr-tour-offer';
     offer.setAttribute('aria-label', t(student ? 'studentOffer' : 'offer'));
@@ -734,12 +869,58 @@
     document.body.append(...shades, ring, card);
     window.addEventListener('resize', schedule); document.addEventListener('scroll', schedule, {passive: true, capture: true});
     new ResizeObserver(schedule).observe(card);
-    // Watch only page state/visibility, never our own positioning styles.
-    new MutationObserver(records => {
-      if (records.every(record => record.target.closest?.('[id^="cr-tour"], .cr-tour-shade'))) return;
-      updateAvailability();
-      schedule();
-    }).observe(document.body, {attributes: true, attributeFilter: ['data-phase', 'class', 'hidden'], subtree: true});
+    new ResizeObserver(schedule).observe(document.body);
+    document.addEventListener('load', schedule, true);
+    document.addEventListener('transitionend', schedule, true);
+    // No geometry/style reads in the observer. Timers, scores and decorations
+    // cannot change availability; body ResizeObserver covers their size changes.
+    function observePage(records) {
+      if (document.hidden) return;
+      let relevant = false;
+      for (const record of records) {
+        const el = record.target;
+        if (ANIMATED_IDS.has(el.id) || el.closest?.(TOUR_UI) || el.closest?.(ANIMATED_CONTENT)) continue;
+        // The game redraws unchanged labels/classes on every state message.
+        // Ignore those writes before walking any ancestors or indexing layers.
+        if (record.type === 'attributes' && record.oldValue === el.getAttribute(record.attributeName)) continue;
+        if (record.type === 'childList' && record.addedNodes.length === 1 && record.removedNodes.length === 1 &&
+            record.addedNodes[0].nodeType === 3 && record.removedNodes[0].nodeType === 3 &&
+            record.addedNodes[0].textContent === record.removedNodes[0].textContent) continue;
+        if (record.type === 'childList') {
+          record.addedNodes.forEach(node => rememberLayers(node));
+          relevant = true;
+        } else if (['hidden', 'open', 'role', 'aria-modal', 'class'].includes(record.attributeName)) {
+          // A nested layer may get all positioning from a stylesheet and have
+          // no controls. Track its visibility/class change without scanning it.
+          layers.add(el); watchStyle(el); relevant = true;
+        } else if (el === document.body || layers.has(el) || el.matches(LAYER_CANDIDATES) ||
+                   el.matches(CONTROL_CANDIDATES) || el.querySelector(CONTROL_CANDIDATES)) {
+          if (el.matches(LAYER_CANDIDATES)) { layers.add(el); watchStyle(el); }
+          relevant = true;
+        }
+      }
+      if (relevant) schedule();
+    }
+    styleObserver = new MutationObserver(observePage);
+    rememberLayers(document.body);
+    // Inline animation styles are not observed across the whole subtree.
+    // Only registered layers, controls and layout containers need that channel.
+    pageObserver = new MutationObserver(observePage);
+    pageObserver.observe(document.body, PAGE_OBSERVATION);
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(availabilityTimer); availabilityTimer = 0;
+      if (availabilityIdle) window.cancelIdleCallback(availabilityIdle);
+      availabilityIdle = 0;
+      cancelAnimationFrame(frame); frame = 0;
+      cancelAnimationFrame(tracking); tracking = 0;
+      styleObserver.disconnect();
+      if (!document.hidden) {
+        // Changes while hidden were ignored; refresh the selective layer index.
+        if (!gameplayBlocked) { layers.clear(); rememberLayers(document.body); }
+        schedule();
+        if (target && view) tracking = requestAnimationFrame(followTarget);
+      }
+    });
     document.addEventListener('input', event => { if (!event.target.closest('[id^="cr-tour"]')) dirty = true; });
     document.addEventListener('change', event => { if (!event.target.closest('[id^="cr-tour"]')) dirty = true; });
     document.addEventListener('click', event => {
@@ -770,7 +951,7 @@
     });
     // Before joining, /play only shows the form. Once joined, the game owns
     // data-phase (including homework); the tour never requests room state.
-    window.addEventListener('pageshow', updateAvailability);
+    window.addEventListener('pageshow', schedule);
     let resume = read('sessionStorage', SESSION);
     const match = location.hash.match(/^#cr-tour=([^#]+)$/);
     if (match) {
