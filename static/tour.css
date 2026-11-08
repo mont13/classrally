@@ -18,6 +18,7 @@
 .cr-tour-ring { position:fixed; z-index:10002; pointer-events:none; border:3px solid #58b7ff; border-radius:8px; box-sizing:border-box; }
 .cr-tour-shade { position:fixed; z-index:10001; background:#0e1e38a3; pointer-events:none; }
 .cr-tour-offer { position:fixed; z-index:9101; left:16px; bottom:calc(16px + env(safe-area-inset-bottom,0px)); width:min(370px,calc(100vw - 100px)); padding:14px; background:#fff; border:1px solid #5d93c9; border-radius:14px; box-shadow:0 4px 18px #0f172a29; }
+.cr-tour-offer-inline { position:static; width:auto; max-width:600px; margin:0 64px 16px 0; }
 .cr-tour-offer p { margin:0 0 10px; font-weight:700; }
 .cr-tour-offer .cr-tour-button { margin:2px; font-size:.9rem; }
 .cr-tour-catalog { width:min(760px,calc(100vw - 32px)); }
@@ -25,4 +26,4 @@
 .cr-tour-task { display:flex; flex-direction:column; gap:6px; text-align:left; }
 .cr-tour-task span { font-size:.87rem; color:#426181; }
 #cr-tour-card[hidden],#cr-tour-ring[hidden],.cr-tour-shade[hidden],#cr-tour-offer[hidden],#cr-tour-launch[hidden] { display:none; }
-@media(max-width:600px) { .cr-tour-grid { grid-template-columns:1fr; } .cr-tour-card { padding:14px; } .cr-tour-launch { right:8px; font-size:14px; } }
+@media(max-width:600px) { .cr-tour-grid { grid-template-columns:1fr; } .cr-tour-card { padding:14px; } .cr-tour-launch { right:8px; font-size:0; min-width:44px; padding:8px; } .cr-tour-launch::before { font-size:16px; margin-right:0; } }

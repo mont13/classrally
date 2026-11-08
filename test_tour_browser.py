@@ -52,7 +52,7 @@ def run():
         server.SERVER_INFO.update(host_urls=[base + '/host'], play_urls=[base + '/play'], loopback_only=True)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
-        results, errors, foreign, mutations = [], [], [], []
+        results, errors, foreign, mutations, state_checks, offer_checks, student_checks = [], [], [], [], [], [], []
         try:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True, args=['--disable-background-networking', '--disable-component-update', '--disable-sync'])
@@ -86,6 +86,44 @@ def run():
                     page.goto(base + path)
                     page.wait_for_selector('#cr-tour-launch', state='attached')
                     page.wait_for_load_state('networkidle')
+                def student_catalog(page, label, *, wait=True):
+                    if wait: page.wait_for_timeout(1600)
+                    assert not page.locator('#cr-tour-offer').count(), ('student auto-offer', label)
+                    assert not page.locator('#cr-tour-card').is_visible(), ('unsolicited dialog', label)
+                    assert not page.evaluate("JSON.parse(localStorage.getItem('classrally.tour.page.v1:' + location.pathname))?.offered"), label
+                    # CSS's visible '?' may prefix the accessible text as well.
+                    launcher = page.get_by_role('button', name='Průvodce')
+                    assert launcher.is_visible(), ('manual launcher unavailable', label)
+                    if page.viewport_size['width'] <= 600:
+                        rect = launcher.bounding_box()
+                        assert rect['width'] == 44 and rect['height'] == 44, ('mobile launcher', label, rect)
+                    launcher.click()
+                    assert page.locator('#cr-tour-title').inner_text() == page.evaluate("i18n.t('tour.studentCatalog')"), label
+                    guides = page.locator('[data-tour-guide]').evaluate_all('(items) => items.map(item => item.dataset.tourGuide)')
+                    assert set(guides) == {'join', 'classes', 'language', 'bug'}, (label, guides)
+                    page.locator('[data-tour-guide="language"]').click()
+                    page.wait_for_selector('[data-step="studentlanguage"]')
+                    page.keyboard.press('Escape')
+                    student_checks.append({'page': label, 'viewport': page.viewport_size, 'guides': guides, 'auto_offer': False})
+                def teacher_offer_geometry(page, label, selectors):
+                    offer = page.locator('#cr-tour-offer')
+                    offer.wait_for(state='visible')
+                    page.evaluate('window.scrollTo(0, 0)')
+                    rect = offer.bounding_box()
+                    assert 0 <= rect['y'] and rect['y'] + rect['height'] <= page.viewport_size['height'], (label, rect)
+                    assert page.evaluate("!document.querySelector('#cr-tour-card').contains(document.activeElement) && !document.querySelector('#cr-tour-offer').contains(document.activeElement)"), label
+                    checks = []
+                    for selector in selectors:
+                        for control in page.locator(selector).all():
+                            assert control.is_visible(), (label, 'protected control not visible', selector)
+                            control.scroll_into_view_if_needed()
+                            a, b = offer.bounding_box(), control.bounding_box()
+                            overlap = min(a['x'] + a['width'], b['x'] + b['width']) - max(a['x'], b['x']) > .5 and min(a['y'] + a['height'], b['y'] + b['height']) - max(a['y'], b['y']) > .5
+                            assert not overlap, ('offer covers teacher control', label, selector, a, b)
+                            checks.append({'control': selector, 'offer': a, 'target': b, 'overlap': overlap})
+                    offer_checks.append({'page': label, 'viewport': page.viewport_size, 'checks': checks})
+                    page.evaluate('window.scrollTo(0, 0)')
+                    page.screenshot(path=str(shots / (label + '-offer.png')))
                 def inspect(page):
                     return page.evaluate("""() => {
                       const card=document.querySelector('#cr-tour-card'), ring=document.querySelector('#cr-tour-ring');
@@ -215,8 +253,45 @@ def run():
                 assert not page.locator('#cr-tour-offer').count()
                 page.locator('#cr-tour-launch').click(); assert page.locator('[data-tour-guide="quiz"]').is_visible()
                 page.keyboard.press('Escape'); ctx.close()
-                # The gentle first-visit offer never takes focus; a dismissal is per page.
-                ctx = context({'width': 390, 'height': 844}); page = ctx.new_page(); ready(page, '/play')
+                # Student entry pages never offer automatically, including fresh
+                # visits, reload, bfcache, translations and resized viewports.
+                for viewport in ({'width': 1440, 'height': 900}, {'width': 390, 'height': 844}):
+                    for path in ('/play', '/profile', '/exam'):
+                        server.DEFAULT_ROOM.mode = 'exam' if path == '/exam' else 'game'
+                        ctx = context(viewport, account=pupil_token)
+                        page = ctx.new_page(); ready(page, path)
+                        label = str(viewport['width']) + path
+                        student_catalog(page, label)
+                        page.screenshot(path=str(shots / (str(viewport['width']) + '-' + path[1:] + '-manual-only.png')))
+                        page.reload(); page.wait_for_load_state('networkidle')
+                        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true})); i18n.setLang('en')")
+                        page.wait_for_timeout(1600)
+                        assert not page.locator('#cr-tour-offer').count(), label
+                        page.evaluate("i18n.setLang('cs')")
+                        page.wait_for_function("document.querySelector('#cr-tour-launch').textContent === 'Průvodce'")
+                        student_catalog(page, label + '-reload-bfcache-language', wait=False)
+                        ctx.close()
+                server.DEFAULT_ROOM.mode = 'game'
+                # Teacher offers reserve page space and stay clear while scrolling.
+                # Multi-room mode exposes the actual PIN, alongside the real QR.
+                for room_mode in ('single', 'multi'):
+                    server.ROOM_MODE = room_mode
+                    try:
+                        for viewport in ({'width': 1440, 'height': 900}, {'width': 390, 'height': 844}):
+                            for path in ('/host', '/admin'):
+                                ctx = context(viewport); page = ctx.new_page(); ready(page, path)
+                                selectors = ['#btnStart', '#qrImg'] if path == '/host' else ['.tabs .tab']
+                                if path == '/host' and room_mode == 'multi': selectors.append('#roomPin')
+                                label = path[1:] + '-' + room_mode + '-' + str(viewport['width'])
+                                teacher_offer_geometry(page, label, selectors)
+                                # Keep the offer open across a live resize too.
+                                page.set_viewport_size({'width': 390, 'height': 844} if viewport['width'] == 1440 else {'width': 1440, 'height': 900})
+                                teacher_offer_geometry(page, label + '-resized', selectors)
+                                ctx.close()
+                    finally:
+                        server.ROOM_MODE = 'single'
+                # The gentle teacher offer never takes focus; dismissal is per page.
+                ctx = context({'width': 390, 'height': 844}); page = ctx.new_page(); ready(page, '/admin')
                 page.wait_for_selector('#cr-tour-offer'); assert not page.locator('#cr-tour-card').is_visible()
                 page.get_by_role('button', name='Už mi průvodce nenabízet', exact=True).click()
                 page.reload(); page.wait_for_timeout(1600); assert not page.locator('#cr-tour-offer').count()
@@ -249,16 +324,40 @@ def run():
                 ctx = context({'width': 390, 'height': 844}, authenticated=False); page = ctx.new_page(); ready(page, '/profile')
                 walk(page, 'classes', 'portal-enabled'); ctx.close()
                 os.environ['CLASSRALLY_PORTAL_SECRET'] = ''
-                # Restoring a cached page repeatedly must leave exactly one phase timer.
-                ctx = context({'width': 390, 'height': 844}, authenticated=False); page = ctx.new_page(); ready(page, '/play')
-                phase_requests = []
-                page.on('request', lambda request: phase_requests.append(request.url) if urlparse(request.url).path == '/api/state' else None)
-                for _ in range(3):
-                    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide')); window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}));")
-                    page.wait_for_timeout(250)
-                before = len(phase_requests); page.wait_for_timeout(2200)
-                assert len(phase_requests) - before == 1, ('duplicate phase timers', phase_requests)
-                ctx.close()
+                # Observe from BEFORE navigation, including the initial request.
+                # Every page stays open for at least 10 s; invalid/no PIN must
+                # never produce /api/state (400 in multi mode). Complete PINs
+                # also need no request: the tour is entirely local.
+                for room_mode in ('single', 'multi'):
+                    server.ROOM_MODE = room_mode
+                    samples = []
+                    try:
+                        for query in ('', '?pin=', '?pin=123', '?pin=12a456', '?pin=000000', '?pin=' + server.DEFAULT_ROOM.pin):
+                            ctx = context({'width': 390, 'height': 844}, authenticated=False)
+                            page = ctx.new_page()
+                            requests, console_errors = [], []
+                            page.on('request', lambda request, seen=requests: seen.append(request.url)
+                                    if urlparse(request.url).path == '/api/state' else None)
+                            page.on('console', lambda msg, seen=console_errors: seen.append(msg.text) if msg.type == 'error' else None)
+                            ready(page, '/play' + query)
+                            started = time.monotonic()
+                            samples.append((ctx, page, query, requests, console_errors, started))
+                            if not query and room_mode == 'multi':
+                                page.locator('#pinInput').fill('12')
+                                page.locator('#pinInput').fill(server.DEFAULT_ROOM.pin)
+                            for _ in range(3):
+                                page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide')); window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}));")
+                        page.wait_for_timeout(10000)
+                        for _, observed, query, requests, console_errors, started in samples:
+                            assert not requests, (room_mode, query, 'unexpected state request', requests)
+                            assert not console_errors, (room_mode, query, console_errors)
+                            student_catalog(observed, room_mode + '/play' + query, wait=False)
+                            state_checks.append({'mode': room_mode, 'query': query, 'seconds': round(time.monotonic() - started, 2),
+                                                 'state_requests': len(requests), 'console_errors': console_errors})
+                        print(f'PASS {room_mode}: 6 join pages, >=10 s each, 0 state requests (including bfcache and PIN edits)', flush=True)
+                    finally:
+                        for ctx, *_ in samples: ctx.close()
+                        server.ROOM_MODE = 'single'
                 # PIN is actually served in multi-room mode, not a DOM mock.
                 server.ROOM_MODE = 'multi'
                 ctx = context({'width': 390, 'height': 844}, authenticated=False); page = ctx.new_page(); ready(page, '/play')
@@ -285,42 +384,92 @@ def run():
                     if page.evaluate("document.activeElement.id === 'loginNick'"): break
                 else: raise AssertionError('login focus trapped in tour')
                 page.keyboard.press('Escape'); ctx.close()
-                # Real player, real question: the tour closes and its launcher/offer disappear.
-                ctx = context({'width': 390, 'height': 844}, account=pupil_token); page = ctx.new_page(); ready(page, '/play')
-                page.locator('#nameInput').fill('TourPlayer'); page.locator('#joinBtn').click()
-                page.wait_for_selector('#gameCard', state='visible')
-                page.evaluate("ClassRallyTour.start('join')"); page.wait_for_selector('.cr-tour-never input')
-                page.keyboard.press('Escape')
+                # Real joins and game transitions in both server modes. Only a
+                # connected player's own phase hides the tour; join forms stay
+                # manual-only even when the teacher has started a question.
+                for room_mode in ('single', 'multi'):
+                    server.ROOM_MODE = room_mode
+                    ctx = context({'width': 390, 'height': 844}, authenticated=False)
+                    page = ctx.new_page(); ready(page, '/play?pin=' + server.DEFAULT_ROOM.pin)
+                    student_catalog(page, room_mode + '-before-join')
+                    page.locator('#nameInput').fill('TourPlayer-' + room_mode); page.locator('#joinBtn').click()
+                    page.wait_for_selector('#gameCard', state='visible')
+                    page.evaluate("ClassRallyTour.start('join')"); page.wait_for_selector('.cr-tour-never input')
+                    page.keyboard.press('Escape')
+                    page.evaluate("ClassRallyTour.start('language')"); page.wait_for_selector('[data-step="studentlanguage"]')
+                    def host_action(action):
+                        response = ctx.request.post(base + '/api/host/action', data={'action': action},
+                                                    headers={'Authorization': 'Bearer ' + server.HOST_TOKEN})
+                        assert response.ok, (action, response.status, response.text())
+                    host_action('start')
+                    page.wait_for_function("document.body.dataset.phase === 'question'")
+                    for selector in ('#cr-tour-card', '#cr-tour-launch', '#cr-tour-offer'):
+                        page.locator(selector).wait_for(state='hidden')
+                    page.locator('#options').wait_for(state='visible')
+                    page.screenshot(path=str(shots / f'mobile-{room_mode}-question-no-tour.png'))
+                    # No PIN and a complete PIN both show only the join form.
+                    for query in ('', '?pin=' + server.DEFAULT_ROOM.pin):
+                        late_ctx = context({'width': 390, 'height': 844}, authenticated=False)
+                        late = late_ctx.new_page(); ready(late, '/play' + query)
+                        student_catalog(late, room_mode + '-late-join' + query)
+                        assert late.locator('#joinCard').is_visible()
+                        late_ctx.close()
+                    if room_mode == 'single':
+                        host_ctx = context({'width': 390, 'height': 844}); host = host_ctx.new_page(); ready(host, '/host')
+                        host.wait_for_timeout(1600); assert not host.locator('#cr-tour-offer').count(); host_ctx.close()
+                    host_action('reveal')
+                    page.wait_for_function("document.body.dataset.phase === 'reveal'")
+                    page.evaluate("ClassRallyTour.start('language')")
+                    assert not page.locator('#cr-tour-card').is_visible()
+                    assert not page.locator('#cr-tour-launch').is_visible()
+                    host_action('reset')
+                    page.wait_for_function("document.body.dataset.phase === 'lobby'")
+                    page.wait_for_selector('#cr-tour-launch')
+                    ctx.close(); server.ROOM_MODE = 'single'
+                    print(f'PASS {room_mode}: joined question/reveal hides tour; late join form stays manual-only', flush=True)
+                # Homework uses its existing page phase without live-game state.
+                ctx = context({'width': 390, 'height': 844}, authenticated=False)
+                response = ctx.request.post(base + '/api/selfpaced/start', data={'filename': 'tour.json'},
+                                            headers={'Authorization': 'UserToken ' + token})
+                assert response.ok, response.text()
+                hw_session = response.json()['session_id']
+                for viewport in ({'width': 1440, 'height': 900}, {'width': 390, 'height': 844}):
+                    hw_ctx = context(viewport, authenticated=False)
+                    hw_page = hw_ctx.new_page(); ready(hw_page, '/play?hw=' + hw_session)
+                    student_catalog(hw_page, str(viewport['width']) + '/play?hw')
+                    hw_ctx.close()
+                page = ctx.new_page(); hw_requests = []
+                page.on('request', lambda request: hw_requests.append(request.url) if urlparse(request.url).path == '/api/state' else None)
+                ready(page, '/play?hw=' + hw_session)
+                student_catalog(page, 'homework-before-join')
+                page.locator('#spNameInput').fill('TourHomework')
                 page.evaluate("ClassRallyTour.start('language')"); page.wait_for_selector('[data-step="studentlanguage"]')
-                observer_ctx = context({'width': 390, 'height': 844}, authenticated=False)
-                observer_page = observer_ctx.new_page(); ready(observer_page, '/play')
-                observer_page.wait_for_selector('#cr-tour-offer')
-                response = ctx.request.post(base + '/api/host/action', data={'action': 'start'}, headers={'Authorization': 'Bearer ' + server.HOST_TOKEN})
-                assert response.ok
-                # No ticker is needed for this edge: the player's normal polling sees it.
+                page.evaluate("document.getElementById('spJoinBtn').click()")
                 page.wait_for_function("document.body.dataset.phase === 'question'")
-                assert not page.locator('#cr-tour-card').is_visible()
+                page.locator('#spOptions button').first.wait_for(state='visible')
+                for selector in ('#cr-tour-card', '#cr-tour-launch', '#cr-tour-offer'):
+                    page.locator(selector).wait_for(state='hidden')
+                page.locator('#spOptions button').first.click()
+                page.wait_for_function("document.body.dataset.phase === 'reveal'")
                 assert not page.locator('#cr-tour-launch').is_visible()
-                assert not page.locator('#cr-tour-offer').is_visible()
-                page.locator('#options').wait_for(state='visible')
-                page.screenshot(path=str(shots / 'mobile-question-no-tour.png')); ctx.close()
-                observer_page.wait_for_selector('#cr-tour-launch', state='hidden')
-                assert not observer_page.locator('#cr-tour-offer').is_visible()
-                observer_page.evaluate("ClassRallyTour.start('language')")
-                assert not observer_page.locator('#cr-tour-card').is_visible()
-                observer_ctx.close()
-                # New join-page visits during the same question must not offer a tour.
-                ctx = context({'width': 390, 'height': 844}, authenticated=False); page = ctx.new_page(); ready(page, '/play')
-                page.wait_for_timeout(1600); assert not page.locator('#cr-tour-offer').count(); ctx.close()
-                ctx = context({'width': 390, 'height': 844}); page = ctx.new_page(); ready(page, '/host')
-                page.wait_for_timeout(1600); assert not page.locator('#cr-tour-offer').count(); ctx.close()
+                page.locator('#spNextBtn').click()
+                page.wait_for_function("document.body.dataset.phase === 'question'")
+                page.locator('#spOptions button').first.click()
+                page.wait_for_function("document.body.dataset.phase === 'reveal'")
+                page.locator('#spNextBtn').click()
+                page.wait_for_function("document.body.dataset.phase === 'finished'")
+                page.wait_for_selector('#cr-tour-launch')
+                assert not hw_requests, hw_requests
+                ctx.close()
+                print('PASS homework: manual-only/join/question/reveal/finished, 0 live state requests', flush=True)
                 browser.close()
         finally:
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=3)
         assert not errors, errors
         assert not foreign, ('non-local requests attempted', foreign)
         report = {'status': 'PASS', 'catalog_runs': len(results), 'runs': results, 'js_errors': errors,
-                  'foreign_requests': foreign, 'screenshots': str(shots)}
+                  'foreign_requests': foreign, 'state_checks': state_checks, 'offer_checks': offer_checks,
+                  'student_checks': student_checks, 'screenshots': str(shots)}
         (QA / 'browser-results.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(json.dumps({'status': 'PASS', 'catalog_runs': len(results), 'js_errors': len(errors), 'foreign_requests': len(foreign), 'screenshots': str(shots)}, ensure_ascii=False))
 

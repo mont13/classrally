@@ -6988,6 +6988,31 @@ class TestGuidedTourContract(unittest.TestCase):
             parser.feed((cls.root / f"{page}.html").read_text(encoding="utf-8"))
             cls.pages["/" if page == "landing" else "/" + page] = parser.tags
 
+    def test_tour_uses_page_phase_without_network_or_periodic_polling(self):
+        # The tour must stay usable before join even in multi-room mode, where
+        # an unscoped /api/state request would return 400. The game owns I/O.
+        self.assertIn('document.body.dataset.phase', self.source)
+        self.assertNotRegex(self.source, r'\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|setInterval)\s*\(')
+        self.assertNotIn('/api/state', self.source)
+
+    def test_manual_student_guides_do_not_require_teacher_pages(self):
+        # Manual entry remains useful after disabling unsolicited student offers:
+        # its steps must stay on public/student pages, without a teacher login.
+        steps = {step['id']: step for step in self.data['steps']}
+        for step_id in ('studentlanguage', 'studentbug'):
+            with self.subTest(step=step_id):
+                self.assertEqual(steps[step_id]['page'], '*')
+        for step_id in ('examname', 'examjoin', 'examqr'):
+            with self.subTest(step=step_id):
+                self.assertEqual(steps[step_id]['page'], '/exam')
+        for step_id in ('profile', 'school'):
+            with self.subTest(step=step_id):
+                self.assertEqual(steps[step_id]['page'], '/profile')
+        join = next(guide for guide in self.data['guides'] if guide['id'] == 'join')
+        for step_id in join['steps']:
+            with self.subTest(step=step_id):
+                self.assertIn(steps[step_id]['page'], ('/play', '/profile'))
+
     def test_every_step_and_catalog_entry_is_translated(self):
         import re
         keys = set(re.findall(r"\bt\(['\"]([a-zA-Z]+)['\"]", self.source))

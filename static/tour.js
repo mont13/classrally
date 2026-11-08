@@ -462,7 +462,7 @@
   let active = null, view = '', card, ring, shades = [], launcher, offer;
   let target = null, previousFocus = null, frame = 0, tracking = 0, lastRect = '', generation = 0, dirty = false;
   let visited = new Set();
-  let originalPadding = '', basePadding = 0, publicPhase = null, checkingPhase = false;
+  let originalPadding = '', basePadding = 0;
   const memory = {};
   const read = (store, key) => { try { return JSON.parse(window[store].getItem(key)); } catch (_) { return memory[key] || null; } };
   const write = (store, key, value) => {
@@ -479,7 +479,7 @@
   }
   const find = selector => selector ? [...document.querySelectorAll(selector)].find(visible) || null : null;
   function busy() {
-    return (page === '/play' && ['question', 'reveal'].includes(document.body.dataset.phase || publicPhase)) ||
+    return (page === '/play' && ['question', 'reveal'].includes(document.body.dataset.phase)) ||
       (page === '/exam' && visible(document.getElementById('testSection')));
   }
   function eligible(step) {
@@ -701,25 +701,9 @@
     if (page === '/host' && document.body.classList.contains('in-game') && offer) offer.hidden = true;
     if (busy()) { if (offer) offer.hidden = true; if (active || view) close(false); }
   }
-  async function checkPublicPhase() {
-    // Registered players already receive live state from the game. Before join,
-    // keep the gentle offer out of a running question too, using read-only state.
-    if (page !== '/play' || new URLSearchParams(location.search).has('hw') ||
-        document.body.dataset.phase || checkingPhase || document.hidden) return;
-    checkingPhase = true;
-    try {
-      const pin = (document.getElementById('pinInput')?.value || new URLSearchParams(location.search).get('pin') || '').replace(/\D/g, '');
-      const response = await fetch('/api/state' + (pin ? '?pin=' + encodeURIComponent(pin) : ''),
-        {cache: 'no-store', signal: AbortSignal.timeout(3000)});
-      if (response.ok) publicPhase = (await response.json()).phase || '';
-    } catch (_) { /* offline: no automatic offer until a room state is known */ }
-    finally { checkingPhase = false; }
-    updateAvailability();
-  }
-  async function offerTour() {
-    await checkPublicPhase();
-    if (page === '/play' && !new URLSearchParams(location.search).has('hw') && publicPhase === null) return;
-    if (busy() || (page === '/host' && document.body.classList.contains('in-game')) || active || view || pref().never || pref().completed || pref().offered) return;
+  function offerTour() {
+    // Pupils open the catalog explicitly; joining must never need a dismissal.
+    if (student || busy() || (page === '/host' && document.body.classList.contains('in-game')) || active || view || pref().never || pref().completed || pref().offered) return;
     remember({offered: true});
     offer = element('aside', 'cr-tour-offer'); offer.id = 'cr-tour-offer';
     offer.setAttribute('aria-label', t(student ? 'studentOffer' : 'offer'));
@@ -727,7 +711,13 @@
     const defaultGuide = page === '/host' ? 'quiz' : page === '/admin' ? 'questions' : page === '/profile' ? 'classes' : student ? 'join' : 'quiz';
     offer.append(button('yes', () => start(defaultGuide)), button('later', () => { offer.hidden = true; }),
       button('never', () => { remember({never: true}); offer.hidden = true; }));
-    document.body.appendChild(offer);
+    // Reserve real space on teacher pages instead of covering controls while
+    // scrolling, including the phone layout and the projector's PIN/QR panel.
+    const teacherMain = ['/host', '/admin'].includes(page) ? document.querySelector('main.app') : null;
+    if (teacherMain) {
+      offer.classList.add('cr-tour-offer-inline');
+      teacherMain.prepend(offer);
+    } else document.body.appendChild(offer);
   }
   async function init() {
     // The pages initialise i18n themselves. A slow/offline load must not expose keys.
@@ -778,12 +768,9 @@
       if (active) show(active.index); else if (view === 'catalog') catalog(); else if (view === 'complete') finish();
       if (offer) { offer.remove(); offer = null; }
     });
-    await checkPublicPhase();
-    let phaseTimer = setInterval(checkPublicPhase, 2000);
-    window.addEventListener('pageshow', event => {
-      if (event.persisted) { checkPublicPhase(); phaseTimer = setInterval(checkPublicPhase, 2000); }
-    });
-    window.addEventListener('pagehide', () => clearInterval(phaseTimer));
+    // Before joining, /play only shows the form. Once joined, the game owns
+    // data-phase (including homework); the tour never requests room state.
+    window.addEventListener('pageshow', updateAvailability);
     let resume = read('sessionStorage', SESSION);
     const match = location.hash.match(/^#cr-tour=([^#]+)$/);
     if (match) {
