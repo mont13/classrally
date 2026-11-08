@@ -478,7 +478,16 @@
     const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
     return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
   }
-  const find = selector => selector ? [...document.querySelectorAll(selector)].find(visible) || null : null;
+  const find = selector => {
+    if (selector === '#classrally-buggy-root button') {
+      const inline = [...document.querySelectorAll('[data-buggy-open]')].find(visible);
+      if (inline) return inline;
+      const root = document.getElementById('classrally-buggy-root');
+      const launcher = (root?.shadowRoot || root)?.querySelector('button');
+      return visible(launcher) ? launcher : null;
+    }
+    return selector ? [...document.querySelectorAll(selector)].find(visible) || null : null;
+  };
   function busy() {
     return (page === '/play' && ['question', 'reveal'].includes(document.body.dataset.phase)) ||
       (page === '/host' && document.body.classList.contains('in-game')) ||

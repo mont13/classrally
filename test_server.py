@@ -6218,8 +6218,7 @@ class TestBugReportBridge(unittest.TestCase):
                                 r'body\.player-page\[data-phase="reveal"\] #classrally-buggy-root\s*'
                                 r'\{\s*display:\s*none\s*!important;\s*\}')
         self.assertNotIn(':not([data-answered])', script)
-        self.assertIn('body.player-page:not([data-phase="question"]):not([data-phase="reveal"])', script)
-        self.assertIn('padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px))', script)
+        self.assertNotIn('padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px))', script)
 
     def test_homework_bug_report_tracks_panes_without_live_updates(self):
         html = (server.STATIC_DIR / "play.html").read_text(encoding="utf-8")

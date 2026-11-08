@@ -836,6 +836,7 @@
   },
 
   "common": {
+    "report_bug": "Nahlásit chybu",
     "hero_badge_mobile": "Mobil-first",
     "hero_badge_colors": "Barevné volby",
     "hero_badge_score": "Okamžité skóre",

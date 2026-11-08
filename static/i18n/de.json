@@ -790,6 +790,7 @@
     "forgot_link": "Passwort vergessen?"
   },
   "common": {
+    "report_bug": "Fehler melden",
     "hero_badge_mobile": "Mobile-first",
     "hero_badge_colors": "Farbige Antworten",
     "hero_badge_score": "Sofortige Punkte",

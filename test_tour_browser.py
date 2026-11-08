@@ -2,8 +2,8 @@
 """Local-only tour acceptance. Uses the installed Playwright, no downloads.
 
 Run: omez-pamet -- python3 test_tour_browser.py
-Accounts, banks and history use a disposable .cache directory. Only screenshots
-are kept outside the repo (under the user's .cache); no real server is contacted.
+Accounts, banks, history and screenshots stay in the repo's .cache directory;
+no real server is contacted.
 """
 import json
 import os
@@ -22,7 +22,7 @@ QA = ROOT / '.cache' / 'tour-qa'
 def run():
     from playwright.sync_api import sync_playwright
     QA.mkdir(parents=True, exist_ok=True)
-    shots = Path(tempfile.mkdtemp(prefix='classrally-tour-', dir=Path.home() / '.cache'))
+    shots = Path(tempfile.mkdtemp(prefix='classrally-tour-', dir=QA))
     with tempfile.TemporaryDirectory(prefix='runtime-', dir=QA) as runtime:
         runtime = Path(runtime)
         os.environ.update(QUIZ_DATA_DIR=str(runtime / 'data'), QUIZ_HISTORY_DIR=str(runtime / 'history'),
@@ -111,15 +111,22 @@ def run():
                       }
                       return {hidden:false,rect:{x:a.x,y:a.y,w:a.width,h:a.height},collisions};
                     }"""
-                    page.wait_for_function('(' + probe + ')().collisions.length === 0')
-                    if hidden is not None:
-                        try:
-                            page.locator('#cr-tour-launch').wait_for(state='hidden' if hidden else 'visible')
-                        except Exception:
-                            print('FAIL launcher availability: ' + label + ' ' + json.dumps(page.evaluate(probe)), flush=True)
-                            page.screenshot(path=str(shots / 'launcher-failure.png'))
-                            raise
-                    state = page.evaluate(probe)
+                    # Read availability and intersections in one DOM sample.
+                    # After reset a hidden launcher used to satisfy the first
+                    # wait before it reappeared, ahead of its next placement.
+                    expected = json.dumps(hidden)
+                    try:
+                        sample = page.wait_for_function('''() => {
+                          const state = (''' + probe + ''')();
+                          return state.collisions.length === 0 && (''' + expected + ''' === null ||
+                            state.hidden === ''' + expected + ''') ? state : false;
+                        }''')
+                        state = sample.json_value()
+                        sample.dispose()
+                    except Exception:
+                        print('FAIL launcher availability: ' + label + ' ' + json.dumps(page.evaluate(probe)), flush=True)
+                        page.screenshot(path=str(shots / 'launcher-failure.png'))
+                        raise
                     assert not state['collisions'], (label, state)
                     assert hidden is None or state['hidden'] == hidden, (label, state)
                     launcher_checks.append({'label': label, 'viewport': page.viewport_size, **state})
@@ -183,7 +190,10 @@ def run():
                       const id=card.dataset.step;
                       const step=ClassRallyTour.data.steps.find(s=>s.id===id);
                       const visible=e=>e && e.getBoundingClientRect().width>0 && e.getBoundingClientRect().height>0 && !e.closest('[hidden],.hide,.hidden');
-                      const target=step ? [...document.querySelectorAll(step.target)].find(visible) : null;
+                      const target=step && ['bug','studentbug'].includes(step.id)
+                        ? [...document.querySelectorAll('[data-buggy-open]')].find(visible) ||
+                          document.querySelector('#classrally-buggy-root')?.shadowRoot?.querySelector('button') || null
+                        : step ? [...document.querySelectorAll(step.target)].find(visible) : null;
                       const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
                       return {id, card:rect(card), ring: ring.hidden?null:rect(ring), target:target?rect(target):null,
                         text:card.innerText, focus:card.contains(document.activeElement), viewport:{w:innerWidth,h:innerHeight}};
@@ -537,7 +547,7 @@ def run():
                 page.evaluate("document.querySelector('#cfgOllamaModel').value = ''")
                 walk(page, 'questions', 'ai-unconfigured')
                 page.evaluate("""const root=document.createElement('div');root.id='classrally-buggy-root';
-                  root.innerHTML='<button style="position:fixed;bottom:18px;right:18px;width:56px;height:56px">Buggy</button>';document.body.append(root);""")
+                  root.attachShadow({mode:'open'}).innerHTML='<div><button style="position:fixed;bottom:18px;right:18px;width:56px;height:56px">Buggy</button></div>';document.body.append(root);""")
                 page.evaluate("ClassRallyTour.start('bug')"); page.wait_for_selector('[data-step="bug"]'); page.wait_for_timeout(150)
                 geometry(inspect(page)); assert page.locator('#cr-tour-ring').is_visible()
                 page.screenshot(path=str(shots / 'mobile-buggy-enabled.png'))

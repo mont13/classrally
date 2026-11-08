@@ -163,22 +163,34 @@
     // The widget positions its launcher and dialog relative to the viewport.
     target.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483000;';
     document.body.appendChild(target);
-    window.InvoAIMBuggy.mountBuggyWidget({target, locale: locale(), capture, submit, url: location.pathname,
+    const handle = window.InvoAIMBuggy.mountBuggyWidget({target, locale: locale(), capture, submit, url: location.pathname,
       captureNotice: 'Snímek zachytí právě viditelnou část stránky. Hesla a tokeny jsou skryté. ' +
         'Před odesláním náhled zkontroluj; přiložení snímku můžeš vypnout.'});
     if (page() === 'play') {
       const style = document.createElement('style');
       // Keep the whole answer area and feedback clear, including after submission.
-      // Reporting remains available before/after play; reserve scroll space below
-      // the last content only while the launcher is visible. No widget CSS needed.
+      // Reporting remains available before/after play, including homework.
       style.textContent = `
         body.player-page[data-phase="question"] #classrally-buggy-root,
         body.player-page[data-phase="reveal"] #classrally-buggy-root { display: none !important; }
-        body.player-page:not([data-phase="question"]):not([data-phase="reveal"]) {
-          padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-        }
       `;
       document.head.appendChild(style);
+    }
+    if ((page() === 'play' || page() === 'exam') && handle && typeof handle.open === 'function') {
+      const buttons = document.querySelectorAll('[data-buggy-open]');
+      if (!buttons.length) return;
+      for (const button of buttons) {
+        button.addEventListener('click', () => handle.open());
+        button.hidden = false;
+      }
+      // Hide only the current launcher's exact structural slot, never the
+      // dialog or its controls. If a later widget changes its markup, this
+      // selector stops matching and the launcher remains available.
+      if (target.shadowRoot) {
+        const style = document.createElement('style');
+        style.textContent = ':host > div > button.fixed.bottom-20.rounded-full:first-child { display: none !important; }';
+        target.shadowRoot.appendChild(style);
+      }
     }
   }
 

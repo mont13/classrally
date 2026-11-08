@@ -365,6 +365,27 @@ li {
   gap: 10px;
 }
 
+/* Optional report action stays in the document flow, clear of primary actions. */
+.buggy-inline {
+  display: block;
+  margin: 16px auto 0;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.buggy-inline:hover { background: rgba(148, 163, 184, 0.12); }
+.buggy-inline:focus-visible { outline: 3px solid #0284c7; outline-offset: 3px; }
+.buggy-inline[hidden],
+body.player-page[data-phase="question"] .buggy-inline,
+body.player-page[data-phase="reveal"] .buggy-inline { display: none !important; }
+
 .music-controls {
   margin-top: 12px;
   padding: 16px;
