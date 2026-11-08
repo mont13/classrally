@@ -843,5 +843,245 @@
     "back": "Back to {0}",
     "home": "Back to ClassRally",
     "javascript": "Enable JavaScript to sign in, then open a new link from your school portal."
+  },
+  "tour": {
+    "launch": "Guide",
+    "catalog": "What would you like to do?",
+    "studentCatalog": "What do you need help with?",
+    "offer": "Would you like a quick tour?",
+    "studentOffer": "Want a quick tour?",
+    "yes": "Yes",
+    "later": "Not now",
+    "never": "Do not offer the guide again",
+    "back": "Back",
+    "next": "Next",
+    "end": "End tour",
+    "done": "Done",
+    "complete": "The tour is complete",
+    "completeText": "You can restart the guide at any time using the Guide button.",
+    "studentComplete": "You can open the guide again whenever you like using the Guide button.",
+    "progress": "Step {0} of {1}",
+    "loginTitle": "Sign in first",
+    "loginText": "This section requires you to sign in. Sign in on the page, then choose Next; the guide will keep your place.",
+    "unavailable": "This element is only available at the relevant stage or with the required permissions. Continue to the next step.",
+    "resume": "Resume the guide",
+    "leave": "Continuing will take you to another page. Save any changes in progress first. Continue?",
+    "cancel": "Stay here",
+    "guides": {
+      "quiz": {
+        "title": "Run a classroom quiz",
+        "text": "From choosing a question bank and using the projector to reviewing answers and starting another round."
+      },
+      "questions": {
+        "title": "Prepare your own question bank",
+        "text": "Creating a bank, using the editor, choosing question types and checking before use."
+      },
+      "results": {
+        "title": "Find results and analysis",
+        "text": "Saved game history and CSV exports."
+      },
+      "homework": {
+        "title": "Homework",
+        "text": "Independent practice via a link or QR code."
+      },
+      "exam": {
+        "title": "Exam",
+        "text": "Preparing a graded test and viewing its results."
+      },
+      "classes": {
+        "title": "Classes and student accounts",
+        "text": "Optional accounts, class codes and school sign-in."
+      },
+      "join": {
+        "title": "How students join",
+        "text": "QR codes, PINs, nicknames and optional sign-in."
+      },
+      "music": {
+        "title": "Music and sounds",
+        "text": "Separate controls for music and sound effects."
+      },
+      "language": {
+        "title": "Language",
+        "text": "Changing the interface language."
+      },
+      "bug": {
+        "title": "How to report a bug",
+        "text": "Reporting through Buggy or telling a teacher or administrator."
+      }
+    },
+    "steps": {
+      "portal": {
+        "title": "Teacher Portal",
+        "text": "Start by choosing a question bank in the Teacher Portal. The guide shows you the controls; it does not start games or save changes for you."
+      },
+      "banks": {
+        "title": "Choose a question bank",
+        "text": "Find a suitable bank on the Question banks tab. If you need your own bank, create one below by entering a name."
+      },
+      "activate": {
+        "title": "Activate the selected bank",
+        "text": "Choose Activate for the selected bank. Activation returns the game to the lobby; make sure no other game is running before making the change."
+      },
+      "projector": {
+        "title": "Back to the projector",
+        "text": "The Host screen is designed for the projector. The next step will take you there."
+      },
+      "qr": {
+        "title": "PIN, QR code and address",
+        "text": "Students open the player address or scan the QR code. If room mode is enabled, they also enter the PIN shown on the projector."
+      },
+      "players": {
+        "title": "Wait for players",
+        "text": "Check the number of connected players here. Students can join with a nickname without registering."
+      },
+      "start": {
+        "title": "Start the quiz",
+        "text": "When the class is ready, press Start. The game is for practice and is not automatically graded."
+      },
+      "reveal": {
+        "title": "Review the answers",
+        "text": "Reveal evaluates the question. This can also happen automatically based on the timer or player answers."
+      },
+      "next": {
+        "title": "Next question",
+        "text": "Next question continues through the bank. After the final question, you will see the final ranking according to the game settings."
+      },
+      "analysis": {
+        "title": "Review after the game",
+        "text": "When the game ends, open Question analysis and go over difficult topics with the class. The button only appears at the relevant stage."
+      },
+      "again": {
+        "title": "Another round or a new class",
+        "text": "Play again keeps the same players and resets their points. In room mode, use New class – empty the lobby for a new class; this disconnects the previous players. In single-game mode, students leave and a new group joins."
+      },
+      "create": {
+        "title": "Create your own question bank",
+        "text": "On the Question banks tab, enter a name and choose Create. The guide does not create any banks itself."
+      },
+      "editor": {
+        "title": "Open the editor",
+        "text": "In the Question editor, select a bank and press Load. Save any questions you are working on before leaving."
+      },
+      "types": {
+        "title": "Question types",
+        "text": "Add a question and choose its type in the header: single or multiple choice, true/false, ordering, open answer, poll, word cloud or slide. Availability differs between quizzes and exams."
+      },
+      "save": {
+        "title": "Save and check",
+        "text": "Save changes saves the edited bank. Before using it, check the questions, correct answers and explanations; you can export JSON or CSV as a backup."
+      },
+      "ai": {
+        "title": "AI suggestions, if configured",
+        "text": "If an AI service is configured on this instance, you can request suggested questions. Check the questions before using them; generation may require a connection to that service."
+      },
+      "history": {
+        "title": "Game history",
+        "text": "History contains saved games. Refresh the list and open the details of a particular game; an empty list may mean no games have been saved yet."
+      },
+      "exports": {
+        "title": "Results, analysis and export",
+        "text": "A saved game includes details and CSV exports of results and question analysis. This content only appears after the game has been saved."
+      },
+      "hw": {
+        "title": "Homework at your own pace",
+        "text": "Choose a bank for independent practice. Students answer at their own pace via a link; this is separate from a shared projector game or a graded exam."
+      },
+      "hwlink": {
+        "title": "Share the assignment and track results",
+        "text": "Create assignment prepares a link and QR code for students. You can then find your assignments and their results on this tab; the guide does not create the assignment."
+      },
+      "exam": {
+        "title": "A graded exam",
+        "text": "An exam is a test students complete individually, with a time limit and an automatic grade. Select a bank and set the time limit and grade thresholds."
+      },
+      "examprep": {
+        "title": "Prepare and start",
+        "text": "Prepare exam loads the selected bank and settings. Start exam opens the test to students; the guide does not perform either action."
+      },
+      "examresults": {
+        "title": "Exam results",
+        "text": "Results, answers and analysis can be downloaded as CSV. Saved exams appear further down on the same tab."
+      },
+      "classes": {
+        "title": "Classes and optional accounts",
+        "text": "Sign in with a teacher account to manage classes. Create a class and give students its code; an account is not required for a regular game."
+      },
+      "profile": {
+        "title": "Linking an account to a class",
+        "text": "Students sign in or register in their profile and enter the class code. Results are saved to the profile of a signed-in account."
+      },
+      "school": {
+        "title": "School sign-in",
+        "text": "If school sign-in is enabled, students use the portal button on the sign-in screen. Otherwise, they can use a local account or play without registering."
+      },
+      "joinqr": {
+        "title": "Open the player page",
+        "text": "Scan the QR code on the projector or open the address your teacher shows you. You can show the QR code on this page to a classmate."
+      },
+      "pin": {
+        "title": "Room PIN",
+        "text": "If your teacher uses rooms, copy the PIN from the projector. If the link already contains a PIN, the field will be filled in for you."
+      },
+      "nickname": {
+        "title": "Choose a nickname",
+        "text": "Enter a nickname your teacher will recognise, or use the dice button. You do not need to register for a regular game."
+      },
+      "join": {
+        "title": "Join the game",
+        "text": "Press Join and wait for your teacher. The guide will stay out of your way during a question."
+      },
+      "signed": {
+        "title": "You are signed in",
+        "text": "Your signed-in account is shown here, along with the school portal if you use one. This allows results to be saved to your account."
+      },
+      "studentaccount": {
+        "title": "An account is optional",
+        "text": "Use Log in to open your profile. If your school has enabled portal sign-in, its button will also appear here."
+      },
+      "music": {
+        "title": "Music and sounds",
+        "text": "Expand Music and sound effects. You can turn music on or off and adjust its volume; playback requires a tap or click from you."
+      },
+      "volume": {
+        "title": "Music and effects volume",
+        "text": "Adjust the volume to suit the class. Music and sound effects can be turned off separately."
+      },
+      "sound": {
+        "title": "Sound effects",
+        "text": "Sound effects are enabled separately from music. Students also have their own sound and vibration controls."
+      },
+      "language": {
+        "title": "Interface language",
+        "text": "Use the flags to switch the app language. The change also applies to the open guide and is saved if the browser allows local storage."
+      },
+      "bug": {
+        "title": "How to report a bug",
+        "text": "If bug reporting is enabled, open Buggy using its button. Describe the steps and check the screenshot before submitting; if the button is unavailable, tell a teacher or administrator the steps and page name."
+      },
+      "studentlanguage": {
+        "title": "Choose your language",
+        "text": "Use the flags to change the language of the app and this guide. Your choice will be saved if the browser allows it."
+      },
+      "studentbug": {
+        "title": "Found a bug?",
+        "text": "If Buggy is available, open it, describe the problem and check the screenshot before submitting. Otherwise, tell your teacher what happened and on which page."
+      },
+      "examname": {
+        "title": "Nickname for the exam",
+        "text": "Enter a nickname your teacher will recognise. An exam is a timed, graded test, unlike the practice game."
+      },
+      "examjoin": {
+        "title": "Join the exam",
+        "text": "Press Enter test and wait for your teacher. The guide will not sign you in or submit anything for you."
+      },
+      "examqr": {
+        "title": "QR code for classmates",
+        "text": "This QR code opens the page for joining the same exam. As soon as you start answering, the guide will hide so it does not get in your way."
+      },
+      "ranking": {
+        "title": "Final standings",
+        "text": "Results appear after the last question. Whether the full leaderboard or only the final awards are shown depends on the game settings in the Teacher portal."
+      }
+    }
   }
 }

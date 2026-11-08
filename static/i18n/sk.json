@@ -843,5 +843,245 @@
     "back": "Späť na {0}",
     "home": "Späť na ClassRally",
     "javascript": "Na prihlásenie zapni JavaScript a otvor nový odkaz zo školského portálu."
+  },
+  "tour": {
+    "launch": "Sprievodca",
+    "catalog": "Čo chcete urobiť?",
+    "studentCatalog": "S čím chceš pomôcť?",
+    "offer": "Chcete krátku prehliadku?",
+    "studentOffer": "Chceš krátku prehliadku?",
+    "yes": "Áno",
+    "later": "Teraz nie",
+    "never": "Už mi sprievodcu neponúkať",
+    "back": "Späť",
+    "next": "Ďalej",
+    "end": "Ukončiť",
+    "done": "Hotovo",
+    "complete": "Prehliadka sa skončila",
+    "completeText": "Sprievodcu môžete kedykoľvek znovu spustiť tlačidlom Sprievodca.",
+    "studentComplete": "Sprievodcu si kedykoľvek znovu otvoríš tlačidlom Sprievodca.",
+    "progress": "Krok {0} z {1}",
+    "loginTitle": "Najprv sa prihláste",
+    "loginText": "Táto časť vyžaduje prihlásenie. Prihláste sa na stránke a potom zvoľte Ďalej; sprievodca si krok zapamätá.",
+    "unavailable": "Tento prvok je dostupný až v príslušnej fáze alebo s oprávnením. Pokračujte ďalším krokom.",
+    "resume": "Pokračovať v sprievodcovi",
+    "leave": "Pokračovanie Vás presunie na inú stránku. Najprv uložte rozpracované zmeny. Prejsť?",
+    "cancel": "Zostať tu",
+    "guides": {
+      "quiz": {
+        "title": "Spustiť kvíz v triede",
+        "text": "Od výberu sady cez projektor až po rozbor a ďalšie kolo."
+      },
+      "questions": {
+        "title": "Pripraviť vlastnú sadu otázok",
+        "text": "Vytvorenie, editor, typy otázok a kontrola pred použitím."
+      },
+      "results": {
+        "title": "Nájsť výsledky a rozbor",
+        "text": "História uložených hier a exporty do CSV."
+      },
+      "homework": {
+        "title": "Domáca úloha",
+        "text": "Samostatné precvičovanie cez odkaz a QR kód."
+      },
+      "exam": {
+        "title": "Písomka",
+        "text": "Príprava známkovaného testu a jeho výsledky."
+      },
+      "classes": {
+        "title": "Triedy a účty žiakov",
+        "text": "Dobrovoľné účty, kód triedy a školské prihlásenie."
+      },
+      "join": {
+        "title": "Ako sa pripoja žiaci",
+        "text": "QR kód, PIN, prezývka a dobrovoľné prihlásenie."
+      },
+      "music": {
+        "title": "Hudba a zvuky",
+        "text": "Samostatné ovládanie hudby a zvukových efektov."
+      },
+      "language": {
+        "title": "Jazyk",
+        "text": "Zmena jazyka rozhrania."
+      },
+      "bug": {
+        "title": "Ako nahlásiť chybu",
+        "text": "Hlásenie cez Buggy alebo odovzdanie učiteľovi či správcovi."
+      }
+    },
+    "steps": {
+      "portal": {
+        "title": "Učiteľský portál",
+        "text": "Začnite výberom sady v Učiteľskom portáli. Sprievodca ukazuje ovládanie; hru ani ukladanie za Vás nespúšťa."
+      },
+      "banks": {
+        "title": "Vyberte sadu otázok",
+        "text": "Na karte Sady otázok vyhľadajte vhodnú sadu. Ak Vám chýba vlastná sada, vytvoríte ju nižšie zadaním názvu."
+      },
+      "activate": {
+        "title": "Aktivujte vybranú sadu",
+        "text": "Pri vybranej sade použite Aktivovať. Aktivácia vracia hru do čakárne; pred zmenou sa uistite, že práve neprebieha iná hra."
+      },
+      "projector": {
+        "title": "Späť na projektor",
+        "text": "Obrazovka Host je určená na projektor. Nasledujúci krok Vás na ňu presunie."
+      },
+      "qr": {
+        "title": "PIN, QR kód a adresa",
+        "text": "Žiaci otvoria hráčsku adresu alebo naskenujú QR kód. Ak je zapnutý režim miestností, zadajú aj PIN z projektora."
+      },
+      "players": {
+        "title": "Počkajte na hráčov",
+        "text": "Počet pripojených hráčov kontrolujte tu. Žiaci môžu vstúpiť pod prezývkou bez registrácie."
+      },
+      "start": {
+        "title": "Spustite kvíz",
+        "text": "Keď bude trieda pripravená, stlačte Štart. Hra slúži na precvičovanie a automaticky sa neznámkuje."
+      },
+      "reveal": {
+        "title": "Vyhodnotenie odpovedí",
+        "text": "Vyhodnotiť vyhodnotí otázku. K vyhodnoteniu môže dôjsť aj automaticky podľa času alebo odpovedí hráčov."
+      },
+      "next": {
+        "title": "Ďalšia otázka",
+        "text": "Ďalšia otázka pokračuje v sade. Po poslednej otázke uvidíte výsledné poradie podľa nastavenia hry."
+      },
+      "analysis": {
+        "title": "Rozbor po hre",
+        "text": "Po dokončení otvorte Rozbor otázok a prejdite s triedou náročné miesta. Tlačidlo sa zobrazuje až v príslušnej fáze."
+      },
+      "again": {
+        "title": "Ďalšie kolo alebo nová trieda",
+        "text": "Hrať znova ponechá rovnakých hráčov a vynuluje body. V režime miestností použite pre novú triedu Nová trieda – vyprázdniť čakáreň, čo odpojí predchádzajúcich hráčov; v režime jednej hry žiaci odídu a pripojí sa nová skupina."
+      },
+      "create": {
+        "title": "Vytvorte vlastnú sadu",
+        "text": "Na karte Sady otázok zadajte názov a použite Vytvoriť. Sprievodca sám žiadnu sadu nevytvára."
+      },
+      "editor": {
+        "title": "Otvorte editor",
+        "text": "V Editore otázok vyberte sadu a stlačte Načítať. Rozpracované otázky pred odchodom uložte."
+      },
+      "types": {
+        "title": "Typy otázok",
+        "text": "Pridajte otázku a v jej hlavičke vyberte typ: výber jednej či viacerých odpovedí, pravda/nepravda, zoradenie, otvorená odpoveď, anketa, slovný mrak alebo snímka. Dostupnosť sa líši pre kvíz a písomku."
+      },
+      "save": {
+        "title": "Uložte a skontrolujte",
+        "text": "Uložiť zmeny zapíše upravenú sadu. Pred použitím overte zadania, správne odpovede a vysvetlenia; JSON alebo CSV možno exportovať ako zálohu."
+      },
+      "ai": {
+        "title": "AI návrh, ak je nastavený",
+        "text": "Ak je na tejto inštancii nastavená AI služba, môžete požiadať o návrh otázok. Otázky pred použitím skontrolujte; generovanie môže vyžadovať pripojenie k danej službe."
+      },
+      "history": {
+        "title": "História hier",
+        "text": "História obsahuje uložené hry. Obnovte zoznam a pri konkrétnej hre otvorte podrobnosti; prázdny zoznam môže znamenať, že zatiaľ nie je uložená žiadna hra."
+      },
+      "exports": {
+        "title": "Výsledky, rozbor a export",
+        "text": "Pri uloženej hre sú podrobnosti a export výsledkov aj rozboru otázok do CSV. Obsah sa objaví až po uložení hry."
+      },
+      "hw": {
+        "title": "Domáca úloha vlastným tempom",
+        "text": "Vyberte sadu na samostatné precvičovanie. Žiaci odpovedajú vlastným tempom cez odkaz; nejde o spoločnú hru na projektore ani o známkovanú písomku."
+      },
+      "hwlink": {
+        "title": "Zdieľajte zadanie a sledujte výsledky",
+        "text": "Vytvoriť úlohu pripraví odkaz a QR kód pre žiakov. Na tejto karte potom nájdete svoje úlohy a ich výsledky; sprievodca úlohu nevytvára."
+      },
+      "exam": {
+        "title": "Písomka na známku",
+        "text": "Písomka je samostatne riešený test s časovým limitom a automatickou známkou. Vyberte sadu a nastavte čas aj hranice známok."
+      },
+      "examprep": {
+        "title": "Pripraviť a spustiť",
+        "text": "Pripraviť písomku načíta vybranú sadu a nastavenia. Spustiť písomku otvorí test žiakom; sprievodca žiadnu z týchto akcií nevykoná."
+      },
+      "examresults": {
+        "title": "Výsledky písomky",
+        "text": "Výsledky, odpovede aj rozbor možno stiahnuť do CSV. Uložené písomky sú nižšie na tej istej karte."
+      },
+      "classes": {
+        "title": "Triedy a dobrovoľné účty",
+        "text": "Na správu tried sa prihláste učiteľským účtom. Založte triedu a odovzdajte žiakom jej kód; na bežnú hru účet nie je potrebný."
+      },
+      "profile": {
+        "title": "Pripojenie účtu k triede",
+        "text": "Vo svojom profile sa žiak prihlási alebo zaregistruje a zadá kód triedy. Prihlásenému účtu sa výsledky ukladajú do profilu."
+      },
+      "school": {
+        "title": "Školské prihlásenie",
+        "text": "Ak je zapnuté školské prihlásenie, žiak použije tlačidlo portálu na prihlasovacej obrazovke. Inak môže použiť miestny účet alebo hrať bez registrácie."
+      },
+      "joinqr": {
+        "title": "Otvor hráčsku stránku",
+        "text": "Naskenuj QR kód z projektora alebo otvor adresu, ktorú ti ukáže učiteľ. QR kód na tejto stránke môžeš ukázať spolužiakovi."
+      },
+      "pin": {
+        "title": "PIN miestnosti",
+        "text": "Ak učiteľ používa miestnosti, odpíš PIN z projektora. Keď je PIN už v odkaze, pole sa predvyplní."
+      },
+      "nickname": {
+        "title": "Vyber si prezývku",
+        "text": "Napíš prezývku, podľa ktorej ťa učiteľ spozná, alebo použi kocku. Na bežnú hru registráciu nepotrebuješ."
+      },
+      "join": {
+        "title": "Vstúp do hry",
+        "text": "Stlač Vstúpiť a počkaj na učiteľa. Počas otázky ti sprievodca nebude prekážať."
+      },
+      "signed": {
+        "title": "Si prihlásený alebo prihlásená",
+        "text": "Tu uvidíš prihlásený účet, prípadne školský portál. Výsledky sa tak môžu uložiť k tvojmu účtu."
+      },
+      "studentaccount": {
+        "title": "Účet je dobrovoľný",
+        "text": "Cez Prihlásiť sa otvoríš svoj profil. Ak škola zapla prihlásenie cez portál, nájdeš tu aj jeho tlačidlo."
+      },
+      "music": {
+        "title": "Hudba a zvuky",
+        "text": "Rozbaľte Hudba a zvukové efekty. Hudbu môžete zapnúť, vypnúť a upraviť jej hlasitosť; prehrávanie vyžaduje Váš dotyk alebo kliknutie."
+      },
+      "volume": {
+        "title": "Hlasitosť hudby a efektov",
+        "text": "Hlasitosť nastavte pre danú triedu. Vypnutie hudby a vypnutie zvukových efektov sú samostatné voľby."
+      },
+      "sound": {
+        "title": "Zvukové efekty",
+        "text": "Zvukové efekty sa zapínajú oddelene od hudby. Žiaci majú aj vlastné ovládanie zvuku a vibrácií."
+      },
+      "language": {
+        "title": "Jazyk rozhrania",
+        "text": "Vlajočky prepnú jazyk aplikácie. Zmena sa použije aj na otvoreného sprievodcu; uloží sa, ak prehliadač povoľuje miestne úložisko."
+      },
+      "bug": {
+        "title": "Ako nahlásiť chybu",
+        "text": "Ak je zapnuté hlásenie chýb, otvorte tlačidlo Buggy. Opíšte postup a pred odoslaním skontrolujte snímku; ak tlačidlo nie je dostupné, odovzdajte učiteľovi alebo správcovi postup a názov stránky."
+      },
+      "studentlanguage": {
+        "title": "Vyber si jazyk",
+        "text": "Vlajočkami prepneš jazyk aplikácie aj tohto sprievodcu. Voľba sa uloží, ak to prehliadač dovolí."
+      },
+      "studentbug": {
+        "title": "Narazil alebo narazila si na chybu?",
+        "text": "Ak je tu Buggy, otvor ho, opíš problém a pred odoslaním skontroluj snímku. Inak povedz učiteľovi, čo sa stalo a na ktorej stránke."
+      },
+      "examname": {
+        "title": "Prezývka pre písomku",
+        "text": "Napíš prezývku, podľa ktorej ťa učiteľ spozná. Písomka je test s časovým limitom a známkou, na rozdiel od precvičovacej hry."
+      },
+      "examjoin": {
+        "title": "Pripoj sa k písomke",
+        "text": "Stlač Vstúpiť do písomky a počkaj na učiteľa. Sprievodca ťa sám neprihlási ani nič neodovzdá."
+      },
+      "examqr": {
+        "title": "QR kód pre spolužiakov",
+        "text": "Tento QR kód otvorí pripojenie k tej istej písomke. Keď začneš odpovedať, sprievodca sa skryje, aby ti neprekážal."
+      },
+      "ranking": {
+        "title": "Konečné poradie",
+        "text": "Po poslednej otázke sa zobrazia výsledky. Úplný rebríček alebo len záverečné vyhlásenie sa riadi nastavením hry v Učiteľskom portáli."
+      }
+    }
   }
 }

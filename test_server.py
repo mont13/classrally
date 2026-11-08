@@ -6964,5 +6964,107 @@ class TestLaptopWifiHTTP(_AccountHTTPBase):
             self.assertEqual((code, body), (200, b"test-image"))
             self.assertEqual(self.request_wifi(path="/static/uploads/../wifi.json", auth=False)[0], 403)
 
+class TestGuidedTourContract(unittest.TestCase):
+    """Keep data, translated copy and real HTML targets in one contract."""
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+        from html.parser import HTMLParser
+        cls.root = Path(__file__).parent / "static"
+        cls.source = (cls.root / "tour.js").read_text(encoding="utf-8")
+        cls.data = json.JSONDecoder().raw_decode(cls.source.split("const DATA = ", 1)[1])[0]
+        cls.languages = {lang: json.loads((cls.root / "i18n" / f"{lang}.json").read_text(encoding="utf-8"))
+                         for lang in ("cs", "en", "de", "sk", "uk")}
+        cls.pages = {}
+        class Tags(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tags = []
+            def handle_starttag(self, tag, attrs):
+                self.tags.append((tag, dict(attrs)))
+        for page in ("host", "admin", "play", "profile", "exam", "landing"):
+            parser = Tags()
+            parser.feed((cls.root / f"{page}.html").read_text(encoding="utf-8"))
+            cls.pages["/" if page == "landing" else "/" + page] = parser.tags
+
+    def test_every_step_and_catalog_entry_is_translated(self):
+        import re
+        keys = set(re.findall(r"\bt\(['\"]([a-zA-Z]+)['\"]", self.source))
+        keys |= {"studentCatalog", "studentOffer", "studentComplete", "catalog", "offer", "completeText", "done", "next"}
+        keys = {"tour." + key for key in keys}
+        for item in self.data["steps"] + self.data["guides"]:
+            keys.update((item["titleKey"], item["textKey"]))
+        for lang, translations in self.languages.items():
+            for key in keys:
+                with self.subTest(lang=lang, key=key):
+                    value = translations
+                    for part in key.split("."):
+                        self.assertTrue(isinstance(value, dict) and part in value, key)
+                        value = value[part]
+                    self.assertIsInstance(value, str)
+                    self.assertTrue(value.strip(), key)
+        def flatten(obj, prefix=""):
+            result = {}
+            for key, value in obj.items():
+                if isinstance(value, dict): result.update(flatten(value, prefix + key + "."))
+                else: result[prefix + key] = value
+            return result
+        canonical = flatten(self.languages["cs"]["tour"])
+        for lang in self.languages:
+            actual = flatten(self.languages[lang]["tour"])
+            self.assertEqual(set(canonical), set(actual), lang)
+            for key in canonical:
+                self.assertEqual(re.findall(r"\{\d+\}", canonical[key]),
+                                 re.findall(r"\{\d+\}", actual[key]), (lang, key))
+
+    def test_step_targets_exist_in_their_page(self):
+        import re
+        for step in self.data["steps"]:
+            selector = step["target"]
+            pages = self.pages if step["page"] == "*" else {step["page"]: self.pages[step["page"]]}
+            if selector == ".i18n-switcher":
+                self.assertIn("wrapper.className = 'i18n-switcher'", (self.root / "i18n.js").read_text())
+                continue
+            if selector == "#classrally-buggy-root button":
+                self.assertIn("target.id = 'classrally-buggy-root'", (self.root / "buggy-host.js").read_text())
+                self.assertEqual(step.get("missing"), "text")
+                continue
+            selector = selector.split(" > ")[0]
+            for page, tags in pages.items():
+                with self.subTest(step=step["id"], page=page):
+                    if selector.startswith("#"):
+                        matches = [attrs for tag, attrs in tags if attrs.get("id") == selector[1:].split()[0]]
+                    else:
+                        match = re.fullmatch(r'(a)?\[([^=\]]+)(?:="([^\"]*)")?\]', selector)
+                        self.assertIsNotNone(match, selector)
+                        name, attr, value = match.groups()
+                        matches = [attrs for tag, attrs in tags if (not name or tag == name) and attr in attrs
+                                   and (value is None or attrs[attr] == value)]
+                    self.assertTrue(matches, selector)
+                    # Descendants of dynamically rendered banks/history are
+                    # checked in the real DOM by test_tour_browser.py.
+                    if step.get("tab"):
+                        self.assertTrue(any(attrs.get("data-tab") == step["tab"] for tag, attrs in tags))
+                    if step.get("details"):
+                        self.assertTrue(any(tag == "details" and attrs.get("id") == step["details"] for tag, attrs in tags))
+
+    def test_catalog_navigation_assets_and_no_duplicate_ids(self):
+        ids = [step["id"] for step in self.data["steps"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        for guide in self.data["guides"]:
+            self.assertTrue(guide["steps"])
+            for step_id in guide["steps"]:
+                self.assertIn(step_id, ids)
+        for step in self.data["steps"]:
+            self.assertIn(step["page"], [*self.pages, "*"])
+        for page, tags in self.pages.items():
+            for asset in ("/static/tour.js", "/static/tour.css"):
+                self.assertTrue(any(attrs.get("src", attrs.get("href")) == asset for tag, attrs in tags), (page, asset))
+        sw = (self.root / "sw.js").read_text()
+        self.assertIn("'/static/tour.js'", sw)
+        self.assertIn("'/static/tour.css'", sw)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

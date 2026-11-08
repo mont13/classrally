@@ -843,5 +843,245 @@
     "back": "Zurück zu {0}",
     "home": "Zurück zu ClassRally",
     "javascript": "Aktiviere JavaScript für die Anmeldung und öffne einen neuen Link im Schulportal."
+  },
+  "tour": {
+    "launch": "Anleitung",
+    "catalog": "Was möchten Sie tun?",
+    "studentCatalog": "Wobei brauchst du Hilfe?",
+    "offer": "Möchten Sie eine kurze Tour?",
+    "studentOffer": "Möchtest du eine kurze Tour?",
+    "yes": "Ja",
+    "later": "Jetzt nicht",
+    "never": "Die Anleitung nicht mehr anbieten",
+    "back": "Zurück",
+    "next": "Weiter",
+    "end": "Beenden",
+    "done": "Fertig",
+    "complete": "Die Tour ist zu Ende",
+    "completeText": "Sie können die Anleitung jederzeit über die Schaltfläche Anleitung erneut starten.",
+    "studentComplete": "Du kannst die Anleitung jederzeit über die Schaltfläche Anleitung wieder öffnen.",
+    "progress": "Schritt {0} von {1}",
+    "loginTitle": "Melden Sie sich zuerst an",
+    "loginText": "Für diesen Bereich müssen Sie angemeldet sein. Melden Sie sich auf der Seite an und wählen Sie dann Weiter; die Anleitung merkt sich Ihren Schritt.",
+    "unavailable": "Dieses Element ist erst in der entsprechenden Phase oder mit der nötigen Berechtigung verfügbar. Fahren Sie mit dem nächsten Schritt fort.",
+    "resume": "Anleitung fortsetzen",
+    "leave": "Wenn Sie fortfahren, gelangen Sie auf eine andere Seite. Speichern Sie zuerst Ihre noch nicht gespeicherten Änderungen. Fortfahren?",
+    "cancel": "Hier bleiben",
+    "guides": {
+      "quiz": {
+        "title": "Ein Quiz in der Klasse starten",
+        "text": "Von der Auswahl des Fragensatzes über die Projektion bis zur Auswertung und zur nächsten Runde."
+      },
+      "questions": {
+        "title": "Einen eigenen Fragensatz vorbereiten",
+        "text": "Erstellung, Editor, Fragetypen und Prüfung vor dem Einsatz."
+      },
+      "results": {
+        "title": "Ergebnisse und Analyse finden",
+        "text": "Verlauf gespeicherter Spiele und CSV-Exporte."
+      },
+      "homework": {
+        "title": "Hausaufgabe",
+        "text": "Selbstständiges Üben über einen Link oder QR-Code."
+      },
+      "exam": {
+        "title": "Klassenarbeit",
+        "text": "Eine benotete Klassenarbeit vorbereiten und ihre Ergebnisse ansehen."
+      },
+      "classes": {
+        "title": "Klassen und Schülerkonten",
+        "text": "Freiwillige Konten, Klassencodes und Anmeldung über die Schule."
+      },
+      "join": {
+        "title": "So treten Schüler dem Spiel bei",
+        "text": "QR-Code, PIN, Spitzname und freiwillige Anmeldung."
+      },
+      "music": {
+        "title": "Musik und Töne",
+        "text": "Getrennte Steuerung von Musik und Soundeffekten."
+      },
+      "language": {
+        "title": "Sprache",
+        "text": "Die Sprache der Benutzeroberfläche ändern."
+      },
+      "bug": {
+        "title": "Einen Fehler melden",
+        "text": "Meldung über Buggy oder Weitergabe an eine Lehrkraft oder einen Administrator."
+      }
+    },
+    "steps": {
+      "portal": {
+        "title": "Lehrerportal",
+        "text": "Wählen Sie zunächst einen Fragensatz im Lehrerportal. Die Anleitung erklärt die Bedienelemente; sie startet kein Spiel und speichert keine Änderungen für Sie."
+      },
+      "banks": {
+        "title": "Wählen Sie einen Fragensatz",
+        "text": "Suchen Sie auf der Registerkarte Fragensätze einen passenden Satz. Wenn Sie einen eigenen Satz benötigen, können Sie ihn unten durch Eingabe eines Namens erstellen."
+      },
+      "activate": {
+        "title": "Aktivieren Sie den gewählten Satz",
+        "text": "Wählen Sie beim gewünschten Satz Aktivieren. Dadurch kehrt das Spiel in die Lobby zurück; vergewissern Sie sich vorher, dass kein anderes Spiel läuft."
+      },
+      "projector": {
+        "title": "Zurück zum Projektor",
+        "text": "Der Host-Bildschirm ist für die Projektion vorgesehen. Der nächste Schritt führt Sie dorthin."
+      },
+      "qr": {
+        "title": "PIN, QR-Code und Adresse",
+        "text": "Die Schüler öffnen die Spieleradresse oder scannen den QR-Code. Wenn der Raummodus aktiviert ist, geben sie zusätzlich die PIN vom Projektor ein."
+      },
+      "players": {
+        "title": "Warten Sie auf die Spieler",
+        "text": "Prüfen Sie hier die Anzahl der verbundenen Spieler. Schüler können ohne Registrierung mit einem Spitznamen teilnehmen."
+      },
+      "start": {
+        "title": "Starten Sie das Quiz",
+        "text": "Wenn die Klasse bereit ist, drücken Sie Start. Das Spiel dient dem Üben und wird nicht automatisch benotet."
+      },
+      "reveal": {
+        "title": "Antworten auswerten",
+        "text": "Auswerten wertet die Frage aus. Die Auswertung kann je nach Zeit oder Spielerantworten auch automatisch erfolgen."
+      },
+      "next": {
+        "title": "Nächste Frage",
+        "text": "Mit Nächste Frage fahren Sie im Fragensatz fort. Nach der letzten Frage sehen Sie die abschließende Rangliste gemäß den Spieleinstellungen."
+      },
+      "analysis": {
+        "title": "Analyse nach dem Spiel",
+        "text": "Öffnen Sie nach dem Spiel die Fragenanalyse und besprechen Sie schwierige Stellen mit der Klasse. Die Schaltfläche erscheint erst in der entsprechenden Phase."
+      },
+      "again": {
+        "title": "Eine weitere Runde oder eine neue Klasse",
+        "text": "Nochmal spielen behält dieselben Spieler bei und setzt die Punkte zurück. Verwenden Sie im Raummodus für eine neue Klasse Neue Klasse – Lobby leeren; dadurch werden die bisherigen Spieler getrennt. Im Einzelspielmodus verlassen die Schüler das Spiel und eine neue Gruppe tritt bei."
+      },
+      "create": {
+        "title": "Erstellen Sie einen eigenen Fragensatz",
+        "text": "Geben Sie auf der Registerkarte Fragensätze einen Namen ein und wählen Sie Erstellen. Die Anleitung erstellt selbst keinen Fragensatz."
+      },
+      "editor": {
+        "title": "Öffnen Sie den Editor",
+        "text": "Wählen Sie im Fragen-Editor einen Satz und drücken Sie Laden. Speichern Sie Ihre bearbeiteten Fragen, bevor Sie die Seite verlassen."
+      },
+      "types": {
+        "title": "Fragetypen",
+        "text": "Fügen Sie eine Frage hinzu und wählen Sie in ihrer Kopfzeile den Typ: Einfach- oder Mehrfachauswahl, Wahr/Falsch, Reihenfolge, offene Antwort, Umfrage, Wortwolke oder Folie. Die Verfügbarkeit unterscheidet sich zwischen Quiz und Klassenarbeit."
+      },
+      "save": {
+        "title": "Speichern und prüfen",
+        "text": "Änderungen speichern speichert den bearbeiteten Fragensatz. Prüfen Sie vor dem Einsatz die Aufgaben, richtigen Antworten und Erklärungen; zur Sicherung können Sie JSON oder CSV exportieren."
+      },
+      "ai": {
+        "title": "KI-Vorschläge, sofern eingerichtet",
+        "text": "Wenn auf dieser Instanz ein KI-Dienst eingerichtet ist, können Sie Fragen vorschlagen lassen. Prüfen Sie die Fragen vor dem Einsatz; für die Generierung kann eine Verbindung zu diesem Dienst erforderlich sein."
+      },
+      "history": {
+        "title": "Spielverlauf",
+        "text": "Der Verlauf enthält gespeicherte Spiele. Aktualisieren Sie die Liste und öffnen Sie die Details eines Spiels; eine leere Liste kann bedeuten, dass noch kein Spiel gespeichert wurde."
+      },
+      "exports": {
+        "title": "Ergebnisse, Analyse und Export",
+        "text": "Bei einem gespeicherten Spiel finden Sie Details sowie CSV-Exporte der Ergebnisse und der Fragenanalyse. Die Inhalte erscheinen erst, nachdem das Spiel gespeichert wurde."
+      },
+      "hw": {
+        "title": "Hausaufgabe im eigenen Tempo",
+        "text": "Wählen Sie einen Fragensatz zum selbstständigen Üben. Die Schüler antworten über einen Link in ihrem eigenen Tempo; dies ist weder ein gemeinsames Spiel am Projektor noch eine benotete Klassenarbeit."
+      },
+      "hwlink": {
+        "title": "Aufgabe teilen und Ergebnisse verfolgen",
+        "text": "Aufgabe erstellen erzeugt einen Link und einen QR-Code für die Schüler. Ihre Aufgaben und deren Ergebnisse finden Sie anschließend auf dieser Registerkarte; die Anleitung erstellt keine Aufgabe."
+      },
+      "exam": {
+        "title": "Eine benotete Klassenarbeit",
+        "text": "Eine Klassenarbeit ist ein einzeln bearbeiteter Test mit Zeitlimit und automatischer Benotung. Wählen Sie einen Fragensatz und legen Sie Zeitlimit und Notengrenzen fest."
+      },
+      "examprep": {
+        "title": "Vorbereiten und starten",
+        "text": "Klassenarbeit vorbereiten lädt den gewählten Fragensatz und die Einstellungen. Klassenarbeit starten öffnet den Test für die Schüler; die Anleitung führt keine dieser Aktionen aus."
+      },
+      "examresults": {
+        "title": "Ergebnisse der Klassenarbeit",
+        "text": "Ergebnisse, Antworten und Analyse können als CSV heruntergeladen werden. Gespeicherte Klassenarbeiten finden Sie weiter unten auf derselben Registerkarte."
+      },
+      "classes": {
+        "title": "Klassen und freiwillige Konten",
+        "text": "Melden Sie sich mit einem Lehrerkonto an, um Klassen zu verwalten. Erstellen Sie eine Klasse und geben Sie den Schülern ihren Code; für ein normales Spiel ist kein Konto erforderlich."
+      },
+      "profile": {
+        "title": "Ein Konto mit einer Klasse verbinden",
+        "text": "Im eigenen Profil melden sich Schüler an oder registrieren sich und geben den Klassencode ein. Bei angemeldeten Konten werden die Ergebnisse im Profil gespeichert."
+      },
+      "school": {
+        "title": "Anmeldung über die Schule",
+        "text": "Wenn die Anmeldung über die Schule aktiviert ist, verwenden Schüler die Portal-Schaltfläche auf dem Anmeldebildschirm. Andernfalls können sie ein lokales Konto verwenden oder ohne Registrierung spielen."
+      },
+      "joinqr": {
+        "title": "Öffne die Spielerseite",
+        "text": "Scanne den QR-Code vom Projektor oder öffne die Adresse, die dir deine Lehrkraft zeigt. Den QR-Code auf dieser Seite kannst du jemandem aus deiner Klasse zeigen."
+      },
+      "pin": {
+        "title": "Raum-PIN",
+        "text": "Wenn deine Lehrkraft Räume verwendet, übertrage die PIN vom Projektor. Enthält der Link bereits eine PIN, wird das Feld automatisch ausgefüllt."
+      },
+      "nickname": {
+        "title": "Wähle einen Spitznamen",
+        "text": "Gib einen Spitznamen ein, an dem deine Lehrkraft dich erkennt, oder nutze die Würfel-Schaltfläche. Für ein normales Spiel brauchst du keine Registrierung."
+      },
+      "join": {
+        "title": "Tritt dem Spiel bei",
+        "text": "Drücke Beitreten und warte auf deine Lehrkraft. Während einer Frage ist dir die Anleitung nicht im Weg."
+      },
+      "signed": {
+        "title": "Du bist angemeldet",
+        "text": "Hier siehst du dein angemeldetes Konto und gegebenenfalls das Schulportal. So können die Ergebnisse in deinem Konto gespeichert werden."
+      },
+      "studentaccount": {
+        "title": "Ein Konto ist freiwillig",
+        "text": "Über Anmelden öffnest du dein Profil. Wenn deine Schule die Anmeldung über ein Portal aktiviert hat, findest du hier auch die entsprechende Schaltfläche."
+      },
+      "music": {
+        "title": "Musik und Töne",
+        "text": "Klappen Sie Musik und Soundeffekte auf. Sie können Musik ein- und ausschalten sowie ihre Lautstärke anpassen; die Wiedergabe erfordert eine Berührung oder einen Klick von Ihnen."
+      },
+      "volume": {
+        "title": "Lautstärke von Musik und Effekten",
+        "text": "Passen Sie die Lautstärke an die Klasse an. Musik und Soundeffekte lassen sich unabhängig voneinander ausschalten."
+      },
+      "sound": {
+        "title": "Soundeffekte",
+        "text": "Soundeffekte werden getrennt von der Musik eingeschaltet. Die Schüler haben außerdem eigene Einstellungen für Ton und Vibration."
+      },
+      "language": {
+        "title": "Sprache der Benutzeroberfläche",
+        "text": "Mit den Flaggen wechseln Sie die Sprache der App. Die Änderung gilt auch für die geöffnete Anleitung und wird gespeichert, wenn der Browser lokalen Speicher erlaubt."
+      },
+      "bug": {
+        "title": "Einen Fehler melden",
+        "text": "Wenn Fehlermeldungen aktiviert sind, öffnen Sie Buggy über die Schaltfläche. Beschreiben Sie die Schritte und prüfen Sie den Screenshot vor dem Absenden; ist die Schaltfläche nicht verfügbar, teilen Sie einer Lehrkraft oder einem Administrator die Schritte und den Seitennamen mit."
+      },
+      "studentlanguage": {
+        "title": "Wähle deine Sprache",
+        "text": "Mit den Flaggen wechselst du die Sprache der App und dieser Anleitung. Deine Auswahl wird gespeichert, wenn dein Browser es erlaubt."
+      },
+      "studentbug": {
+        "title": "Hast du einen Fehler gefunden?",
+        "text": "Wenn Buggy verfügbar ist, öffne es, beschreibe das Problem und prüfe den Screenshot vor dem Absenden. Ansonsten erzähle deiner Lehrkraft, was passiert ist und auf welcher Seite."
+      },
+      "examname": {
+        "title": "Spitzname für die Klassenarbeit",
+        "text": "Gib einen Spitznamen ein, an dem deine Lehrkraft dich erkennt. Eine Klassenarbeit ist ein Test mit Zeitlimit und Note, anders als das Übungsspiel."
+      },
+      "examjoin": {
+        "title": "Tritt der Klassenarbeit bei",
+        "text": "Drücke Klassenarbeit beitreten und warte auf deine Lehrkraft. Die Anleitung meldet dich nicht automatisch an und gibt nichts für dich ab."
+      },
+      "examqr": {
+        "title": "QR-Code für deine Klasse",
+        "text": "Dieser QR-Code öffnet die Seite zum Beitreten zu derselben Klassenarbeit. Sobald du mit dem Antworten beginnst, wird die Anleitung ausgeblendet, damit sie dir nicht im Weg ist."
+      },
+      "ranking": {
+        "title": "Endergebnis",
+        "text": "Nach der letzten Frage werden die Ergebnisse angezeigt. Ob die gesamte Rangliste oder nur die abschließende Siegerehrung erscheint, legen Sie in den Spieleinstellungen im Lehrerportal fest."
+      }
+    }
   }
 }

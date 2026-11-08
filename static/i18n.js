@@ -96,7 +96,7 @@ const i18n = (() => {
   async function setLang(lang) {
     if (!SUPPORTED.includes(lang)) lang = DEFAULT_LANG;
     _lang = lang;
-    localStorage.setItem(STORAGE_KEY, lang);
+    try { localStorage.setItem(STORAGE_KEY, lang); } catch (_) { /* storage is optional */ }
     _data = await load(lang);
     apply();
     // Update <html lang="..."> attribute
@@ -131,7 +131,8 @@ const i18n = (() => {
    */
   async function init() {
     // 1. Persisted choice
-    let lang = localStorage.getItem(STORAGE_KEY);
+    let lang;
+    try { lang = localStorage.getItem(STORAGE_KEY); } catch (_) { /* storage is optional */ }
     // 2. Browser language fallback
     if (!lang) {
       const nav = (navigator.language || '').toLowerCase().slice(0, 2);
