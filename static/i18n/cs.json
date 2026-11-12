@@ -892,6 +892,21 @@
     "javascript": "Pro přihlášení zapněte JavaScript a otevřete nový odkaz ze školního portálu."
   },
   "tour": {
+    "helper": {
+      "title": "Zeptat se pomocníka",
+      "intro": "Poradím s ovládáním ClassRally, nic za vás neprovedu. Napište jen dotaz k ovládání, bez jmen, známek a hesel. AI dostane pouze rozpoznaná témata a nápovědu, nikoli text dotazu.",
+      "question": "Vaše otázka (nejvýše 500 znaků)",
+      "placeholder": "Jak spustím písemku?",
+      "send": "Zeptat se",
+      "catalog": "Katalog Průvodce",
+      "wait": "Čekám na školní AI…",
+      "ai_unconfigured": "AI není nastavená. Požádejte správce o nastavení AI. Můžete použít katalog Průvodce.",
+      "ai_unavailable": "Školní AI nyní neodpovídá. Zkuste to později nebo otevřete katalog Průvodce.",
+      "rate_limited": "Limit je 6 dotazů za minutu na učitele. Počkejte minutu nebo použijte katalog Průvodce.",
+      "invalid_question": "Zadejte otázku o délce 1 až 500 znaků.",
+      "no_context": "K tomuto dotazu nemám ověřený podklad. Zkuste konkrétní název záložky, katalog Průvodce nebo Buggy (je-li zapnuté).",
+      "login": "Přihlaste se znovu učitelským účtem. Katalog Průvodce můžete používat dál."
+    },
     "launch": "Průvodce",
     "catalog": "Co chcete udělat?",
     "studentCatalog": "S čím chceš pomoct?",

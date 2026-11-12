@@ -846,6 +846,21 @@
     "javascript": "Enable JavaScript to sign in, then open a new link from your school portal."
   },
   "tour": {
+    "helper": {
+      "title": "Ask the helper",
+      "intro": "I explain how to use ClassRally and cannot act for you. Ask about controls only, without names, grades or passwords. AI receives recognized topics and help, never your question text.",
+      "question": "Your question (up to 500 characters)",
+      "placeholder": "How do I start an exam?",
+      "send": "Ask",
+      "catalog": "Guide catalog",
+      "wait": "Waiting for the school AI…",
+      "ai_unconfigured": "AI is not configured. Ask the administrator to configure it, or use the Guide catalog.",
+      "ai_unavailable": "The school AI is unavailable. Try later or open the Guide catalog.",
+      "rate_limited": "The limit is 6 questions per minute per teacher. Wait a minute or use the Guide catalog.",
+      "invalid_question": "Enter a question between 1 and 500 characters.",
+      "no_context": "I have no verified reference for this question. Try a specific tab name, the Guide catalog or Buggy (if enabled).",
+      "login": "Sign in again with a teacher account. The Guide catalog remains available."
+    },
     "launch": "Guide",
     "catalog": "What would you like to do?",
     "studentCatalog": "What do you need help with?",

@@ -42,6 +42,7 @@ from urllib.error import HTTPError, URLError
 
 from qrgen import generate_qr_svg
 import bugreport
+import help_assistant
 import db as user_db
 import mailer
 from ws import WSConnection, WSConnectionManager, ws_handshake_response
@@ -1232,6 +1233,7 @@ class _RegistrationRateLimiter:
 
 # Largest accepted request body: a 2 MB question image as base64 inside JSON.
 MAX_BODY_BYTES = 4 * 1024 * 1024
+HELP_LIMITER = _RegistrationRateLimiter(max_requests=6, window_sec=60)
 
 
 class _BodyTooLarge(Exception):
@@ -5453,10 +5455,65 @@ class Handler(BaseHTTPRequestHandler):
 
         self._text_response("Not found", status=404)
 
+    def _handle_teacher_help(self) -> None:
+        # Unlike admin access, this requires a real teacher account even on an
+        # otherwise open first-run installation. Authenticate before body reads.
+        uid = self._require_teacher()
+        if uid is None:
+            self.close_connection = True
+            return
+        def fail(code, status):
+            self._json_response({"code": code}, status=status)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = -1
+        if length <= 0 or length > help_assistant.MAX_BODY:
+            self.close_connection = True
+            fail("invalid_question", 400)
+            return
+        if not HELP_LIMITER.is_allowed(str(uid)):
+            self.close_connection = True
+            fail("rate_limited", 429)
+            return
+        try:
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeError, ValueError):
+            fail("invalid_question", 400)
+            return
+        question = data.get("question") if isinstance(data, dict) else None
+        if not isinstance(question, str) or not 1 <= len(question.strip()) <= help_assistant.MAX_QUESTION:
+            fail("invalid_question", 400)
+            return
+        language = data.get("language", "cs")
+        if not isinstance(language, str) or language not in help_assistant.LANGUAGES:
+            language = "cs"
+        # Only aggregate count (one event per accepted query) and length; no
+        # user ID, text, response, exception, URL, credentials or student data.
+        logging.getLogger("classrally.help").info("query count=1 length=%d", len(question))
+        config = dict(AI_CONFIG)
+        if not config.get("base_url", "").strip() or not config.get("model", "").strip():
+            fail("ai_unconfigured", 503)
+            return
+        try:
+            selected = help_assistant.select_chapters(question, portal=portal_enabled())
+            if not selected:
+                fail("no_context", 422)
+                return
+            response = help_assistant.answer(selected, language, config)
+        except Exception:
+            # Provider exceptions may contain private addresses and response bodies.
+            fail("ai_unavailable", 503)
+            return
+        self._json_response({"answer": response, "chapters": [c['id'] for c, _ in selected]})
+
     def do_POST(self) -> None:  # noqa: N802
         try:
             parsed = urlparse(self.path)
             path = parsed.path
+            if path == "/api/teacher/help":
+                self._handle_teacher_help()
+                return
             if path == "/api/auth/portal":
                 self._handle_portal_login()
                 return

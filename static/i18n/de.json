@@ -846,6 +846,21 @@
     "javascript": "Aktiviere JavaScript für die Anmeldung und öffne einen neuen Link im Schulportal."
   },
   "tour": {
+    "helper": {
+      "title": "Helfer fragen",
+      "intro": "Ich erkläre die Bedienung von ClassRally und führe keine Aktionen aus. Keine Namen, Noten oder Passwörter eingeben. Die KI erhält nur erkannte Themen und Hilfe, niemals den Fragetext.",
+      "question": "Ihre Frage (bis zu 500 Zeichen)",
+      "placeholder": "Wie starte ich eine Prüfung?",
+      "send": "Fragen",
+      "catalog": "Anleitungskatalog",
+      "wait": "Warte auf die Schul-KI…",
+      "ai_unconfigured": "KI ist nicht eingerichtet. Fragen Sie die Administration oder nutzen Sie den Anleitungskatalog.",
+      "ai_unavailable": "Die Schul-KI ist nicht erreichbar. Versuchen Sie es später oder nutzen Sie den Anleitungskatalog.",
+      "rate_limited": "Pro Lehrkraft sind 6 Fragen pro Minute erlaubt. Warten Sie eine Minute oder nutzen Sie den Katalog.",
+      "invalid_question": "Geben Sie eine Frage mit 1 bis 500 Zeichen ein.",
+      "no_context": "Dazu habe ich keine geprüfte Anleitung. Versuchen Sie einen Tabnamen, den Anleitungskatalog oder Buggy (falls aktiviert).",
+      "login": "Melden Sie sich erneut mit einem Lehrerkonto an. Der Katalog bleibt verfügbar."
+    },
     "launch": "Anleitung",
     "catalog": "Was möchten Sie tun?",
     "studentCatalog": "Wobei brauchst du Hilfe?",

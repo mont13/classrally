@@ -162,6 +162,13 @@ ClassRally pouziva overeny koncept: barevne odpovedi, odpocet, bodovani za rychl
 - Pridani/odebrani otazek, ulozeni zmen
 
 ### AI navrh otazek (pokrocile)
+
+Ucitel s platnym uctem muze v **Pruvodce → Zeptat se pomocnika** polozit kratky
+dotaz k ovladani. Pomocnik pouziva stejne nastaveni AI jako generator, pouze radi
+a nemeni hru ani data. Do AI posila nejvyse tri kapitoly overene napovedy a temata
+z pevneho slovniku; puvodni text dotazu se AI neposila ani neloguje. Limit je
+500 znaku a 6 dotazu za minutu na ucet. Pri vypadku zustava dostupny katalog
+Pruvodce. Podrobnosti a omezeni popisuje dokument „Pomocnik“ v dokumentaci.
 Pokud mate lokalni Ollama server:
 1. Zadejte tema (napr. "Linux prikazy", "sitove protokoly")
 2. Zvolte pocet otazek a jazyk
@@ -405,6 +412,7 @@ PORT=48999 ./smoke_test.sh    # na jinem portu, kdyz je vychozi obsazeny
 | GET | `/api/admin/history/export?game_id=X`, `/api/admin/history/items.csv?game_id=X` | CSV vysledku a rozboru otazek |
 | GET | `/api/admin/activity` | Kolik se prave hraje a pise, bez jmen (pri vice ucitelich jen spravce serveru s heslem portalu) |
 | POST | `/api/admin/ai/generate` | AI generovani otazek |
+| POST | `/api/teacher/help` | Napoveda pres nastavenou AI; pouze prihlaseny ucitelsky ucet |
 
 ## Format otazek (JSON)
 

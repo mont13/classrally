@@ -463,6 +463,7 @@
   let target = null, previousFocus = null, frame = 0, tracking = 0, lastRect = '', generation = 0, dirty = false;
   let availabilityTimer = 0, availabilityIdle = 0, lastAvailability = -Infinity, restoreFocus = false;
   let visited = new Set();
+  let helpRequest = null;
   let originalPadding = '', basePadding = 0;
   const memory = {};
   const read = (store, key) => { try { return JSON.parse(window[store].getItem(key)); } catch (_) { return memory[key] || null; } };
@@ -641,6 +642,7 @@
       expected: active.steps[active.index]?.page || page, visited: [...visited], shown: active.shown || [], rendered: active.rendered});
   }
   function close(restore = true) {
+    helpRequest?.abort(); helpRequest = null;
     generation++; active = null; view = ''; card.hidden = true; hideSpotlight();
     document.body.style.paddingBottom = originalPadding;
     write('sessionStorage', SESSION, null);
@@ -649,6 +651,7 @@
   }
   function prepareCard(title, text, modal = false) {
     hideSpotlight(); card.replaceChildren(); card.hidden = false;
+    delete card.dataset.buggySecret;
     card.className = 'cr-tour-card';
     delete card.dataset.step; delete card.dataset.guide;
     card.setAttribute('aria-modal', String(modal));
@@ -749,6 +752,17 @@
     if (offer) offer.hidden = true;
     prepareCard(t(student ? 'studentCatalog' : 'catalog'), '', false);
     card.classList.add('cr-tour-catalog');
+    if (!student) {
+      const slot = element('div'); card.appendChild(slot);
+      const version = generation;
+      import('/static/help-assistant.js').then(async api => {
+          const token = await api.teacherToken();
+          if (version === generation && view === 'catalog' && token) {
+            const ask = button('helper.title', () => helper(token, api), 'cr-tour-primary');
+            ask.id = 'cr-tour-help-open'; slot.appendChild(ask); schedule();
+          }
+        }).catch(() => { /* the manual catalog stays usable */ });
+    }
     const list = element('div', 'cr-tour-grid');
     for (const guide of DATA.guides) {
       if (student && !['join', 'language', 'bug', 'classes'].includes(guide.id)) continue;
@@ -758,6 +772,45 @@
       list.appendChild(btn);
     }
     card.append(list, button('end', () => close())); focusCard();
+  }
+  function helper(token, api) {
+    close(false); view = 'helper';
+    prepareCard(t('helper.title'), t('helper.intro'));
+    card.dataset.buggySecret = '';
+    const form = element('form'); form.id = 'cr-tour-help-form'; form.dataset.buggySecret = '';
+    const label = element('label', '', t('helper.question')); label.htmlFor = 'cr-tour-help-question';
+    const question = element('textarea'); question.id = 'cr-tour-help-question';
+    question.rows = 3; question.maxLength = 500; question.required = true;
+    question.placeholder = t('helper.placeholder');
+    const result = element('div', 'cr-tour-help-result'); result.id = 'cr-tour-help-result';
+    result.setAttribute('role', 'status'); result.setAttribute('aria-live', 'polite');
+    const send = button('helper.send', () => {}, 'cr-tour-primary'); send.type = 'submit';
+    const actions = element('div', 'cr-tour-actions');
+    actions.append(send, button('helper.catalog', catalog), button('end', () => close()));
+    form.append(label, question, result, actions); card.appendChild(form);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (send.disabled || !question.value.trim()) return;
+      send.disabled = true; result.textContent = t('helper.wait'); result.setAttribute('aria-busy', 'true');
+      const controller = new AbortController(); helpRequest = controller;
+      const version = generation;
+      const timer = setTimeout(() => controller.abort(), 35000);
+      try {
+        const response = await api.ask(question.value.trim(), i18n.getLang(), token, controller.signal);
+        const data = response.data;
+        if (version !== generation || view !== 'helper') return;
+        const codes = ['ai_unconfigured', 'ai_unavailable', 'rate_limited', 'invalid_question', 'no_context'];
+        result.textContent = response.ok && typeof data.answer === 'string' ? data.answer :
+          t('helper.' + (response.status === 401 ? 'login' : codes.includes(data.code) ? data.code : 'ai_unavailable'));
+      } catch (_) {
+        if (version === generation && view === 'helper') result.textContent = t('helper.ai_unavailable');
+      } finally {
+        clearTimeout(timer);
+        if (helpRequest === controller) helpRequest = null;
+        send.disabled = false; result.setAttribute('aria-busy', 'false'); schedule();
+      }
+    });
+    focusCard(); question.focus({preventScroll: true});
   }
   function refreshAvailability() {
     if (document.hidden) return;
@@ -947,14 +1000,15 @@
         if (event.key === 'ArrowRight') show(active.index + 1);
         else if (previousStep() != null) show(previousStep(), -1);
       }
-      if (event.key === 'Tab' && view === 'catalog' && card.contains(document.activeElement)) {
-        const buttons = [...card.querySelectorAll('button:not(:disabled), input')].filter(visible);
+      if (event.key === 'Tab' && ['catalog', 'helper'].includes(view) && card.contains(document.activeElement)) {
+        const buttons = [...card.querySelectorAll('button:not(:disabled), input, textarea')].filter(visible);
         if (event.shiftKey && (document.activeElement === buttons[0] || document.activeElement === card)) { event.preventDefault(); buttons.at(-1)?.focus(); }
         else if (!event.shiftKey && document.activeElement === buttons.at(-1)) { event.preventDefault(); buttons[0]?.focus(); }
       }
     }, true);
     i18n.onLangChange(() => {
       launcher.textContent = t('launch');
+      if (view === 'helper') catalog();
       if (active) show(active.index); else if (view === 'catalog') catalog(); else if (view === 'complete') finish();
       if (offer) { offer.remove(); offer = null; }
     });

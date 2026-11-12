@@ -40,7 +40,7 @@ import shutil
 import subprocess
 import sys
 root, app = map(Path, sys.argv[1:])
-for name in ('server.py', 'qrgen.py', 'db.py', 'ws.py', 'mailer.py', 'bugreport.py', 'LICENSE'):
+for name in ('server.py', 'qrgen.py', 'db.py', 'ws.py', 'mailer.py', 'bugreport.py', 'help_assistant.py', 'LICENSE'):
     shutil.copy2(root / name, app / name)
 # No untracked/private uploads, question banks, music, data, history or secrets.
 paths = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z', '--', 'static', 'questions'])

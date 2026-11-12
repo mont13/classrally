@@ -25,5 +25,7 @@
 .cr-tour-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:14px 0; }
 .cr-tour-task { display:flex; flex-direction:column; gap:6px; text-align:left; }
 .cr-tour-task span { font-size:.87rem; color:#426181; }
+.cr-tour-card textarea { display:block; box-sizing:border-box; width:100%; margin:8px 0; padding:10px; border:1px solid #7693b1; border-radius:8px; font:inherit; }
+.cr-tour-help-result { white-space:pre-wrap; overflow-wrap:anywhere; margin:12px 0; }
 #cr-tour-card[hidden],#cr-tour-ring[hidden],.cr-tour-shade[hidden],#cr-tour-offer[hidden],#cr-tour-launch[hidden] { display:none; }
 @media(max-width:600px) { .cr-tour-grid { grid-template-columns:1fr; } .cr-tour-card { padding:14px; } .cr-tour-launch { right:8px; font-size:0; min-width:44px; padding:8px; } .cr-tour-launch::before { font-size:16px; margin-right:0; } }

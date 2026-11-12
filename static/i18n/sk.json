@@ -846,6 +846,21 @@
     "javascript": "Na prihlásenie zapni JavaScript a otvor nový odkaz zo školského portálu."
   },
   "tour": {
+    "helper": {
+      "title": "Spýtať sa pomocníka",
+      "intro": "Poradím s ovládaním ClassRally, nič za vás nevykonám. Bez mien, známok a hesiel. AI dostane iba rozpoznané témy a návod, nie text otázky.",
+      "question": "Vaša otázka (najviac 500 znakov)",
+      "placeholder": "Ako spustím písomku?",
+      "send": "Spýtať sa",
+      "catalog": "Katalóg Sprievodcu",
+      "wait": "Čakám na školskú AI…",
+      "ai_unconfigured": "AI nie je nastavená. Požiadajte správcu alebo použite katalóg Sprievodcu.",
+      "ai_unavailable": "Školská AI neodpovedá. Skúste neskôr alebo použite katalóg Sprievodcu.",
+      "rate_limited": "Limit je 6 otázok za minútu na učiteľa. Počkajte minútu alebo použite katalóg.",
+      "invalid_question": "Zadajte otázku s dĺžkou 1 až 500 znakov.",
+      "no_context": "Nemám overený podklad. Skúste názov záložky, katalóg Sprievodcu alebo Buggy (ak je zapnuté).",
+      "login": "Prihláste sa znova učiteľským účtom. Katalóg je naďalej dostupný."
+    },
     "launch": "Sprievodca",
     "catalog": "Čo chcete urobiť?",
     "studentCatalog": "S čím chceš pomôcť?",

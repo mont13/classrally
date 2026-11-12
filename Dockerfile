@@ -6,7 +6,7 @@ LABEL description="ClassRally - Lokalni kvizova platforma pro tridu"
 WORKDIR /app
 
 # Copy application files
-COPY server.py qrgen.py db.py ws.py mailer.py bugreport.py icongen.py ./
+COPY server.py qrgen.py db.py ws.py mailer.py bugreport.py icongen.py help_assistant.py ./
 COPY static/ static/
 COPY questions/ questions/
 

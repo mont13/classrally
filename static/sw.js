@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classrally-v24';
+const CACHE_NAME = 'classrally-v25';
 
 const PRE_CACHE = [
   '/play',
@@ -11,6 +11,7 @@ const PRE_CACHE = [
   '/static/i18n.js',
   '/static/tour.js',
   '/static/tour.css',
+  '/static/help-assistant.js',
   '/static/portal.js',
   '/static/portal-sso.js',
   '/static/i18n/cs.json',

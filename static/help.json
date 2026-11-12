@@ -1,0 +1,238 @@
+[
+  {
+    "id": "dashboard",
+    "title": "Přehled",
+    "keywords": [
+      "prehled",
+      "dashboard",
+      "overview"
+    ],
+    "source": "static/admin.html",
+    "selector": "#dashActionEditor",
+    "text": "Záložka {{admin.tab_dashboard}} ukazuje přehled a rychlé akce {{admin.dash_action_create_questions}}, {{admin.dash_action_start_quiz}}, {{admin.dash_action_homework}} a {{admin.dash_action_ai}}. Pro vlastní přehled se přihlaste učitelským účtem."
+  },
+  {
+    "id": "banks",
+    "title": "Sady otázek",
+    "keywords": [
+      "sada",
+      "sady",
+      "bank",
+      "set",
+      "questions",
+      "soubor",
+      "nahra",
+      "import",
+      "upload",
+      "csv",
+      "json",
+      "subor",
+      "hochladen",
+      "importieren",
+      "завантаж",
+      "набір"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnCreateBank",
+    "text": "V {{admin.tab_questions}} hledáte sady; {{admin.btn_create}} založí sadu podle zadaného názvu. Import souboru je v {{admin.tab_editor}}: {{admin.btn_import_json}} nebo {{admin.btn_import_csv}}, vyberte soubor a potvrďte cílový název sady. JSON musí být pole otázek. Pro ruční úpravy vyberte sadu v {{admin.editor_bank_label}}, {{admin.btn_load}}, po úpravách {{admin.btn_save_changes}}."
+  },
+  {
+    "id": "exam",
+    "title": "Písemka",
+    "keywords": [
+      "pisem",
+      "test",
+      "exam",
+      "пiсьм",
+      "контрольн",
+      "klausur",
+      "prufung",
+      "pisom",
+      "пис"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnExamPrepare",
+    "text": "Záložka {{admin.tab_exam}}: vyberte sadu, nastavte pole „Časový limit (minuty)“ (1–240) a další volby. Klikněte „Připravit písemku“, potom „Spustit písemku“. Žáci řeší test vlastním tempem. Tlačítko „+5 minut“ prodlouží čas; „Ukončit pro všechny“ ukončí test. „Stáhnout výsledky (CSV)“ exportuje výsledky. Tyto názvy ovládání písemky jsou v aktuální šabloně česky i při jiném jazyku."
+  },
+  {
+    "id": "editor",
+    "title": "Editor otázek",
+    "keywords": [
+      "editor",
+      "uprav",
+      "edit",
+      "otaz",
+      "otazk",
+      "question",
+      "bearbeiten",
+      "редаг"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnSaveBank",
+    "text": "V {{admin.tab_editor}} vyberte {{admin.editor_bank_label}}, stiskněte {{admin.btn_load}}, poté {{admin.btn_add_question}} nebo upravte otázky a {{admin.btn_save_changes}}. {{admin.btn_export_json}} a {{admin.btn_export_csv}} stáhnou sadu. Import: {{admin.btn_import_json}} / {{admin.btn_import_csv}}, soubor, potvrzení cílového názvu."
+  },
+  {
+    "id": "ai",
+    "title": "AI generátor",
+    "keywords": [
+      "ai",
+      "gener",
+      "gemma",
+      "model",
+      "ollama",
+      "navrh",
+      "generate",
+      "generator"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnAiGenerate",
+    "text": "V {{admin.tab_ai}} vyplňte {{admin.ai_topic_label}}, {{admin.ai_count_label}}, {{admin.ai_type_label}}, {{admin.ai_lang_label}} a {{admin.ai_model_label}}; nepovinně {{admin.ai_source_label}}. {{admin.btn_ai_generate}} vytvoří náhled. Otázky zkontrolujte, pak {{admin.btn_save_to_bank}} nebo {{admin.btn_append_to_bank}}. AI musí být dostupná na nastaveném serveru; uzamčenou adresu a klíč mění správce serveru."
+  },
+  {
+    "id": "settings",
+    "title": "Nastavení",
+    "keywords": [
+      "nastaven",
+      "cas",
+      "limit",
+      "time",
+      "timing",
+      "seconds",
+      "sek",
+      "min",
+      "settings",
+      "zeit",
+      "einstellung",
+      "налаштуван",
+      "ліміт",
+      "nastav",
+      "nastavi"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnSaveTiming",
+    "text": "Pro živý kvíz: {{admin.tab_settings}}, {{admin.timing_question_label}}, {{admin.timing_reveal_label}}, {{admin.timing_get_ready_label}}, pak {{admin.btn_save_settings}}. Změna platí od další otázky. Pro písemku je samostatný „Časový limit (minuty)“ v {{admin.tab_exam}}, nastavuje se před „Připravit písemku“. Nastavení AI je v {{admin.tab_settings}}: {{admin.cfg_ai_base_url}}, {{admin.cfg_ai_api_key}}, {{admin.cfg_ollama_model}}, {{admin.btn_save_ollama}}. Ve sdílené instalaci adresu a klíč mění správce serveru, učitel volí model v {{admin.tab_ai}}."
+  },
+  {
+    "id": "history",
+    "title": "Historie",
+    "keywords": [
+      "histor",
+      "history",
+      "vysled",
+      "result",
+      "export",
+      "verlauf",
+      "істор"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnRefreshHistory",
+    "text": "V {{admin.tab_history}} stiskněte {{admin.btn_refresh}} a otevřete záznam odehrané hry. Uložené písemky a jejich výsledky najdete také v {{admin.tab_exam}}, sekce {{admin.saved_exams_title}}, {{admin.btn_refresh}}."
+  },
+  {
+    "id": "classes",
+    "title": "Třídy",
+    "keywords": [
+      "trid",
+      "class",
+      "tried",
+      "klasse",
+      "клас"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnCreateClass",
+    "text": "V {{admin.tab_classes}} je třeba učitelský účet. Zadejte {{admin.class_name_label}} a {{admin.btn_create}}. U třídy {{admin.btn_members}} zobrazí členy. K připojení žáků slouží {{admin.class_code}} a QR kód třídy. Kód třídy není PIN živé hry."
+  },
+  {
+    "id": "homework",
+    "title": "Domácí úkol",
+    "keywords": [
+      "domac",
+      "ukol",
+      "homework",
+      "self-paced",
+      "hausaufgab",
+      "домашн"
+    ],
+    "source": "static/admin.html",
+    "selector": "#btnCreateHomework",
+    "text": "V {{admin.tab_homework}} vyberte {{admin.hw_bank_label}} a {{admin.btn_create_homework}}. Sdílejte vytvořený odkaz přes {{admin.btn_copy_link}} nebo {{admin.btn_show_qr}}. Odkaz platí 7 dní; žáci řeší otázky vlastním tempem. {{admin.hw_mine_title}} obsahuje vlastní úkoly; po otevření úkolu uvidíte výsledky."
+  },
+  {
+    "id": "users",
+    "title": "Uživatelé",
+    "keywords": [
+      "uziv",
+      "uct",
+      "account",
+      "user",
+      "hesl",
+      "password",
+      "benutzer",
+      "konto",
+      "користувач",
+      "пароль"
+    ],
+    "source": "static/admin.html",
+    "selector": "#tab-users",
+    "text": "Záložka {{admin.tab_users}} slouží správě účtů, rolí a resetům hesel podle oprávnění serveru. Ve sdíleném režimu může učitel spravovat pouze žáky svých tříd, pokud zároveň nejsou ve třídě jiného učitele; server kontroluje oprávnění. Účty učitelů jsou chráněné. Pomocník účty nečte ani nemění. Přihlášení a osobní účet otevřete přes /profile."
+  },
+  {
+    "id": "projector",
+    "title": "Hra na projektoru",
+    "keywords": [
+      "hru",
+      "hra",
+      "kviz",
+      "spust",
+      "start",
+      "game",
+      "quiz",
+      "host",
+      "projector",
+      "projektor",
+      "beamer",
+      "spiel",
+      "гра"
+    ],
+    "source": "static/host.html",
+    "selector": "#btnStart",
+    "text": "V {{admin.tab_questions}} u vybrané sady {{admin.btn_activate}} nastaví otázky pro hru. {{admin.btn_host_screen}} otevře /host na projektoru. Po připojení žáků {{host.btn_start}} zahájí hru. {{host.btn_reveal}} ukáže odpověď a {{host.btn_next}} přejde dál. Písemka se spouští samostatně v {{admin.tab_exam}} přes „Připravit písemku“ a „Spustit písemku“."
+  },
+  {
+    "id": "join",
+    "title": "Připojení přes PIN/QR",
+    "keywords": [
+      "pin",
+      "qr",
+      "pripo",
+      "join",
+      "connect",
+      "prihl",
+      "prihlas",
+      "login",
+      "anmelden",
+      "приєдн"
+    ],
+    "source": "static/host.html",
+    "selector": "#qrBox",
+    "text": "Žáci otevřou /play nebo naskenují QR na /host. Je-li vyžadován PIN hry, opíší jej z projektoru; zadají přezdívku a připojí se. Učitel počká na připojené hráče a spustí hru. V režimu písemky se /play přepne na /exam. PIN hry není kód třídy."
+  },
+  {
+    "id": "portal",
+    "title": "Školní portál",
+    "keywords": [
+      "portal",
+      "sso",
+      "skol",
+      "school",
+      "login",
+      "prihl",
+      "prihlas",
+      "schul",
+      "шкільн"
+    ],
+    "source": "static/portal-sso.js",
+    "selector": "[data-portal-login]",
+    "text": "Školní portál je na této instanci zapnutý. Použijte nabídnuté tlačítko přihlášení přes školní portál; ověření vrátí uživatele do ClassRally. Pokud odkaz vypršel nebo byl použit, otevřete nový ve školním portálu. Prohlížeč musí mít povolené úložiště. Pomocník nemá přístup k přihlašovacím údajům."
+  }
+]
