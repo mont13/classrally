@@ -1,6 +1,10 @@
 {
   "lang_name": "English",
   "play": {
+    "order_progress": "Selected {0} of {1}",
+    "order_clear": "Clear",
+    "order_undo": "Undo",
+    "order_tap_hint": "Tap the items in the correct order, first to last. Then confirm.",
     "page_title": "ClassRally - Play!",
     "hero_kicker": "Quick join from your phone",
     "title": "Join the quiz!",
@@ -303,6 +307,8 @@
     "comeback": "Comeback Kid"
   },
   "admin": {
+    "question_time_hint": "Empty: game time + adaptive bonuses. Filled: exact time without bonuses. Get-ready time is separate; this field does not affect exams.",
+    "question_time_label": "Time for this game question (5–180 s, optional)",
     "page_title": "Quiz Admin - Teacher Portal",
     "title": "Teacher Portal",
     "hero_kicker": "Teacher control deck",
@@ -601,11 +607,11 @@
     "rules_title": "Game rules",
     "speed_bonus_label": "Speed bonus",
     "speed_bonus_hint": "Off: every correct answer earns the full 1000 points regardless of time, so slower students are not at a disadvantage.",
-    "adaptive_time_label": "Extend the time for longer questions",
-    "adaptive_time_hint": "A longer question gets extra reading time: +1 s for every 15 characters of question and answers above 80, at most +30 s. Short questions keep exactly the set time.",
+    "adaptive_time_label": "Allow time for reading and interaction",
+    "adaptive_time_hint": "Reading: +1 s per 15 characters above 80, up to +30 s. Interaction: ordering +5 s per item above two, multiple answers +2 s per option, up to +30 s. A question time override takes priority and disables bonuses.",
     "bank_warn_title": "Note for a live game:",
     "bank_warn_openended": "Open questions: {0}. Typing an answer against the clock is hard on a phone; for a game consider a multiple-choice question (fine in a written test).",
-    "bank_warn_ordering": "Ordering with more than 4 items: {0}. Ordering is slow on a phone; 4 items at most work best in a game.",
+    "bank_warn_ordering": "Ordering with more than 4 items: {0}. Enable adaptive time or set a question time override and try it on a phone.",
     "show_leaderboard_label": "Show the full leaderboard",
     "show_leaderboard_hint": "Off: neither the projector nor the phones show anyone else's rank; only the podium at the end. Everyone sees just their own points.",
     "csv_results": "Results (CSV)",

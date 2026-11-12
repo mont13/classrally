@@ -1,6 +1,10 @@
 {
   "lang_name": "Deutsch",
   "play": {
+    "order_progress": "{0} von {1} gewählt",
+    "order_clear": "Leeren",
+    "order_undo": "Zurück",
+    "order_tap_hint": "Tippe die Elemente in der richtigen Reihenfolge an, vom ersten bis zum letzten. Bestätige dann.",
     "page_title": "ClassRally - Spielen!",
     "hero_kicker": "Schnell vom Handy verbinden",
     "title": "Tritt dem Quiz bei!",
@@ -303,6 +307,8 @@
     "comeback": "Großes Comeback"
   },
   "admin": {
+    "question_time_hint": "Leer: Spielzeit + adaptive Zuschläge. Ausgefüllt: genaue Zeit ohne Zuschläge. Die Vorbereitungszeit zählt zusätzlich; Prüfungen bleiben unverändert.",
+    "question_time_label": "Zeit für diese Spielfrage (5–180 s, optional)",
     "page_title": "Quiz Admin - Lehrerportal",
     "title": "Lehrerportal",
     "hero_kicker": "Steuerungszentrale für Lehrer",
@@ -601,11 +607,11 @@
     "rules_title": "Spielregeln",
     "speed_bonus_label": "Geschwindigkeitsbonus",
     "speed_bonus_hint": "Aus: Jede richtige Antwort bekommt unabhängig von der Zeit die vollen 1000 Punkte, langsamere Schüler sind also nicht im Nachteil.",
-    "adaptive_time_label": "Zeit an die Fragenlänge anpassen",
-    "adaptive_time_hint": "Längere Fragen bekommen zusätzliche Lesezeit: +1 s je 15 Zeichen von Frage und Antworten über 80, höchstens +30 s. Kurze Fragen behalten genau die eingestellte Zeit.",
+    "adaptive_time_label": "Mehr Zeit zum Lesen und Bedienen",
+    "adaptive_time_hint": "Lesen: +1 s je 15 Zeichen über 80, höchstens +30 s. Bedienung: Reihenfolge +5 s je Element über zwei, Mehrfachauswahl +2 s je Option, höchstens +30 s. Eine eigene Fragezeit hat Vorrang und deaktiviert Zuschläge.",
     "bank_warn_title": "Hinweis für das Spiel:",
     "bank_warn_openended": "Offene Fragen: {0}. Eine Antwort unter Zeitdruck auf dem Handy zu tippen ist schwer; für das Spiel lieber eine Auswahlfrage (im schriftlichen Test kein Problem).",
-    "bank_warn_ordering": "Reihenfolge mit mehr als 4 Elementen: {0}. Auf dem Handy dauert das Sortieren lange; im Spiel höchstens 4 Elemente.",
+    "bank_warn_ordering": "Reihenfolge mit mehr als 4 Elementen: {0}. Aktiviere die adaptive Zeit oder lege eine eigene Fragezeit fest und teste den Ablauf auf einem Handy.",
     "show_leaderboard_label": "Ganze Rangliste anzeigen",
     "show_leaderboard_hint": "Aus: Weder Beamer noch Handys zeigen die Platzierung der anderen, am Ende nur das Siegerpodest. Jeder sieht nur seine eigenen Punkte.",
     "csv_results": "Ergebnisse (CSV)",

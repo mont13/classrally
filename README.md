@@ -26,6 +26,39 @@ Staci Python nebo Docker (Linux/Mac), na Windows hotovy ZIP s pribalenym Pythone
 5. **Klikni Start** — otazky se zacnou zobrazovat, zaci odpovidaji
 6. Po posledni otazce se zobrazi podium s vysledky
 
+### Čas a seřazování ve hře
+
+Adaptivní čas přidává k nastavenému času čtení (+1 s za každých započatých
+15 znaků nad 80, nejvýš +30 s) a ovládání: seřazování +5 s za každou položku
+nad dvě, více správných +2 s za každou volbu. Příplatek za ovládání má strop +30 s.
+Při základu 20 s a krátkém textu dostanou čtyři položky 30 s, pět položek 35 s
+a čtyři volby s více správnými 28 s. Vypnutý adaptivní čas zachová samotný základ.
+
+V Editoru otázek lze každé otázce vyplnit **Čas této otázky ve hře** (`time_sec`,
+celé číslo 5–180 s). Vyplněný čas je konečný limit bez adaptivních příplatků;
+prázdné pole znamená nastavení hry. Příprava před otázkou běží zvlášť.
+Pole se zachovává v JSON i v novém sloupci CSV; starší CSV bez něj lze dál importovat.
+Odpočty projektoru a hráče používají stejný serverový limit. Historie `duration_sec`
+zaznamenává skutečně odehranou dobu (hra může skončit dříve po odpovědi všech);
+`question_time_sec` uchovává plánovaný limit otázky.
+
+Při seřazování hráč klepá na celé položky od první po poslední. Čísla ukazují
+zvolené pořadí, **Zpět** vrátí poslední krok a **Vymazat** začne znovu.
+Odeslání je možné až po výběru všech položek. Stejné ovládání funguje myší
+i klávesnicí; rozpracované pořadí přežije pravidelné obnovení stavu a chybu odeslání.
+
+Bodování více správných zůstává zachované: přesná shoda získá plné body
+s případným bonusem za rychlost; neprázdná podmnožina správných voleb získá
+`600 × počet vybraných správných / počet správných`. Jakákoli chybná volba
+znamená nulu. Body za správně nezaškrtnuté možnosti nepřidáváme, protože by
+změnily hodnocení starých sad a odměňovaly i pouhé vynechání možností.
+Písemka nadále používá jen výběr jedné odpovědi a pravda/nepravda;
+`time_sec` její časování nemění.
+
+Lokální regrese: `omez-pamet -- python3 -m unittest test_server -q` a
+`omez-pamet -- python3 test_mobile_game_browser.py`. Prohlížečový test používá
+izolovaná syntetická data a blokuje externí HTTP požadavky.
+
 ## Spusteni
 
 ### Docker (doporuceno)

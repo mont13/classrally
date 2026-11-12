@@ -2,6 +2,10 @@
   "lang_name": "Čeština",
 
   "play": {
+    "order_progress": "Vybráno {0} z {1}",
+    "order_clear": "Vymazat",
+    "order_undo": "Zpět",
+    "order_tap_hint": "Klepni na položky ve správném pořadí od první po poslední. Potom potvrď.",
     "page_title": "ClassRally - Hraj!",
     "hero_kicker": "Rychlé připojení z mobilu",
     "title": "Připoj se do kvízu!",
@@ -309,6 +313,8 @@
   },
 
   "admin": {
+    "question_time_hint": "Prázdné: čas hry + adaptivní příplatky. Vyplněné: přesný čas bez příplatků. Příprava před otázkou se nezapočítává; písemku toto pole neovlivní.",
+    "question_time_label": "Čas této otázky ve hře (5–180 s, volitelné)",
     "page_title": "Quiz Admin - Učitelský portál",
     "title": "Učitelský portál",
     "hero_kicker": "Teacher control deck",
@@ -644,11 +650,11 @@
     "rules_title": "Pravidla hry",
     "speed_bonus_label": "Bonus za rychlost",
     "speed_bonus_hint": "Vypnuto: každá správná odpověď má plných 1000 bodů bez ohledu na čas, takže pomalejší žáci nejsou znevýhodnění.",
-    "adaptive_time_label": "Prodloužit čas podle délky otázky",
-    "adaptive_time_hint": "Delší otázka dostane navíc čas na přečtení: +1 s za každých 15 znaků otázky a odpovědí nad 80, nejvýš +30 s. Krátké otázky mají přesně nastavený čas.",
+    "adaptive_time_label": "Prodloužit čas na čtení a ovládání",
+    "adaptive_time_hint": "Čtení: +1 s za každých 15 znaků nad 80, nejvýš +30 s. Ovládání: řazení +5 s za položku nad dvě, více správných +2 s za volbu, nejvýš +30 s. Vlastní čas otázky má přednost a příplatky vypíná.",
     "bank_warn_title": "Upozornění pro hru:",
     "bank_warn_openended": "Otevřené otázky: {0}. Psát odpověď na čas je na mobilu těžké, pro hru zvažte otázku s výběrem (písemce nevadí).",
-    "bank_warn_ordering": "Řazení s více než 4 položkami: {0}. Na mobilu se řadí pomalu, pro hru stačí nejvýš 4 položky.",
+    "bank_warn_ordering": "Řazení s více než 4 položkami: {0}. Zapněte adaptivní čas nebo nastavte vlastní čas otázky a ověřte průchod na mobilu.",
     "show_leaderboard_label": "Ukazovat celý žebříček",
     "show_leaderboard_hint": "Vypnuto: projektor ani mobily neukazují pořadí ostatních, na konci jen stupně vítězů. Každý vidí jen své body.",
     "csv_results": "Výsledky (CSV)",

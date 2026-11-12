@@ -6237,6 +6237,82 @@ class TestBugReportBridge(unittest.TestCase):
         self.assertEqual(homework.count("document.body.dataset.phase = 'question';"), 3)
 
 
+class TestInteractionTime(unittest.TestCase):
+    def test_mobile_limits_deadlines_and_history(self):
+        cases = [({"type": "ordering", "items": list("ABCD")}, 10),
+                 ({"type": "ordering", "items": list("ABCDE")}, 15),
+                 ({"type": "ordering", "items": list("ABCDEFGH")}, 30),
+                 ({"type": "multiselect", "options": list("ABCD"), "correct_indices": [0, 1, 2]}, 12)]
+        for question, bonus in cases:
+            with self.subTest(question=question):
+                qs = server.QuizState([dict(question, id="mobile", prompt="Q?")])
+                qs.set_timing(question_sec=20)
+                qs.register_player("Tester")
+                qs.host_action("start")
+                st = qs.public_state()
+                self.assertEqual(st["interaction_bonus_sec"], bonus)
+                self.assertEqual(st["question_time_sec"], 20 + bonus)
+                opened = qs.question_started_at + qs.get_ready_sec
+                self.assertEqual(st["question_ends_at"], opened + 20 + bonus)
+                with mock.patch("time.time", return_value=opened + 20 + bonus + 0.1):
+                    self.assertEqual(qs.public_state()["phase"], "reveal")
+                self.assertEqual(qs.question_log[0]["duration_sec"], 20 + bonus)
+                self.assertEqual(qs.question_log[0]["question_time_sec"], 20 + bonus)
+                record = server.save_game_history(qs)
+                loaded = server.load_game_record(record["id"])
+                self.assertEqual(loaded["questions"][0]["duration_sec"], 20 + bonus)
+                self.assertEqual(loaded["questions"][0]["question_time_sec"], 20 + bonus)
+
+    def test_override_deadline_and_early_finish_history(self):
+        question = {"id": "t", "type": "ordering", "prompt": "Q?", "items": list("ABCDE"), "time_sec": 180}
+        qs = server.QuizState([question])
+        qs.set_timing(question_sec=20)
+        player = qs.register_player("Tester")
+        qs.host_action("start")
+        opened = qs.question_started_at + qs.get_ready_sec
+        self.assertEqual(qs.public_state()["question_ends_at"], opened + 180)
+        with mock.patch("time.time", return_value=opened + 10):
+            qs.submit_answer(player["player_id"], player["player_secret"], list(range(5)))
+        with mock.patch("time.time", return_value=opened + 10 + server.ALL_ANSWERED_GRACE_SEC + 0.1):
+            self.assertEqual(qs.public_state()["phase"], "reveal")
+        # duration_sec is actual play time, not the configured maximum.
+        self.assertEqual(qs.question_log[0]["duration_sec"], 10 + server.ALL_ANSWERED_GRACE_SEC)
+        self.assertEqual(qs.question_log[0]["question_time_sec"], 180)
+
+    def test_override_wins_and_bonuses_are_opt_in(self):
+        question = {"id": "o", "type": "ordering", "prompt": "x" * 250, "items": list("ABCDE")}
+        qs = server.QuizState([question])
+        qs.current_index = 0
+        qs.set_timing(question_sec=20, adaptive_time=False)
+        self.assertEqual(qs._question_time_locked(), 20)
+        qs.set_timing(adaptive_time=True)
+        self.assertEqual(qs._question_time_locked(), 35 + server.reading_bonus_sec(question))
+        for adaptive in (True, False):
+            for limit in (5, 47, 180):
+                question["time_sec"] = limit
+                qs.set_timing(adaptive_time=adaptive)
+                st = qs.public_state()
+                self.assertEqual(st["question_time_sec"], limit)
+                self.assertEqual(st["reading_bonus_sec"], 0)
+                self.assertEqual(st["interaction_bonus_sec"], 0)
+
+    def test_time_validation_and_csv_roundtrip(self):
+        base = {"id": "t", "prompt": "Q?", "options": ["A", "B"], "correct_index": 0}
+        for bad in (None, "20", True, False, 20.5, 4, 181, [], {}):
+            with self.subTest(bad=bad), self.assertRaisesRegex(RuntimeError, "time_sec"):
+                server._validate_question(dict(base, time_sec=bad), 0)
+        for limit in (5, 20, 180):
+            q = dict(base, time_sec=limit)
+            server._validate_question(q, 0)
+            self.assertEqual(server.questions_from_csv(server.questions_to_csv([q]))[0]["time_sec"], limit)
+        self.assertNotIn("time_sec", server.questions_from_csv(server.questions_to_csv([base]))[0])
+        legacy = 'id,type,prompt,options,correct_answer,explanation\nt,choice,Q?,A|B,0,\n'
+        self.assertNotIn("time_sec", server.questions_from_csv(legacy)[0])
+        for bad in ("4", "181", "20.5", "abc"):
+            with self.subTest(csv=bad), self.assertRaises(ValueError):
+                server.questions_from_csv(legacy.replace('explanation\n', 'explanation,time_sec\n').rstrip() + ',' + bad + '\n')
+
+
 class TestReadingTime(unittest.TestCase):
     """Longer questions get reading time on top of the teacher's setting (#91, #95)."""
 

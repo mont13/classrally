@@ -606,8 +606,8 @@
             </div>
           </div>
           <div class="rule-option">
-            <label><input type="checkbox" id="timingAdaptive" /><span data-i18n="admin.adaptive_time_label">Prodloužit čas podle délky otázky</span></label>
-            <p class="muted" data-i18n="admin.adaptive_time_hint">Delší otázka dostane navíc čas na přečtení: +1 s za každých 15 znaků otázky a odpovědí nad 80, nejvýš +30 s. Krátké otázky mají přesně nastavený čas.</p>
+            <label><input type="checkbox" id="timingAdaptive" /><span data-i18n="admin.adaptive_time_label">Prodloužit čas na čtení a ovládání</span></label>
+            <p class="muted" data-i18n="admin.adaptive_time_hint">Čtení: +1 s za každých 15 znaků nad 80, nejvýš +30 s. Ovládání: řazení +5 s za položku nad dvě, více správných +2 s za volbu, nejvýš +30 s. Vlastní čas otázky má přednost a příplatky vypíná.</p>
           </div>
           <div style="display:flex;align-items:center;gap:12px;margin:12px 0;">
             <label style="font-weight:700;">
@@ -1378,7 +1378,7 @@
 
     // Advice for live-game sets (only a warning, saving goes on): typing an open
     // answer against the clock is hard on a phone, and ordering more than four
-    // items with the arrows is slow on a small screen. Open questions still fit
+    // items still takes thought on a small screen. Open questions still fit
     // a written test (exam) or a slower game, so nothing is blocked.
     const GAME_ORDERING_MAX_ITEMS = 4;
     function gameSetWarnings(questions) {
@@ -1390,13 +1390,16 @@
       if (open) lines.push(tr('admin.bank_warn_openended',
         'Otevřené otázky: {0}. Psát odpověď na čas je na mobilu těžké, pro hru zvažte otázku s výběrem (písemce nevadí).', open));
       if (longOrder) lines.push(tr('admin.bank_warn_ordering',
-        'Řazení s více než 4 položkami: {0}. Na mobilu se řadí pomalu, pro hru stačí nejvýš 4 položky.', longOrder));
+        'Řazení s více než 4 položkami: {0}. Zapněte adaptivní čas nebo nastavte vlastní čas otázky a ověřte průchod na mobilu.', longOrder));
       if (!lines.length) return '';
       return '\n\n' + tr('admin.bank_warn_title', 'Upozornění pro hru:') + '\n- ' + lines.join('\n- ');
     }
 
     document.getElementById('btnSaveBank').addEventListener('click', async () => {
       if (!editorFilename) { alert(i18n.t('admin.load_bank_first')); return; }
+      for (const input of document.querySelectorAll('.q-time-sec')) {
+        if (!input.reportValidity()) return;
+      }
       collectEditorData();
       try {
         const saved = await api('/api/admin/bank/save', 'POST', { filename: editorFilename, questions: editorQuestions });
@@ -1413,6 +1416,7 @@
     });
 
     document.getElementById('btnAddQuestion').addEventListener('click', () => {
+      collectEditorData();
       const id = `q${Date.now()}`;
       editorQuestions.push({ id, type: 'choice', prompt: '', options: ['', '', '', ''], correct_index: 0, explanation: '' });
       renderEditor();
@@ -1536,6 +1540,9 @@
         const q = editorQuestions[idx];
         q.prompt = ed.querySelector('.q-prompt').value;
         q.explanation = ed.querySelector('.q-explanation')?.value || '';
+        const timeInput = ed.querySelector('.q-time-sec');
+        if (timeInput && timeInput.value !== '') q.time_sec = Number(timeInput.value);
+        else delete q.time_sec;
         const imgInput = ed.querySelector('.q-image-url');
         if (imgInput) {
           const imgVal = imgInput.value.trim();
@@ -1743,6 +1750,27 @@
         promptGroup.appendChild(promptLabel);
         promptGroup.appendChild(promptInput);
         div.appendChild(promptGroup);
+
+        const timeGroup = document.createElement('div');
+        timeGroup.className = 'form-group';
+        const timeLabel = document.createElement('label');
+        timeLabel.htmlFor = `q-time-${idx}`;
+        timeLabel.textContent = tr('admin.question_time_label', 'Čas této otázky ve hře (5–180 s, volitelné)');
+        const timeInput = document.createElement('input');
+        timeInput.id = timeLabel.htmlFor;
+        timeInput.type = 'number';
+        timeInput.min = '5';
+        timeInput.max = '180';
+        timeInput.step = '1';
+        timeInput.className = 'q-time-sec';
+        timeInput.value = q.time_sec ?? '';
+        const timeHint = document.createElement('p');
+        timeHint.className = 'muted';
+        timeHint.id = `q-time-hint-${idx}`;
+        timeHint.textContent = tr('admin.question_time_hint', 'Prázdné: čas hry + adaptivní příplatky. Vyplněné: přesný čas bez příplatků. Příprava před otázkou se nezapočítává; písemku toto pole neovlivní.');
+        timeInput.setAttribute('aria-describedby', timeHint.id);
+        timeGroup.append(timeLabel, timeInput, timeHint);
+        div.appendChild(timeGroup);
 
         // Image URL field
         const imgGroup = document.createElement('div');

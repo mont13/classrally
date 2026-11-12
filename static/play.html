@@ -141,6 +141,11 @@
     .ord-arrow:disabled { opacity: 0.35; cursor: default; }
     .ord-item.correct-pos { border-color: #16a34a; background: var(--pp-ok-soft); }
     .ord-item.wrong-pos { border-color: #dc2626; background: var(--pp-bad-soft); }
+    .ord-pick { width: 100%; min-width: 0; text-align: left; cursor: pointer; font: inherit; }
+    .ord-pick .ord-text { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+    .ord-pick[aria-pressed="true"] { border-color: #1d4ed8; background: var(--pp-soft); }
+    .ord-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .ord-actions .btn { min-height: 48px; }
     /* Open-ended */
     .oe-input { width: 100%; padding: 14px 16px; font: inherit; font-size: 1.3rem; border: 2px solid var(--pp-line-strong);
       border-radius: 12px; box-sizing: border-box; font-weight: 700; color: var(--pp-ink); background: var(--pp-card); }
@@ -1003,6 +1008,7 @@
     // --- Multiselect state ---
     let msSelected = new Set();
     let ordOrder = [];
+    let ordDraftKey = '';
 
     async function submitChoice(playerId, choice) {
       sfxPlay('pop');
@@ -1185,13 +1191,88 @@
       const submitted = myChoice !== undefined;
       const items = state.question.items;
 
-      // Init order on new question
-      if (!submitted && !isReveal && state.current_index !== lastQuestionIndex) {
-        ordOrder = items.map((_, i) => i);
+      // Keep a partial sequence across polling, language changes and failed submits.
+      // Start empty: a random displayed permutation must never be submitted by accident.
+      const draftKey = JSON.stringify([state.question_started_at, state.current_index, state.question.id, items]);
+      if (ordDraftKey !== draftKey) {
+        ordDraftKey = draftKey;
+        ordOrder = [];
       }
-      if (ordOrder.length !== items.length) ordOrder = items.map((_, i) => i);
 
-      const displayOrder = submitted && Array.isArray(myChoice) ? myChoice : ordOrder;
+      if (!submitted && !isReveal) {
+        box.innerHTML = '';
+        const instruction = document.createElement('p');
+        instruction.className = 'play-note';
+        instruction.textContent = tfb('play.order_tap_hint', 'Klepni na položky ve správném pořadí od první po poslední. Potom potvrď.');
+        box.appendChild(instruction);
+        const list = document.createElement('div');
+        list.className = 'ord-list';
+        const buttons = [];
+        items.forEach((item, i) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ord-item ord-pick';
+          const num = document.createElement('span');
+          num.className = 'ord-num';
+          num.setAttribute('aria-hidden', 'true');
+          const text = document.createElement('span');
+          text.className = 'ord-text';
+          text.textContent = item;
+          btn.append(num, text);
+          // Keep the positions stable while numbering the chosen sequence.
+          btn.addEventListener('click', () => {
+            if (!ordOrder.includes(i)) { ordOrder.push(i); update(); }
+          });
+          list.appendChild(btn);
+          buttons.push(btn);
+        });
+        box.appendChild(list);
+        const actions = document.createElement('div');
+        actions.className = 'ord-actions';
+        const undo = document.createElement('button');
+        undo.className = 'btn secondary';
+        undo.textContent = tfb('play.order_undo', 'Zpět');
+        undo.addEventListener('click', () => { ordOrder.pop(); update(); });
+        const clear = document.createElement('button');
+        clear.className = 'btn secondary';
+        clear.textContent = tfb('play.order_clear', 'Vymazat');
+        clear.addEventListener('click', () => { ordOrder = []; update(); });
+        actions.append(undo, clear);
+        box.appendChild(actions);
+        const progress = document.createElement('p');
+        progress.className = 'play-note';
+        progress.setAttribute('aria-live', 'polite');
+        box.appendChild(progress);
+        const confirm = document.createElement('button');
+        confirm.className = 'btn good ms-confirm ord-confirm';
+        confirm.textContent = i18n.t('play.confirm_order');
+        let sending = false;
+        function update() {
+          buttons.forEach((btn, i) => {
+            const pos = ordOrder.indexOf(i);
+            btn.setAttribute('aria-pressed', String(pos >= 0));
+            btn.querySelector('.ord-num').textContent = pos < 0 ? '–' : pos + 1;
+            btn.setAttribute('aria-label', pos < 0 ? items[i] : `${pos + 1}. ${items[i]}`);
+            btn.disabled = sending;
+          });
+          undo.disabled = clear.disabled = sending || !ordOrder.length;
+          confirm.disabled = sending || ordOrder.length !== items.length;
+          progress.textContent = tfb('play.order_progress', 'Vybráno {0} z {1}', ordOrder.length, items.length);
+        }
+        confirm.addEventListener('click', async () => {
+          if (sending || ordOrder.length !== items.length) return;
+          sending = true;
+          update();
+          try { await submitChoice(playerId, [...ordOrder]); }
+          catch (e) { alert(e.message); }
+          finally { sending = false; update(); }
+        });
+        box.appendChild(confirm);
+        update();
+        return;
+      }
+
+      const displayOrder = submitted && Array.isArray(myChoice) ? myChoice : items.map((_, i) => i);
       const correctOrder = state.question.correct_order;
 
       const list = document.createElement('ol');
@@ -1216,29 +1297,6 @@
         text.style.flex = '1';
         li.appendChild(text);
 
-        if (!isReveal && !submitted) {
-          const arrows = document.createElement('span');
-          arrows.className = 'ord-arrows';
-          const up = document.createElement('button');
-          up.className = 'ord-arrow';
-          up.textContent = '\u25B2';
-          up.disabled = pos === 0;
-          up.addEventListener('click', () => {
-            [ordOrder[pos - 1], ordOrder[pos]] = [ordOrder[pos], ordOrder[pos - 1]];
-            renderOrderingOptions(box, state, playerId);
-          });
-          const down = document.createElement('button');
-          down.className = 'ord-arrow';
-          down.textContent = '\u25BC';
-          down.disabled = pos === displayOrder.length - 1;
-          down.addEventListener('click', () => {
-            [ordOrder[pos], ordOrder[pos + 1]] = [ordOrder[pos + 1], ordOrder[pos]];
-            renderOrderingOptions(box, state, playerId);
-          });
-          arrows.appendChild(up);
-          arrows.appendChild(down);
-          li.appendChild(arrows);
-        }
         list.appendChild(li);
       });
       box.innerHTML = '';
@@ -1252,17 +1310,6 @@
         box.appendChild(correctLabel);
       }
 
-      if (!isReveal && !submitted) {
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'btn good ms-confirm';
-        confirmBtn.textContent = i18n.t('play.confirm_order');
-        confirmBtn.addEventListener('click', async () => {
-          confirmBtn.disabled = true;
-          try { await submitChoice(playerId, [...ordOrder]); }
-          catch (e) { alert(e.message); confirmBtn.disabled = false; }
-        });
-        box.appendChild(confirmBtn);
-      }
     }
 
     // Restores the typed text (and the caret) after a rebuild and keeps it in sync.

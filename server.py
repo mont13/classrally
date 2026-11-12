@@ -66,6 +66,7 @@ GET_READY_SEC = 3  # "Get ready" countdown before answers show (0 = off)
 READING_BASE_CHARS = 80
 READING_CHARS_PER_SEC = 15
 READING_BONUS_MAX_SEC = 30
+INTERACTION_BONUS_MAX_SEC = 30
 # The same for the result: an explanation longer than EXPLANATION_BASE_CHARS
 # keeps the result on screen longer, at most EXPLANATION_BONUS_MAX_SEC.
 EXPLANATION_BASE_CHARS = 60
@@ -98,6 +99,17 @@ def reading_bonus_sec(question: dict | None) -> int:
     if extra <= 0:
         return 0
     return min(READING_BONUS_MAX_SEC, math.ceil(extra / READING_CHARS_PER_SEC))
+
+
+def interaction_bonus_sec(question: dict) -> int:
+    """Allow time for tapping/selecting, independently of text length."""
+    if question.get("type") == "ordering":
+        extra = 5 * max(0, len(question.get("items", [])) - 2)
+    elif question.get("type") == "multiselect":
+        extra = 3 * len(question.get("options", []))
+    else:
+        extra = 0
+    return min(INTERACTION_BONUS_MAX_SEC, extra)
 
 
 def explanation_bonus_sec(question: dict | None) -> int:
@@ -327,6 +339,9 @@ def _validate_question(q: dict, idx: int) -> None:
 
     q_type = q.get("type", "choice")
 
+    if "time_sec" in q and (type(q["time_sec"]) is not int or not 5 <= q["time_sec"] <= 180):
+        raise RuntimeError(f"question {idx} time_sec must be an integer from 5 to 180")
+
     if q_type in ("choice", "truefalse"):
         for key in ("options", "correct_index"):
             if key not in q:
@@ -477,14 +492,14 @@ def delete_question_bank(filename: str, owner_id: int | None = None) -> None:
 def questions_to_csv(questions: list[dict[str, Any]]) -> str:
     """Serialize a question bank to CSV.
 
-    CSV columns: id, type, prompt, options (pipe-separated), correct_answer, explanation
+    CSV columns: id, type, prompt, options (pipe-separated), correct_answer, explanation, time_sec
     For multiselect correct_answer is pipe-separated indices.
     For ordering, options holds the ordered items and correct_answer is empty.
     For openended, options is empty and correct_answer holds pipe-separated accepted answers.
     """
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
-    writer.writerow(["id", "type", "prompt", "options", "correct_answer", "explanation"])
+    writer.writerow(["id", "type", "prompt", "options", "correct_answer", "explanation", "time_sec"])
     for q in questions:
         q_type = q.get("type", "choice")
         prompt = q.get("prompt", "")
@@ -514,7 +529,7 @@ def questions_to_csv(questions: list[dict[str, Any]]) -> str:
         else:
             options = ""
             correct = ""
-        writer.writerow([qid, q_type, prompt, options, correct, explanation])
+        writer.writerow([qid, q_type, prompt, options, correct, explanation, q.get("time_sec", "")])
     return buf.getvalue()
 
 
@@ -536,6 +551,15 @@ def questions_from_csv(csv_text: str) -> list[dict[str, Any]]:
         correct_raw = (row.get("correct_answer") or row.get("correct_index") or "").strip()
 
         q: dict[str, Any] = {"id": qid, "type": q_type, "prompt": prompt, "explanation": explanation}
+        time_raw = (row.get("time_sec") or "").strip()
+        if time_raw:
+            try:
+                limit = int(time_raw)
+            except ValueError:
+                raise ValueError(f"CSV row {i} time_sec must be an integer from 5 to 180") from None
+            if not 5 <= limit <= 180:
+                raise ValueError(f"CSV row {i} time_sec must be an integer from 5 to 180")
+            q["time_sec"] = limit
 
         if q_type in ("choice", "truefalse"):
             opts = [o.strip() for o in options_raw.split("|") if o.strip()] if options_raw else []
@@ -1488,16 +1512,28 @@ class QuizState:
     def _reading_bonus_locked(self, index: int | None = None) -> int:
         """Reading time added to the current (or given) question; 0 when off."""
         index = self.current_index if index is None else index
-        if not self.adaptive_time or not 0 <= index < len(self.questions):
+        if (not self.adaptive_time or not 0 <= index < len(self.questions)
+                or "time_sec" in self.questions[index]):
             return 0
         return reading_bonus_sec(self.questions[index])
 
+    def _interaction_bonus_locked(self, index: int | None = None) -> int:
+        index = self.current_index if index is None else index
+        if (not self.adaptive_time or not 0 <= index < len(self.questions)
+                or "time_sec" in self.questions[index]):
+            return 0
+        return interaction_bonus_sec(self.questions[index])
+
     def _question_time_locked(self, index: int | None = None) -> int:
-        """Time to answer as played: the teacher's setting plus reading time.
+        """Exact per-question override, or setting plus adaptive reading/interaction time.
 
         The get-ready countdown comes on top of it: 20 s per question are 20 s
         with the answers on the screen."""
-        return self.question_duration_sec + self._reading_bonus_locked(index)
+        index = self.current_index if index is None else index
+        if 0 <= index < len(self.questions) and "time_sec" in self.questions[index]:
+            return self.questions[index]["time_sec"]
+        return (self.question_duration_sec + self._reading_bonus_locked(index)
+                + self._interaction_bonus_locked(index))
 
     def _answers_open_at_locked(self) -> float:
         """When the answers show up (the get-ready countdown is over)."""
@@ -2134,6 +2170,7 @@ class QuizState:
             "players": len(self.players),
             "answered": len(results),
             "double": self._question_is_double_locked(self.current_index),
+            "question_time_sec": self._question_time_locked(),
             "results": results,
         }
         if q_type in ("choice", "truefalse", "multiselect", "poll"):
@@ -2615,6 +2652,7 @@ class QuizState:
                 "question_duration_sec": self.question_duration_sec,  # the teacher's setting
                 "adaptive_time": self.adaptive_time,
                 "reading_bonus_sec": self._reading_bonus_locked(),
+                "interaction_bonus_sec": self._interaction_bonus_locked(),
                 "question_time_sec": self._question_time_locked(),  # time to answer, as played
                 "reveal_duration_sec": self.reveal_duration_sec,     # the teacher's setting
                 "reveal_time_sec": self._reveal_time_locked(),       # this result screen as played

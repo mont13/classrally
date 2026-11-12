@@ -1,6 +1,10 @@
 {
   "lang_name": "Slovenčina",
   "play": {
+    "order_progress": "Vybrané {0} z {1}",
+    "order_clear": "Vymazať",
+    "order_undo": "Späť",
+    "order_tap_hint": "Klepni na položky v správnom poradí od prvej po poslednú. Potom potvrď.",
     "page_title": "ClassRally - Hraj!",
     "hero_kicker": "Rýchle pripojenie z mobilu",
     "title": "Pripoj sa do kvízu!",
@@ -303,6 +307,8 @@
     "comeback": "Veľký návrat"
   },
   "admin": {
+    "question_time_hint": "Prázdne: čas hry + adaptívne príplatky. Vyplnené: presný čas bez príplatkov. Príprava pred otázkou je navyše; písomku toto pole neovplyvní.",
+    "question_time_label": "Čas tejto otázky v hre (5–180 s, voliteľné)",
     "page_title": "Quiz Admin - Učiteľský portál",
     "title": "Učiteľský portál",
     "hero_kicker": "Ovládací panel učiteľa",
@@ -601,11 +607,11 @@
     "rules_title": "Pravidlá hry",
     "speed_bonus_label": "Bonus za rýchlosť",
     "speed_bonus_hint": "Vypnuté: každá správna odpoveď má plných 1000 bodov bez ohľadu na čas, takže pomalší žiaci nie sú znevýhodnení.",
-    "adaptive_time_label": "Predĺžiť čas podľa dĺžky otázky",
-    "adaptive_time_hint": "Dlhšia otázka dostane navyše čas na prečítanie: +1 s za každých 15 znakov otázky a odpovedí nad 80, najviac +30 s. Krátke otázky majú presne nastavený čas.",
+    "adaptive_time_label": "Predĺžiť čas na čítanie a ovládanie",
+    "adaptive_time_hint": "Čítanie: +1 s za každých 15 znakov nad 80, najviac +30 s. Ovládanie: radenie +5 s za položku nad dve, viac správnych +2 s za voľbu, najviac +30 s. Vlastný čas otázky má prednosť a príplatky vypína.",
     "bank_warn_title": "Upozornenie pre hru:",
     "bank_warn_openended": "Otvorené otázky: {0}. Písať odpoveď na čas je na mobile ťažké, pre hru zvážte otázku s výberom (písomke nevadí).",
-    "bank_warn_ordering": "Zoraďovanie s viac ako 4 položkami: {0}. Na mobile sa zoraďuje pomaly, pre hru stačia najviac 4 položky.",
+    "bank_warn_ordering": "Radenie s viac ako 4 položkami: {0}. Zapnite adaptívny čas alebo nastavte vlastný čas otázky a overte priebeh na mobile.",
     "show_leaderboard_label": "Zobrazovať celý rebríček",
     "show_leaderboard_hint": "Vypnuté: projektor ani mobily neukazujú poradie ostatných, na konci len stupne víťazov. Každý vidí len svoje body.",
     "csv_results": "Výsledky (CSV)",
